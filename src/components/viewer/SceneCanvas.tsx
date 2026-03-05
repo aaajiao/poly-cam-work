@@ -166,7 +166,7 @@ export function SceneCanvas() {
           />
         </GizmoHelper>
 
-        {import.meta.env.DEV && <Stats />}
+        {import.meta.env.DEV && <Stats className="stats-panel" />}
 
         <ScreenshotCapture />
       </Canvas>

@@ -122,3 +122,8 @@
     @apply bg-background text-foreground;
     }
 }
+
+.stats-panel {
+  left: auto !important;
+  right: 0 !important;
+}

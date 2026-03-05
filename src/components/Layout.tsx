@@ -19,13 +19,13 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
         style={{ width: sidebarOpen ? '288px' : '48px' }}
         className="flex flex-col border-r border-zinc-800 flex-shrink-0 transition-all duration-200 z-10 relative"
       >
-        <div className="flex items-center justify-end p-2 border-b border-zinc-800">
+        <div className={`flex items-center p-2 border-b border-zinc-800 ${sidebarOpen ? 'justify-end' : 'justify-center'}`}>
           <Button
             variant="ghost"
             size="icon"
             data-testid="sidebar-toggle"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="h-8 w-8 text-zinc-400 hover:text-zinc-100"
+            className={`h-8 w-8 ${sidebarOpen ? 'text-zinc-400 hover:text-zinc-100' : 'text-zinc-300 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700'}`}
           >
             {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
           </Button>

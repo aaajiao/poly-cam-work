@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "playwright-visual-testing": {
+      "source": "manutej/luxor-claude-marketplace",
+      "sourceType": "github",
+      "computedHash": "c942ebb478c672f41d4dbf673d0a6b04584ba8bd7bdf2c5b1f42e0d2f59bc249"
+    },
+    "r3f-geometry": {
+      "source": "enzed/r3f-skills",
+      "sourceType": "github",
+      "computedHash": "a13c741ad88696449c1316cef1da0075ce831108dc884938b296fce48ba13974"
+    },
+    "shadcn-ui": {
+      "source": "jezweb/claude-skills",
+      "sourceType": "github",
+      "computedHash": "c9871cb4685898b3d5ac3dd54924a6818ca4817de5ca40d546eba06d0ada53a8"
+    }
+  }
+}
