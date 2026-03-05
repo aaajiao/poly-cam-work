@@ -82,18 +82,11 @@ Config: `src/store/presetScenes.ts`
 
 ## SHARED WORKSPACE (macOS + Linux)
 
-This project directory is shared between macOS (user) and Linux (AI agent) via mount. Native binary packages (`@rollup/*`, `@esbuild/*`, `lightningcss-*`) are platform-specific.
-
-**Setup**: Both platforms' native binaries coexist in `node_modules/`. After the user runs `bun install` on macOS, the agent runs:
-```bash
-bun add --no-save @rollup/rollup-linux-arm64-gnu lightningcss-linux-arm64-gnu
-# (bun auto-resolves @esbuild/linux-arm64 as transitive dep)
-```
+This project directory is shared between macOS (user) and Linux (AI agent) via OrbStack mount.
 
 **Rules**:
-- **User (macOS)**: Owns `bun install`. Runs `bun run dev` for visual testing.
-- **Agent (Linux)**: NEVER runs `bun install`. Only adds missing Linux native binaries via `bun add --no-save`. Runs `bun run build`, `bun run test`, `bun run test:e2e`.
-- After user reinstalls (`rm -rf node_modules && bun install`), agent must re-add Linux native binaries before running build/test commands.
+- **Agent (Linux)**: Owns `bun install` and all commands (`bun run dev/build/test/test:e2e`). Node_modules contains Linux-only native binaries.
+- **User (macOS)**: Accesses dev server at `http://localhost:5173/` (OrbStack auto-forwards ports). Does NOT run `bun install` or `bun run` commands — all execution happens on Linux side.
 
 ## COMMANDS
 
