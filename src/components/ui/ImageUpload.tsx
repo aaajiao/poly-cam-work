@@ -120,7 +120,11 @@ export function ImageUpload({
           await imageStorage.save(id, compressed, { annotationId, filename: file.name })
           newImages.push({ id, filename: file.name, thumbnailId: `thumb-${id}` })
         } catch (err) {
-          errors.push(`${file.name}: upload failed`)
+          if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+            errors.push(`${file.name}: storage full — delete some images to free space`)
+          } else {
+            errors.push(`${file.name}: upload failed`)
+          }
           console.error(err)
         }
       }

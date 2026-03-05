@@ -7,12 +7,15 @@ import { AnnotationMarker } from './AnnotationMarker'
 
 const FAR_THRESHOLD = 10
 const MAX_HTML_MARKERS = 15
+// Must match ClippingPlane.tsx SCENE_HALF — both must agree on the world-space mapping
+const CLIP_SCENE_HALF = 15
 
 export function AnnotationMarkers() {
   const annotations = useViewerStore((s) => s.annotations)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const annotationsVisible = useViewerStore((s) => s.annotationsVisible)
+  const clipPlane = useViewerStore((s) => s.clipPlane)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
   const { camera } = useThree()
 
@@ -20,6 +23,16 @@ export function AnnotationMarkers() {
     () => annotations.filter((a) => a.sceneId === activeSceneId),
     [annotations, activeSceneId]
   )
+
+  const visibleAnnotations = useMemo(() => {
+    if (!clipPlane.enabled) return sceneAnnotations
+    const worldPos = (clipPlane.position - 0.5) * 2 * CLIP_SCENE_HALF
+    const axisIndex = clipPlane.axis === 'x' ? 0 : clipPlane.axis === 'y' ? 1 : 2
+    return sceneAnnotations.filter((a) => {
+      const axisValue = a.position[axisIndex]
+      return clipPlane.flipped ? axisValue <= worldPos : axisValue >= worldPos
+    })
+  }, [sceneAnnotations, clipPlane])
 
   const instancedMeshRef = useRef<THREE.InstancedMesh>(null)
   const farGeometry = useMemo(() => new THREE.SphereGeometry(0.12, 8, 8), [])
@@ -31,9 +44,20 @@ export function AnnotationMarkers() {
   const lodStateRef = useRef<Map<string, 'far' | 'close'>>(new Map())
 
   useFrame(({ clock }) => {
-    if (!annotationsVisible || sceneAnnotations.length === 0) return
+    if (!annotationsVisible) return
 
-    const withDist = sceneAnnotations.map((a: Annotation) => {
+    const mesh = instancedMeshRef.current
+
+    if (visibleAnnotations.length === 0) {
+      if (mesh && mesh.count > 0) {
+        mesh.count = 0
+        mesh.instanceMatrix.needsUpdate = true
+      }
+      lodStateRef.current = new Map()
+      return
+    }
+
+    const withDist = visibleAnnotations.map((a: Annotation) => {
       const pos = new THREE.Vector3(...a.position)
       const dist = camera.position.distanceTo(pos)
       return { annotation: a, dist }
@@ -53,7 +77,6 @@ export function AnnotationMarkers() {
     }
     lodStateRef.current = newLod
 
-    const mesh = instancedMeshRef.current
     if (!mesh) return
 
     const farAnnotations = withDist.filter((d) => newLod.get(d.annotation.id) === 'far')
@@ -73,7 +96,7 @@ export function AnnotationMarkers() {
 
   if (!annotationsVisible) return null
 
-  const closeAnnotations = sceneAnnotations.filter(
+  const closeAnnotations = visibleAnnotations.filter(
     (a) => lodStateRef.current.get(a.id) === 'close'
   )
 

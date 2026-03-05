@@ -10,6 +10,9 @@ All tools render inside `<Canvas>` in SceneCanvas.tsx. Activated by `toolMode` f
 | `ClippingPlane.tsx` | always (via `clipPlane.enabled`) | Sidebar slider controls position/axis |
 | `AnnotationTool.tsx` | `annotate` | Click surface → input dialog → persistent label |
 | `AnnotationLabel.tsx` | — | Individual label component (drei `<Html>`) |
+| `AnnotationMarkers.tsx` | — | Container: InstancedMesh (far LOD) + Html markers (close LOD), 2-tier LOD |
+| `AnnotationMarker.tsx` | — | Individual close-LOD marker (drei Html, click to select) |
+| `AnnotationPanel.tsx` | — | 3D floating content panel (drei Html, shows rich content) |
 
 ## Tool Registration Pattern
 
@@ -48,7 +51,7 @@ Also applies `material.clippingPlanes = [plane]` to both Mesh AND Points materia
 
 1. Create component in this directory
 2. Gate rendering on `toolMode` or a dedicated store flag
-3. Use Raycaster pattern above for click-to-3D
+3. Use `raycastScene(raycaster, scene, camera)` from `src/utils/raycasting.ts` for click-to-3D
 4. Register in `SceneCanvas.tsx` after existing tools
 5. Add keyboard shortcut in `Toolbar.tsx` keydown handler
 6. Add button in `ToolButtons.tsx` TOOLS array
