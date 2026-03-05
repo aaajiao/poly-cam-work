@@ -1,6 +1,6 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState, useCallback } from 'react'
 import * as THREE from 'three'
-import { useThree, useFrame } from '@react-three/fiber'
+import { useThree, useFrame, ThreeEvent } from '@react-three/fiber'
 import { useViewerStore } from '@/store/viewerStore'
 import type { Annotation } from '@/types'
 import { AnnotationMarker } from './AnnotationMarker'
@@ -18,6 +18,10 @@ export function AnnotationMarkers() {
   const clipPlane = useViewerStore((s) => s.clipPlane)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
   const { camera } = useThree()
+
+  // Triggers a single re-render after the first useFrame populates LOD state,
+  // so that close-LOD Html markers appear correctly after page refresh.
+  const [lodReady, setLodReady] = useState(false)
 
   const sceneAnnotations = useMemo(
     () => annotations.filter((a) => a.sceneId === activeSceneId),
@@ -42,6 +46,8 @@ export function AnnotationMarkers() {
   )
 
   const lodStateRef = useRef<Map<string, 'far' | 'close'>>(new Map())
+  // Maps instancedMesh instance index → annotation, kept in sync each frame.
+  const farAnnotationsRef = useRef<Annotation[]>([])
 
   useFrame(({ clock }) => {
     if (!annotationsVisible) return
@@ -54,6 +60,7 @@ export function AnnotationMarkers() {
         mesh.instanceMatrix.needsUpdate = true
       }
       lodStateRef.current = new Map()
+      farAnnotationsRef.current = []
       return
     }
 
@@ -77,9 +84,13 @@ export function AnnotationMarkers() {
     }
     lodStateRef.current = newLod
 
+    // One-shot: trigger re-render so React picks up LOD state for close markers.
+    if (!lodReady) setLodReady(true)
+
     if (!mesh) return
 
     const farAnnotations = withDist.filter((d) => newLod.get(d.annotation.id) === 'far')
+    farAnnotationsRef.current = farAnnotations.map((d) => d.annotation)
     mesh.count = farAnnotations.length
 
     const matrix = new THREE.Matrix4()
@@ -94,6 +105,17 @@ export function AnnotationMarkers() {
     mesh.instanceMatrix.needsUpdate = true
   })
 
+  const handleInstanceClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation()
+      const idx = e.instanceId
+      if (idx !== undefined && farAnnotationsRef.current[idx]) {
+        selectAnnotation(farAnnotationsRef.current[idx].id)
+      }
+    },
+    [selectAnnotation]
+  )
+
   if (!annotationsVisible) return null
 
   const closeAnnotations = visibleAnnotations.filter(
@@ -105,6 +127,7 @@ export function AnnotationMarkers() {
       <instancedMesh
         ref={instancedMeshRef}
         args={[farGeometry, farMaterial, sceneAnnotations.length]}
+        onClick={handleInstanceClick}
       />
 
       {closeAnnotations.slice(0, MAX_HTML_MARKERS).map((annotation) => (
