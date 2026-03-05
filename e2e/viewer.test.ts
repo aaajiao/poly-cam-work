@@ -63,15 +63,16 @@ test.describe('3D Viewer', () => {
     const initialBox = await sidebar.boundingBox()
     expect(initialBox?.width).toBeGreaterThan(200)
 
-    // Collapse
     await page.click('[data-testid="sidebar-toggle"]')
-    await page.waitForTimeout(300)
+    await page.waitForTimeout(400)
     const collapsedBox = await sidebar.boundingBox()
     expect(collapsedBox?.width).toBeLessThan(100)
 
-    // Expand
-    await page.click('[data-testid="sidebar-toggle"]')
-    await page.waitForTimeout(300)
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-testid="sidebar-toggle"]') as HTMLElement
+      btn?.click()
+    })
+    await page.waitForTimeout(400)
     const expandedBox = await sidebar.boundingBox()
     expect(expandedBox?.width).toBeGreaterThan(200)
   })

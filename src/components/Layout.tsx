@@ -16,9 +16,8 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
     <div className="flex h-screen w-screen bg-zinc-950 text-zinc-100 overflow-hidden">
       <aside
         data-testid="sidebar"
-        className={`flex flex-col border-r border-zinc-800 flex-shrink-0 transition-all duration-200 ${
-          sidebarOpen ? 'w-72' : 'w-12'
-        }`}
+        style={{ width: sidebarOpen ? '288px' : '48px' }}
+        className="flex flex-col border-r border-zinc-800 flex-shrink-0 transition-all duration-200"
       >
         <div className="flex items-center justify-end p-2 border-b border-zinc-800">
           <Button
