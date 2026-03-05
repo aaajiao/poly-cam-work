@@ -24,6 +24,18 @@ export function GLBViewer({ url }: GLBViewerProps) {
     })
   }, [scene])
 
+  useEffect(() => {
+    return () => {
+      scene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose()
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach((mat) => mat.dispose())
+        }
+      })
+    }
+  }, [scene])
+
   return <primitive object={scene} />
 }
 

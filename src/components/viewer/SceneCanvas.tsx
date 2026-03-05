@@ -5,6 +5,7 @@ import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GLBViewer } from './GLBViewer'
 import { PointCloudViewer } from './PointCloudViewer'
+import { ScreenshotCapture } from './ScreenshotButton'
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay'
 import { useActiveScene, useViewerStore } from '@/store/viewerStore'
 import { MeasurementTool } from '@/components/tools/MeasurementTool'
@@ -101,6 +102,8 @@ export function SceneCanvas() {
         </GizmoHelper>
 
         {import.meta.env.DEV && <Stats />}
+
+        <ScreenshotCapture />
       </Canvas>
 
       <LoadingOverlay

@@ -1,0 +1,49 @@
+import { MousePointer2, Ruler, Scissors, Tag } from 'lucide-react'
+import { useViewerStore } from '@/store/viewerStore'
+import type { ToolMode } from '@/types'
+import { cn } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+
+const TOOLS: { value: ToolMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
+  { value: 'orbit', label: 'Orbit', icon: <MousePointer2 size={14} />, shortcut: 'O' },
+  { value: 'measure', label: 'Measure', icon: <Ruler size={14} />, shortcut: 'M' },
+  { value: 'clip', label: 'Clip', icon: <Scissors size={14} />, shortcut: 'C' },
+  { value: 'annotate', label: 'Annotate', icon: <Tag size={14} />, shortcut: 'A' },
+]
+
+export function ToolButtons() {
+  const toolMode = useViewerStore((s) => s.toolMode)
+  const setToolMode = useViewerStore((s) => s.setToolMode)
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div
+        className="flex items-center bg-zinc-900 border border-zinc-700 rounded-md overflow-hidden"
+        data-testid="tool-buttons"
+      >
+        {TOOLS.map((tool) => (
+          <Tooltip key={tool.value}>
+            <TooltipTrigger asChild>
+              <button
+                data-testid={`tool-${tool.value}`}
+                onClick={() => setToolMode(tool.value)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                  toolMode === tool.value
+                    ? 'bg-blue-600 text-white'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                )}
+              >
+                {tool.icon}
+                <span className="hidden md:inline">{tool.label}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {tool.label} <kbd className="ml-1 px-1 bg-zinc-700 rounded text-zinc-300">{tool.shortcut}</kbd>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
+  )
+}
