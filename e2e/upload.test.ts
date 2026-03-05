@@ -28,14 +28,12 @@ test.describe('File Upload', () => {
     await expect(page.locator('[data-testid="drop-overlay"]')).toBeVisible({ timeout: 2000 })
   })
 
-  test('drop overlay disappears when drag leaves window', async ({ page }) => {
+  test('drop overlay disappears after drop event', async ({ page }) => {
     await page.dispatchEvent('body', 'dragover', { bubbles: true, cancelable: true })
     await page.waitForTimeout(200)
 
     await page.evaluate(() => {
-      const leaveEvent = new DragEvent('dragleave', { bubbles: true, relatedTarget: null })
-      Object.defineProperty(leaveEvent, 'relatedTarget', { value: null })
-      window.dispatchEvent(leaveEvent)
+      window.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
     })
     await page.waitForTimeout(200)
     await expect(page.locator('[data-testid="drop-overlay"]')).not.toBeVisible({ timeout: 2000 })

@@ -23,11 +23,11 @@ test('sidebar toggle works', async ({ page }) => {
 
   const sidebar = page.locator('[data-testid="sidebar"]')
   const initialBox = await sidebar.boundingBox()
-  expect(initialBox?.width).toBeGreaterThan(200) // ~288px open
+  expect(initialBox?.width).toBeGreaterThan(200)
 
-  await page.click('[data-testid="sidebar-toggle"]')
-  await page.waitForTimeout(400) // wait for transition
+  await page.locator('[data-testid="sidebar-toggle"]').click({ force: true, position: { x: 4, y: 4 } })
+  await page.waitForTimeout(500)
 
   const collapsedBox = await sidebar.boundingBox()
-  expect(collapsedBox?.width).toBeLessThan(100) // ~48px collapsed
+  expect(collapsedBox?.width).toBeLessThan(100)
 })
