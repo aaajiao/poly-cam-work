@@ -41,17 +41,22 @@ function CameraController() {
   return null
 }
 
+const DIALOG_WIDTH = 224   // w-56 = 14rem = 224px
+const DIALOG_HEIGHT = 120  // approximate height
+
 function AnnotationInputDialog() {
   const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
   const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
   const addAnnotation = useViewerStore((s) => s.addAnnotation)
+  const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
   const [inputText, setInputText] = useState('')
 
   const handleConfirm = useCallback(() => {
     if (!pendingAnnotationInput || !inputText.trim() || !activeSceneId) return
+    const newId = `ann-${Date.now()}`
     addAnnotation({
-      id: `ann-${Date.now()}`,
+      id: newId,
       position: pendingAnnotationInput.worldPos,
       normal: pendingAnnotationInput.normal,
       title: inputText.trim(),
@@ -62,9 +67,10 @@ function AnnotationInputDialog() {
       sceneId: activeSceneId,
       createdAt: Date.now(),
     })
+    selectAnnotation(newId)
     setPendingAnnotationInput(null)
     setInputText('')
-  }, [pendingAnnotationInput, inputText, activeSceneId, addAnnotation, setPendingAnnotationInput])
+  }, [pendingAnnotationInput, inputText, activeSceneId, addAnnotation, selectAnnotation, setPendingAnnotationInput])
 
   const handleCancel = useCallback(() => {
     setPendingAnnotationInput(null)
@@ -73,11 +79,20 @@ function AnnotationInputDialog() {
 
   if (!pendingAnnotationInput) return null
 
+  const clampedLeft = Math.min(
+    Math.max(pendingAnnotationInput.screenPos.x + 10, 8),
+    window.innerWidth - DIALOG_WIDTH - 8
+  )
+  const clampedTop = Math.min(
+    Math.max(pendingAnnotationInput.screenPos.y - 20, 8),
+    window.innerHeight - DIALOG_HEIGHT - 8
+  )
+
   return (
     <div
       data-testid="annotation-input-dialog"
       className="fixed z-50 bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl p-3 w-56"
-      style={{ left: pendingAnnotationInput.screenPos.x + 10, top: pendingAnnotationInput.screenPos.y - 20 }}
+      style={{ left: clampedLeft, top: clampedTop }}
     >
       <p className="text-zinc-400 text-xs mb-2">Add annotation</p>
       <input
