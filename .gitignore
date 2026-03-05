@@ -1,2 +1,5 @@
 .claude/settings.local.json
 .claude/*.local.*
+public/models/
+node_modules/
+dist/
