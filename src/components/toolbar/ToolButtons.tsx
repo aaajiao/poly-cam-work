@@ -1,4 +1,4 @@
-import { MousePointer2, Ruler, Scissors, Tag } from 'lucide-react'
+import { MousePointer2, Ruler, Tag } from 'lucide-react'
 import { useViewerStore } from '@/store/viewerStore'
 import type { ToolMode } from '@/types'
 import { cn } from '@/lib/utils'
@@ -7,7 +7,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const TOOLS: { value: ToolMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
   { value: 'orbit', label: 'Orbit', icon: <MousePointer2 size={14} />, shortcut: 'O' },
   { value: 'measure', label: 'Measure', icon: <Ruler size={14} />, shortcut: 'M' },
-  { value: 'clip', label: 'Clip', icon: <Scissors size={14} />, shortcut: 'C' },
   { value: 'annotate', label: 'Annotate', icon: <Tag size={14} />, shortcut: 'A' },
 ]
 

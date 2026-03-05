@@ -19,14 +19,14 @@ test('app loads and renders layout', async ({ page }) => {
 
 test('sidebar toggle works', async ({ page }) => {
   await page.goto('/')
-  await page.waitForSelector('[data-testid="sidebar-toggle"]')
+  await page.waitForSelector('[data-testid="scene-canvas"]', { timeout: 15000 })
 
   const sidebar = page.locator('[data-testid="sidebar"]')
   const initialBox = await sidebar.boundingBox()
   expect(initialBox?.width).toBeGreaterThan(200)
 
-  await page.locator('[data-testid="sidebar-toggle"]').click({ force: true, position: { x: 4, y: 4 } })
-  await page.waitForTimeout(500)
+  await page.click('[data-testid="sidebar-toggle"]')
+  await page.waitForTimeout(400)
 
   const collapsedBox = await sidebar.boundingBox()
   expect(collapsedBox?.width).toBeLessThan(100)

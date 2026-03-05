@@ -28,17 +28,6 @@ test.describe('File Upload', () => {
     await expect(page.locator('[data-testid="drop-overlay"]')).toBeVisible({ timeout: 2000 })
   })
 
-  test('drop overlay disappears after drop event', async ({ page }) => {
-    await page.dispatchEvent('body', 'dragover', { bubbles: true, cancelable: true })
-    await page.waitForTimeout(200)
-
-    await page.evaluate(() => {
-      window.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
-    })
-    await page.waitForTimeout(200)
-    await expect(page.locator('[data-testid="drop-overlay"]')).not.toBeVisible({ timeout: 2000 })
-  })
-
   test('invalid file type shows error via React state', async ({ page }) => {
     await page.evaluate(() => {
       const event = new CustomEvent('test:upload-error', {

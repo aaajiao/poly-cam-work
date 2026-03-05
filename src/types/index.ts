@@ -23,7 +23,7 @@ export interface ScanMetadata {
 export type ViewMode = 'mesh' | 'pointcloud' | 'both'
 
 // Tool mode: which interactive tool is active
-export type ToolMode = 'orbit' | 'measure' | 'clip' | 'annotate'
+export type ToolMode = 'orbit' | 'measure' | 'annotate'
 
 // Measurement result
 export interface Measurement {
