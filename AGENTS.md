@@ -13,15 +13,16 @@ src/
 ├── components/
 │   ├── viewer/    # R3F Canvas + GLB/PLY renderers (see viewer/AGENTS.md)
 │   ├── tools/     # 3D interactive tools: measure, clip, annotate (see tools/AGENTS.md)
-│   ├── sidebar/   # FileManager, PropertyPanel, ClipControls, ColorMapControls
+│   ├── sidebar/   # FileManager, PropertyPanel, ClipControls, ColorMapControls, AnnotationManager
 │   ├── toolbar/   # Toolbar, ToolButtons, ViewModeToggle
 │   ├── upload/    # DropZone (drag-and-drop .glb/.ply)
-│   └── ui/        # shadcn components + ErrorBoundary, LoadingOverlay, StatusBar
-├── store/         # zustand: viewerStore (single store), presetScenes config
+│   └── ui/        # shadcn components + ErrorBoundary, LoadingOverlay, StatusBar, VimeoEmbed, ImageUpload, ImagePreview
+├── storage/       # ImageStorage abstraction + IndexedDB implementation (images for annotations)
+├── store/         # zustand: viewerStore (single store, persist v1 with migration), presetScenes config
 ├── hooks/         # usePLYLoader (Worker bridge), useFileUpload, useScreenshot
 ├── workers/       # ply-parser.worker.ts (binary PLY → Float32Array, off-thread)
 ├── types/         # All shared types: ScanScene, ViewMode, ToolMode, Measurement, etc.
-├── utils/         # Pure functions: colorMapping, measurement, screenshot
+├── utils/         # Pure functions: colorMapping, measurement, screenshot, vimeo, raycasting
 └── lib/           # shadcn cn() utility
 e2e/               # Playwright E2E tests (chromium only)
 public/models/     # Scan data files (gitignored, ~272MB)
@@ -31,15 +32,17 @@ public/models/     # Scan data files (gitignored, ~272MB)
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Add new 3D tool | `src/components/tools/` + register in `SceneCanvas.tsx` | Follow MeasurementTool pattern |
+| Add new 3D tool | `src/components/tools/` + register in `SceneCanvas.tsx` | Use `raycastScene` from `utils/raycasting.ts` |
 | Change view modes | `src/types/index.ts` ViewMode + `viewerStore.ts` + `ViewModeToggle.tsx` | |
 | Modify point cloud rendering | `src/components/viewer/PointCloudViewer.tsx` | Coord transform here |
 | Change PLY parsing | `src/workers/ply-parser.worker.ts` + `src/hooks/usePLYLoader.ts` | Worker ↔ hook protocol |
 | Add sidebar controls | `src/components/sidebar/PropertyPanel.tsx` | Import + render new panel |
+| Modify annotation system | `src/components/tools/Annotation*.tsx` + `sidebar/AnnotationManager.tsx` | Types → Store → Tools → Sidebar |
+| Modify annotation storage | `src/storage/imageStorage.ts` | Abstract `ImageStorage` interface, IndexedDB impl |
 | Add keyboard shortcut | `src/components/toolbar/Toolbar.tsx` useEffect keydown handler | |
 | Modify store state | `src/types/index.ts` + `src/store/viewerStore.ts` | Types first, then store |
-| Add unit test | `src/__tests__/` | 65 tests, vitest + jsdom |
-| Add E2E test | `e2e/` | 21 tests, playwright, use `data-testid` |
+| Add unit test | `src/__tests__/` | 88 tests, vitest + jsdom |
+| Add E2E test | `e2e/` | 22+ tests, playwright, use `data-testid` |
 
 ## CRITICAL: Coordinate Systems
 
@@ -75,7 +78,8 @@ Config: `src/store/presetScenes.ts`
 - **Path alias**: `@/` → `src/` (tsconfig paths + vite alias)
 - **Tailwind v4**: via `@tailwindcss/vite` plugin, NO `tailwind.config.js` — config in CSS
 - **shadcn/ui**: components in `src/components/ui/`, config in `components.json`
-- **Store**: single zustand store, `persist` middleware for annotations/colorMap/pointSize/viewMode
+- **Store**: single zustand store, `persist` middleware (version 1) for annotations/colorMap/pointSize/viewMode/selectedAnnotationId/annotationsVisible
+- **Image storage**: annotation images in IndexedDB (abstract `ImageStorage` interface), metadata (`imageIds[]`) in zustand. Never base64 in localStorage.
 - **Tests**: `data-testid` attributes on all interactive elements
 - **Workers**: Vite module worker syntax: `new Worker(new URL('../workers/X.ts', import.meta.url), { type: 'module' })`
 - **Transferable**: PLY parser returns Float32Arrays via transfer list (zero-copy)
@@ -93,8 +97,8 @@ This project directory is shared between macOS (user) and Linux (AI agent) via O
 ```bash
 bun run dev        # Vite dev server → localhost:5173 (user runs on macOS)
 bun run build      # Production build → dist/
-bun run test       # Vitest: 65 unit tests
-bun run test:e2e   # Playwright: 21 E2E tests (chromium)
+bun run test       # Vitest: 88 unit tests
+bun run test:e2e   # Playwright: 22+ E2E tests (chromium)
 ```
 
 ## GOTCHAS
@@ -103,4 +107,8 @@ bun run test:e2e   # Playwright: 21 E2E tests (chromium)
 - Screenshot button uses `window.__takeScreenshot` bridge (useScreenshot needs useThree → must be inside Canvas)
 - Sidebar toggle button needs `z-10 relative` on `<aside>` so canvas doesn't intercept clicks
 - ClippingPlane stores `_originalSide` on THREE.Material instances to restore after disabling
-- `setActiveScene` clears measurements (intentional — measurements are position-specific)
+- `setActiveScene` clears measurements AND `selectedAnnotationId` (intentional — both are position-specific)
+- Annotation markers use 2-tier LOD: InstancedMesh (>10m) + drei Html (≤10m), max 15 Html elements
+- Annotation images stored in IndexedDB (`polycam-images` DB), NOT in localStorage — `imageStorage.deleteByAnnotation()` cleans up on annotation/scene delete
+- `removeUploadedScene` cascades: removes annotations for that scene + deletes their images from IndexedDB
+- Clipping plane hides annotations on the clipped side (uses same `SCENE_HALF=15` constant as `ClippingPlane.tsx`)
