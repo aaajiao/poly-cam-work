@@ -11,6 +11,7 @@ import type {
   PendingAnnotationInput,
 } from '@/types'
 import { PRESET_SCENES } from './presetScenes'
+import { imageStorage } from '@/storage/imageStorage'
 
 interface ViewerState {
   scenes: ScanScene[]
@@ -29,6 +30,9 @@ interface ViewerState {
 
   pendingAnnotationInput: PendingAnnotationInput | null
 
+  selectedAnnotationId: string | null
+  annotationsVisible: boolean
+
   isLoading: boolean
   loadingProgress: number
   loadingMessage: string
@@ -43,6 +47,9 @@ interface ViewerState {
   addAnnotation: (a: Annotation) => void
   removeAnnotation: (id: string) => void
   updateAnnotation: (id: string, text: string) => void
+  updateAnnotationContent: (id: string, content: Partial<Pick<Annotation, 'title' | 'description' | 'images' | 'videoUrl' | 'links'>>) => void
+  selectAnnotation: (id: string | null) => void
+  toggleAnnotationsVisible: () => void
   setClipPlane: (state: Partial<ClipPlaneState>) => void
   setColorMapMode: (mode: ColorMapMode) => void
   setPointSize: (size: number) => void
@@ -75,12 +82,15 @@ export const useViewerStore = create<ViewerState>()(
 
       pendingAnnotationInput: null,
 
+      selectedAnnotationId: null,
+      annotationsVisible: true,
+
       isLoading: false,
       loadingProgress: 0,
       loadingMessage: '',
 
       setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
-      setActiveScene: (id) => set({ activeSceneId: id, measurements: [] }),
+      setActiveScene: (id) => set({ activeSceneId: id, measurements: [], selectedAnnotationId: null }),
       setViewMode: (viewMode) => set({ viewMode }),
       setToolMode: (toolMode) => set({ toolMode }),
 
@@ -92,14 +102,26 @@ export const useViewerStore = create<ViewerState>()(
 
       addAnnotation: (a) =>
         set((state) => ({ annotations: [...state.annotations, a] })),
-      removeAnnotation: (id) =>
-        set((state) => ({ annotations: state.annotations.filter((a) => a.id !== id) })),
+      removeAnnotation: (id) => {
+        imageStorage.deleteByAnnotation(id).catch(console.error)
+        set((state) => ({ annotations: state.annotations.filter((a) => a.id !== id) }))
+      },
       updateAnnotation: (id, text) =>
         set((state) => ({
           annotations: state.annotations.map((a) =>
             a.id === id ? { ...a, title: text } : a
           ),
         })),
+      updateAnnotationContent: (id, content) =>
+        set((state) => ({
+          annotations: state.annotations.map((a) =>
+            a.id === id ? { ...a, ...content } : a
+          ),
+        })),
+
+      selectAnnotation: (id) => set({ selectedAnnotationId: id }),
+      toggleAnnotationsVisible: () =>
+        set((state) => ({ annotationsVisible: !state.annotationsVisible })),
 
       setClipPlane: (partial) =>
         set((state) => ({ clipPlane: { ...state.clipPlane, ...partial } })),
@@ -115,17 +137,48 @@ export const useViewerStore = create<ViewerState>()(
           activeSceneId: scene.id,
         })),
       removeUploadedScene: (id) =>
-        set((state) => ({
-          uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
-        })),
+        set((state) => {
+          const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
+          for (const a of removedAnnotations) {
+            imageStorage.deleteByAnnotation(a.id).catch(console.error)
+          }
+          return {
+            uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
+            annotations: state.annotations.filter((a) => a.sceneId !== id),
+          }
+        }),
     }),
     {
       name: 'polycam-viewer-state',
+      version: 1,
+      migrate: (persistedState: unknown, version: number) => {
+        if (version === 0) {
+          // v0 format: { text } — v1 renames text→title, adds description/images/videoUrl/links/createdAt
+          const state = persistedState as Record<string, unknown>
+          if (Array.isArray(state.annotations)) {
+            state.annotations = (state.annotations as Record<string, unknown>[]).map((a) => {
+              const { text: _text, ...rest } = a
+              return {
+                ...rest,
+                title: typeof a.text === 'string' ? a.text : (a.title ?? ''),
+                description: a.description ?? '',
+                images: a.images ?? [],
+                videoUrl: a.videoUrl ?? null,
+                links: a.links ?? [],
+                createdAt: a.createdAt ?? Date.now(),
+              }
+            })
+          }
+        }
+        return persistedState
+      },
       partialize: (state) => ({
         annotations: state.annotations,
         colorMapMode: state.colorMapMode,
         pointSize: state.pointSize,
         viewMode: state.viewMode,
+        selectedAnnotationId: state.selectedAnnotationId,
+        annotationsVisible: state.annotationsVisible,
       }),
     }
   )
