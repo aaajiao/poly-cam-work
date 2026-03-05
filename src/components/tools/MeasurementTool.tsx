@@ -4,6 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import { Html, Line } from '@react-three/drei'
 import { useViewerStore } from '@/store/viewerStore'
 import { calculateDistance, formatDistance, getMidpoint } from '@/utils/measurement'
+import { updatePointsThreshold } from '@/utils/raycasting'
 
 interface MeasurementPoint {
   position: THREE.Vector3
@@ -29,12 +30,7 @@ export function MeasurementTool() {
 
   const isActive = toolMode === 'measure'
 
-  const updateThreshold = useCallback(() => {
-    const dist = camera.position.length()
-    raycasterRef.current.params.Points = { threshold: 0.01 + dist * 0.005 }
-  }, [camera])
-
-  useFrame(updateThreshold)
+  useFrame(() => updatePointsThreshold(raycasterRef.current, camera))
 
   const handleClick = useCallback((e: MouseEvent) => {
     if (!isActive) return

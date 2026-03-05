@@ -29,7 +29,11 @@ All tools that need click-to-3D use the same pattern:
 2. `gl.domElement.addEventListener('click', handler)`
 3. `raycaster.setFromCamera(mouse, camera)`
 4. `raycaster.intersectObjects(targets)` — traverse scene for Mesh + Points
-5. Dynamic threshold for Points: `raycaster.params.Points.threshold = 0.01 + dist * 0.005`
+5. Dynamic threshold for Points via shared utility: `useFrame(() => updatePointsThreshold(raycasterRef.current, camera))`
+
+Shared utilities in `src/utils/raycasting.ts`:
+- `updatePointsThreshold(raycaster, camera)` — sets `raycaster.params.Points.threshold = 0.01 + dist * 0.005` each frame
+- `raycastScene(raycaster, scene, camera)` — calls threshold update + traverses scene + returns intersections
 
 ## ClippingPlane: DoubleSide Fix
 

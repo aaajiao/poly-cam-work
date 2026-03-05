@@ -1,8 +1,9 @@
 import { useRef, useCallback, useEffect } from 'react'
 import * as THREE from 'three'
-import { useThree } from '@react-three/fiber'
+import { useThree, useFrame } from '@react-three/fiber'
 import { useViewerStore } from '@/store/viewerStore'
 import { AnnotationLabel } from './AnnotationLabel'
+import { updatePointsThreshold } from '@/utils/raycasting'
 
 export function AnnotationTool() {
   const toolMode = useViewerStore((s) => s.toolMode)
@@ -15,6 +16,8 @@ export function AnnotationTool() {
   const mouseRef = useRef(new THREE.Vector2())
 
   const isActive = toolMode === 'annotate'
+
+  useFrame(() => updatePointsThreshold(raycasterRef.current, camera))
 
   const handleClick = useCallback((e: MouseEvent) => {
     if (!isActive || pendingAnnotationInput) return
