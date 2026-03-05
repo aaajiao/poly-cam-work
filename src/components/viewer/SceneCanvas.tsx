@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, GizmoHelper, GizmoViewport, Environment, Stats } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
@@ -39,6 +39,71 @@ function CameraController() {
   }, [activeScene, camera, controls])
 
   return null
+}
+
+function AnnotationInputDialog() {
+  const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
+  const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
+  const addAnnotation = useViewerStore((s) => s.addAnnotation)
+  const activeSceneId = useViewerStore((s) => s.activeSceneId)
+  const [inputText, setInputText] = useState('')
+
+  const handleConfirm = useCallback(() => {
+    if (!pendingAnnotationInput || !inputText.trim() || !activeSceneId) return
+    addAnnotation({
+      id: `ann-${Date.now()}`,
+      position: pendingAnnotationInput.worldPos,
+      text: inputText.trim(),
+      sceneId: activeSceneId,
+    })
+    setPendingAnnotationInput(null)
+    setInputText('')
+  }, [pendingAnnotationInput, inputText, activeSceneId, addAnnotation, setPendingAnnotationInput])
+
+  const handleCancel = useCallback(() => {
+    setPendingAnnotationInput(null)
+    setInputText('')
+  }, [setPendingAnnotationInput])
+
+  if (!pendingAnnotationInput) return null
+
+  return (
+    <div
+      data-testid="annotation-input-dialog"
+      className="fixed z-50 bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl p-3 w-56"
+      style={{ left: pendingAnnotationInput.screenPos.x + 10, top: pendingAnnotationInput.screenPos.y - 20 }}
+    >
+      <p className="text-zinc-400 text-xs mb-2">Add annotation</p>
+      <input
+        autoFocus
+        value={inputText}
+        onChange={(e) => setInputText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleConfirm()
+          if (e.key === 'Escape') handleCancel()
+        }}
+        placeholder="Enter label text..."
+        className="w-full bg-zinc-800 text-white text-sm px-2 py-1.5 rounded border border-zinc-600 outline-none focus:border-blue-500 mb-2"
+        data-testid="annotation-text-input"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={handleConfirm}
+          disabled={!inputText.trim()}
+          className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs py-1.5 rounded transition-colors"
+          data-testid="annotation-confirm-btn"
+        >
+          Add
+        </button>
+        <button
+          onClick={handleCancel}
+          className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs py-1.5 rounded transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function SceneCanvas() {
@@ -111,6 +176,8 @@ export function SceneCanvas() {
         progress={loadingProgress}
         message={loadingMessage}
       />
+
+      <AnnotationInputDialog />
     </div>
   )
 }

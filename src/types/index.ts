@@ -52,6 +52,11 @@ export interface ClipPlaneState {
   flipped: boolean
 }
 
+export interface PendingAnnotationInput {
+  screenPos: { x: number; y: number }
+  worldPos: [number, number, number]
+}
+
 // Color mapping mode
 export type ColorMapMode = 'original' | 'height' | 'intensity'
 

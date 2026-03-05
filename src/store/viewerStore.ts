@@ -8,6 +8,7 @@ import type {
   Annotation,
   ClipPlaneState,
   ColorMapMode,
+  PendingAnnotationInput,
 } from '@/types'
 import { PRESET_SCENES } from './presetScenes'
 
@@ -26,10 +27,13 @@ interface ViewerState {
   colorMapMode: ColorMapMode
   pointSize: number
 
+  pendingAnnotationInput: PendingAnnotationInput | null
+
   isLoading: boolean
   loadingProgress: number
   loadingMessage: string
 
+  setPendingAnnotationInput: (input: PendingAnnotationInput | null) => void
   setActiveScene: (id: string) => void
   setViewMode: (mode: ViewMode) => void
   setToolMode: (mode: ToolMode) => void
@@ -69,10 +73,13 @@ export const useViewerStore = create<ViewerState>()(
       colorMapMode: 'original',
       pointSize: 0.02,
 
+      pendingAnnotationInput: null,
+
       isLoading: false,
       loadingProgress: 0,
       loadingMessage: '',
 
+      setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
       setActiveScene: (id) => set({ activeSceneId: id, measurements: [] }),
       setViewMode: (viewMode) => set({ viewMode }),
       setToolMode: (toolMode) => set({ toolMode }),
