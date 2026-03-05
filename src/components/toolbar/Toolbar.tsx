@@ -1,11 +1,16 @@
 import { Camera } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ViewModeToggle } from './ViewModeToggle'
 
 export function Toolbar() {
   return (
     <div className="flex items-center gap-2 w-full">
+      <ViewModeToggle />
+
       <div className="flex items-center gap-1" data-testid="tool-buttons" />
+
       <div className="flex-1" />
+
       <Button
         variant="ghost"
         size="icon"

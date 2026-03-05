@@ -1,4 +1,6 @@
 import { useActiveScene, useViewerStore } from '@/store/viewerStore'
+import { ClipControls } from './ClipControls'
+import { ColorMapControls } from './ColorMapControls'
 
 function InfoRow({ label, value }: { label: string; value: string | number }) {
   return (
@@ -79,6 +81,14 @@ export function PropertyPanel() {
           />
         </div>
       )}
+
+      <div className="border-t border-zinc-800 pt-2">
+        <ClipControls />
+      </div>
+
+      <div className="border-t border-zinc-800 pt-2">
+        <ColorMapControls />
+      </div>
     </div>
   )
 }

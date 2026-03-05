@@ -1,10 +1,15 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, GizmoHelper, GizmoViewport, Environment, Stats } from '@react-three/drei'
+import { useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 import { GLBViewer } from './GLBViewer'
 import { PointCloudViewer } from './PointCloudViewer'
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay'
 import { useActiveScene, useViewerStore } from '@/store/viewerStore'
+import { MeasurementTool } from '@/components/tools/MeasurementTool'
+import { ClippingPlaneController } from '@/components/tools/ClippingPlane'
+import { AnnotationTool } from '@/components/tools/AnnotationTool'
 
 function LoadingFallback() {
   return (
@@ -13,6 +18,26 @@ function LoadingFallback() {
       <meshBasicMaterial color="#27272a" wireframe />
     </mesh>
   )
+}
+
+function CameraController() {
+  const { camera, controls } = useThree()
+  const activeScene = useActiveScene()
+  const prevSceneId = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!activeScene || activeScene.id === prevSceneId.current) return
+    prevSceneId.current = activeScene.id
+
+    camera.position.set(0, 5, 15)
+    camera.lookAt(0, 0, 0)
+
+    if (controls && 'target' in controls) {
+      (controls as { target: THREE.Vector3 }).target.set(0, 0, 0)
+    }
+  }, [activeScene, camera, controls])
+
+  return null
 }
 
 export function SceneCanvas() {
@@ -61,6 +86,12 @@ export function SceneCanvas() {
           minDistance={0.5}
           maxDistance={200}
         />
+
+        <CameraController />
+
+        <MeasurementTool />
+        <ClippingPlaneController />
+        <AnnotationTool />
 
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
           <GizmoViewport

@@ -2,6 +2,8 @@ import { useRef, useMemo, useEffect } from 'react'
 import * as THREE from 'three'
 import { usePLYLoader } from '@/hooks/usePLYLoader'
 import { useViewerStore } from '@/store/viewerStore'
+import { mapHeightColors, mapIntensityColors } from '@/utils/colorMapping'
+import type { PLYParseResult } from '@/types'
 
 interface PointCloudViewerProps {
   url: string
@@ -11,9 +13,10 @@ export function PointCloudViewer({ url }: PointCloudViewerProps) {
   const { data, loading, progress, error } = usePLYLoader(url)
   const pointSize = useViewerStore((s) => s.pointSize)
   const setLoading = useViewerStore((s) => s.setLoading)
+  const colorMapMode = useViewerStore((s) => s.colorMapMode)
 
-  // Store original colors for color mapping restore (Task 15)
   const originalColorsRef = useRef<Float32Array | null>(null)
+  const dataRef = useRef<PLYParseResult | null>(null)
 
   useEffect(() => {
     if (loading) {
@@ -26,6 +29,7 @@ export function PointCloudViewer({ url }: PointCloudViewerProps) {
   useEffect(() => {
     if (data) {
       originalColorsRef.current = new Float32Array(data.colors)
+      dataRef.current = data
     }
   }, [data])
 
@@ -46,6 +50,26 @@ export function PointCloudViewer({ url }: PointCloudViewerProps) {
     }
   }, [geometry])
 
+  useEffect(() => {
+    if (!geometry || !dataRef.current) return
+
+    const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute
+    if (!colorAttr) return
+
+    let newColors: Float32Array
+
+    if (colorMapMode === 'original') {
+      newColors = originalColorsRef.current ?? dataRef.current.colors
+    } else if (colorMapMode === 'height') {
+      newColors = mapHeightColors(dataRef.current.positions, dataRef.current.bounds)
+    } else {
+      newColors = mapIntensityColors(originalColorsRef.current ?? dataRef.current.colors)
+    }
+
+    colorAttr.array.set(newColors)
+    colorAttr.needsUpdate = true
+  }, [colorMapMode, geometry])
+
   if (error) {
     console.error('PLY load error:', error)
     return null
@@ -54,9 +78,6 @@ export function PointCloudViewer({ url }: PointCloudViewerProps) {
   if (!geometry) return null
 
   return (
-    // Apply Z-up → Y-up coordinate transform
-    // PLY uses Z-up (Polycam convention), GLB uses Y-up (glTF standard)
-    // Transform: PLY(x, y, z) → Scene(x, z, -y) = rotation.x = -Math.PI/2
     <group rotation={[-Math.PI / 2, 0, 0]}>
       <points geometry={geometry}>
         <pointsMaterial
