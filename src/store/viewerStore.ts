@@ -97,7 +97,7 @@ export const useViewerStore = create<ViewerState>()(
       updateAnnotation: (id, text) =>
         set((state) => ({
           annotations: state.annotations.map((a) =>
-            a.id === id ? { ...a, text } : a
+            a.id === id ? { ...a, title: text } : a
           ),
         })),
 

@@ -53,8 +53,14 @@ function AnnotationInputDialog() {
     addAnnotation({
       id: `ann-${Date.now()}`,
       position: pendingAnnotationInput.worldPos,
-      text: inputText.trim(),
+      normal: pendingAnnotationInput.normal,
+      title: inputText.trim(),
+      description: '',
+      images: [],
+      videoUrl: null,
+      links: [],
       sceneId: activeSceneId,
+      createdAt: Date.now(),
     })
     setPendingAnnotationInput(null)
     setInputText('')

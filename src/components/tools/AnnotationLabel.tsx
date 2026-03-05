@@ -13,7 +13,7 @@ export function AnnotationLabel({ annotation }: AnnotationLabelProps) {
   const removeAnnotation = useViewerStore((s) => s.removeAnnotation)
   const updateAnnotation = useViewerStore((s) => s.updateAnnotation)
   const [isEditing, setIsEditing] = useState(false)
-  const [editText, setEditText] = useState(annotation.text)
+  const [editText, setEditText] = useState(annotation.title)
 
   const position = new THREE.Vector3(...annotation.position)
 
@@ -60,7 +60,7 @@ export function AnnotationLabel({ annotation }: AnnotationLabelProps) {
             </div>
           ) : (
             <div className="flex items-center gap-1 px-2 py-1">
-              <span className="text-yellow-300 text-xs font-medium">{annotation.text}</span>
+              <span className="text-yellow-300 text-xs font-medium">{annotation.title}</span>
               <button
                 onClick={() => setIsEditing(true)}
                 className="text-zinc-500 hover:text-zinc-300 ml-1"

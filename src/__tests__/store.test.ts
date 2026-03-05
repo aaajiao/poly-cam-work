@@ -69,7 +69,7 @@ describe('viewerStore', () => {
 
   it('addAnnotation adds to annotations array', () => {
     const { addAnnotation } = useViewerStore.getState()
-    addAnnotation({ id: 'ann-1', position: [1, 2, 3], text: 'Test', sceneId: 'scan-a' })
+    addAnnotation({ id: 'ann-1', position: [1, 2, 3], title: 'Test', description: '', images: [], videoUrl: null, links: [], sceneId: 'scan-a', createdAt: Date.now() })
     expect(useViewerStore.getState().annotations).toHaveLength(1)
   })
 

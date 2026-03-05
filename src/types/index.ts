@@ -35,13 +35,41 @@ export interface Measurement {
   label?: string
 }
 
+// Rich media types for annotations
+export interface AnnotationImage {
+  id: string           // matches IndexedDB key
+  filename: string     // original filename
+  thumbnailId: string  // thumbnail key in IndexedDB
+}
+
+export interface AnnotationLink {
+  url: string
+  label: string        // display text
+}
+
+export interface ImageStorageItem {
+  id: string
+  blob: Blob
+  annotationId: string
+  filename: string
+  createdAt: number
+}
+
+export type AnnotationLOD = 'far' | 'close'
+
 // 3D annotation
 export interface Annotation {
   id: string
   position: [number, number, number]
-  text: string
+  normal?: [number, number, number]    // surface normal at placement point
+  title: string                        // was "text" — renamed
+  description: string                  // longer text (default "")
+  images: AnnotationImage[]            // image references into IndexedDB
+  videoUrl: string | null              // Vimeo URL, null = no video
+  links: AnnotationLink[]              // clickable URLs
   color?: string
   sceneId: string
+  createdAt: number                    // timestamp ms
 }
 
 // Clipping plane state
@@ -55,6 +83,7 @@ export interface ClipPlaneState {
 export interface PendingAnnotationInput {
   screenPos: { x: number; y: number }
   worldPos: [number, number, number]
+  normal?: [number, number, number]
 }
 
 // Color mapping mode
