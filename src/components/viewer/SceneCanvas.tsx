@@ -11,6 +11,8 @@ import { useActiveScene, useViewerStore } from '@/store/viewerStore'
 import { MeasurementTool } from '@/components/tools/MeasurementTool'
 import { ClippingPlaneController } from '@/components/tools/ClippingPlane'
 import { AnnotationTool } from '@/components/tools/AnnotationTool'
+import { AnnotationMarkers } from '@/components/tools/AnnotationMarkers'
+import { AnnotationPanel } from '@/components/tools/AnnotationPanel'
 
 function LoadingFallback() {
   return (
@@ -179,6 +181,8 @@ export function SceneCanvas() {
         <MeasurementTool />
         <ClippingPlaneController />
         <AnnotationTool />
+        <AnnotationMarkers />
+        <AnnotationPanel />
 
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
           <GizmoViewport

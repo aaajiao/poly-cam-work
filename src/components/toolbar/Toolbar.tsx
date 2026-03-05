@@ -11,6 +11,7 @@ export function Toolbar() {
   const setToolMode = useViewerStore((s) => s.setToolMode)
   const clipEnabled = useViewerStore((s) => s.clipPlane.enabled)
   const setClipPlane = useViewerStore((s) => s.setClipPlane)
+  const toggleAnnotationsVisible = useViewerStore((s) => s.toggleAnnotationsVisible)
 
   const toggleClip = () => setClipPlane({ enabled: !clipEnabled })
 
@@ -24,11 +25,15 @@ export function Toolbar() {
         case 'c': toggleClip(); break
         case 'a': setToolMode('annotate'); break
         case 'escape': setToolMode('orbit'); break
+        case 'v':
+          e.preventDefault()
+          toggleAnnotationsVisible()
+          break
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setToolMode, toggleClip])
+  }, [setToolMode, toggleClip, toggleAnnotationsVisible])
 
   const handleScreenshot = () => {
     const fn = (window as Window & { __takeScreenshot?: () => void }).__takeScreenshot
