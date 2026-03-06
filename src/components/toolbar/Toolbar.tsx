@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Camera, Scissors } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -11,6 +12,23 @@ export function Toolbar() {
   const setClipPlane = useViewerStore((s) => s.setClipPlane)
 
   const toggleClip = () => setClipPlane({ enabled: !clipEnabled })
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const { setToolMode, toggleAnnotationsVisible } = useViewerStore.getState()
+      switch (e.key.toLowerCase()) {
+        case 'm': setToolMode('measure'); break
+        case 'a': setToolMode('annotate'); break
+        case 'c': setClipPlane({ enabled: !useViewerStore.getState().clipPlane.enabled }); break
+        case 'v': toggleAnnotationsVisible(); break
+        case 'escape': setToolMode('orbit'); break
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [setClipPlane])
 
   const handleScreenshot = () => {
     const fn = (window as Window & { __takeScreenshot?: () => void }).__takeScreenshot

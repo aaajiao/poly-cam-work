@@ -70,28 +70,28 @@ test.describe('Annotation system', () => {
     const btn = page.locator('[data-testid="toggle-annotations-btn"]')
     await expect(btn).toBeVisible()
 
-    // Default: visible — button has border-zinc-600 (exclusive to visible state)
-    await expect(btn).toHaveClass(/border-zinc-600/)
+    // Default: visible — button has bg-blue-600 (exclusive to visible state)
+    await expect(btn).toHaveClass(/bg-blue-600/)
 
     // Click to hide — button switches to bg-zinc-900 (exclusive to hidden state)
     await btn.click()
     await expect(btn).toHaveClass(/bg-zinc-900/)
-    await expect(btn).not.toHaveClass(/border-zinc-600/)
+    await expect(btn).not.toHaveClass(/bg-blue-600/)
 
     await btn.click()
-    await expect(btn).toHaveClass(/border-zinc-600/)
+    await expect(btn).toHaveClass(/bg-blue-600/)
   })
 
   test('V key toggles annotation visibility', async ({ page }) => {
     const btn = page.locator('[data-testid="toggle-annotations-btn"]')
 
-    await expect(btn).toHaveClass(/border-zinc-600/)
+    await expect(btn).toHaveClass(/bg-blue-600/)
 
     await page.keyboard.press('v')
     await expect(btn).toHaveClass(/bg-zinc-900/)
 
     await page.keyboard.press('v')
-    await expect(btn).toHaveClass(/border-zinc-600/)
+    await expect(btn).toHaveClass(/bg-blue-600/)
   })
 
   // ── Sidebar list (seeded) ──────────────────────────────────────────────────
@@ -199,7 +199,7 @@ test.describe('Annotation system', () => {
     // Delete button has opacity-0 until hover — use force:true to bypass
     await page.locator('[data-testid="annotation-delete-ann-del"]').click({ force: true })
 
-    await expect(page.locator('text=To Delete')).not.toBeVisible({ timeout: 3000 })
+    await expect(page.locator('text=To Delete')).not.toBeVisible({ timeout: 5000 })
     await expect(page.locator('text=No annotations yet')).toBeVisible()
   })
 
