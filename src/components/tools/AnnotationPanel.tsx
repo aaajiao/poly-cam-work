@@ -99,7 +99,7 @@ export function AnnotationPanel() {
     >
       <div
         data-testid={`annotation-panel-${displayAnnotation.id}`}
-        className="bg-zinc-900/95 border border-zinc-600 rounded-lg shadow-xl w-72 max-h-96 overflow-y-auto"
+        className="max-w-xs"
         style={{
           pointerEvents: 'auto',
           transform: animState === 'entering' || animState === 'exiting' ? 'scale(0.85)' : 'scale(1)',
@@ -109,13 +109,26 @@ export function AnnotationPanel() {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between p-3 border-b border-zinc-700">
-          <h3 className="text-white text-sm font-semibold leading-tight pr-2">{displayAnnotation.title}</h3>
+        <div className="flex items-start justify-between pb-1">
+          <h3
+            className="text-white text-sm font-semibold leading-tight"
+            style={{
+              textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9), 1px -1px 2px rgba(0,0,0,0.9), -1px 1px 2px rgba(0,0,0,0.9)',
+              WebkitTextStroke: '0.5px rgba(0,0,0,0.6)',
+            }}
+          >
+            {displayAnnotation.title}
+          </h3>
         </div>
 
-        <div className="p-3 space-y-3">
+        <div className="pt-1 space-y-2">
           {displayAnnotation.description && (
-            <p className="text-zinc-400 text-xs leading-relaxed line-clamp-3">
+            <p
+              className="text-zinc-300 text-xs leading-relaxed line-clamp-3"
+              style={{
+                textShadow: '0 0 4px rgba(0,0,0,0.9), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9)',
+              }}
+            >
               {displayAnnotation.description}
             </p>
           )}
@@ -136,7 +149,10 @@ export function AnnotationPanel() {
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs"
+                  className="flex items-center gap-1.5 text-blue-300 hover:text-blue-200 text-xs"
+                  style={{
+                    textShadow: '0 0 4px rgba(0,0,0,0.9), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9)',
+                  }}
                 >
                   <ExternalLink size={10} />
                   <span className="truncate">{link.label || link.url}</span>
