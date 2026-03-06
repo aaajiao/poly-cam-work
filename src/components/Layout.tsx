@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useViewerStore } from '@/store/viewerStore'
 
 interface LayoutProps {
   sidebar?: React.ReactNode
@@ -10,7 +10,8 @@ interface LayoutProps {
 }
 
 export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const sidebarOpen = useViewerStore((s) => s.sidebarOpen)
+  const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen)
 
   return (
     <div className="flex h-screen w-screen bg-zinc-950 text-zinc-100 overflow-hidden">
