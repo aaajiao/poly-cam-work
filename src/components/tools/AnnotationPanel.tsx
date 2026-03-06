@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html, QuadraticBezierLine } from '@react-three/drei'
@@ -29,6 +29,51 @@ function easeInOutQuart(t: number) {
   return t < 0.5
     ? 8 * t * t * t * t
     : 1 - Math.pow(-2 * t + 2, 4) / 2
+}
+
+type LineMaterialMutable = THREE.Material & {
+  lineWidth?: number
+  linewidth?: number
+  opacity?: number
+  transparent?: boolean
+}
+
+interface BezierLineHandle {
+  setPoints: (
+    start: THREE.Vector3 | [number, number, number],
+    end: THREE.Vector3 | [number, number, number],
+    mid: THREE.Vector3 | [number, number, number]
+  ) => void
+  material?: THREE.Material | THREE.Material[]
+}
+
+function withLineMaterials(line: BezierLineHandle | null, mutate: (material: LineMaterialMutable) => void) {
+  if (!line || !line.material) return
+
+  const materials = Array.isArray(line.material) ? line.material : [line.material]
+  for (const material of materials) {
+    mutate(material as LineMaterialMutable)
+  }
+}
+
+function setLineWidth(line: BezierLineHandle | null, width: number) {
+  withLineMaterials(line, (material) => {
+    if (typeof material.lineWidth === 'number') {
+      material.lineWidth = width
+    }
+    if (typeof material.linewidth === 'number') {
+      material.linewidth = width
+    }
+  })
+}
+
+function setLineOpacity(line: BezierLineHandle | null, opacity: number) {
+  withLineMaterials(line, (material) => {
+    if (typeof material.opacity === 'number') {
+      material.opacity = opacity
+      material.transparent = opacity < 1
+    }
+  })
 }
 
 interface SceneEnvelope {
@@ -471,9 +516,16 @@ interface AnnotationFloatingPanelProps {
   envelope: SceneEnvelope
   panelIndex: number
   panelCount: number
+  isLinkHighlighted: boolean
 }
 
-function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount }: AnnotationFloatingPanelProps) {
+function AnnotationFloatingPanel({
+  annotation,
+  envelope,
+  panelIndex,
+  panelCount,
+  isLinkHighlighted,
+}: AnnotationFloatingPanelProps) {
   const { camera, size } = useThree()
   const [entered, setEntered] = useState(false)
   const [primaryImageAspectRatio, setPrimaryImageAspectRatio] = useState(4 / 3)
@@ -483,6 +535,18 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount 
       hash = (hash * 31 + annotation.id.charCodeAt(i)) % 1000
     }
     return hash / 1000 - 0.5
+  }, [annotation.id])
+  const linkPulseProfile = useMemo(() => {
+    const seed = hashString(`${annotation.id}:panel-pulse`) / 0xffffffff
+    return {
+      speed: 3.2 + seed * 2,
+      phase: seed * Math.PI * 2,
+      lineAmplitude: 0.12 + seed * 0.12,
+      glowAmplitude: 0.2 + seed * 0.2,
+      titleDuration: 1.05 + seed * 0.65,
+      titleScale: 1.045 + seed * 0.045,
+      titleBrightness: 1.18 + seed * 0.22,
+    }
   }, [annotation.id])
   const markerPos = useMemo(
     () => new THREE.Vector3(...annotation.position),
@@ -525,26 +589,33 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount 
   const panelSizeRef = useRef<PanelSize>({ width: 320, height: 220 })
   const panelSizeVersionRef = useRef(0)
   const lastPanelSizeVersionRef = useRef(0)
-  const lineRef = useRef<{
-    setPoints: (
-      start: THREE.Vector3 | [number, number, number],
-      end: THREE.Vector3 | [number, number, number],
-      mid: THREE.Vector3 | [number, number, number]
-    ) => void
-  } | null>(null)
-  const glowRef = useRef<{
-    setPoints: (
-      start: THREE.Vector3 | [number, number, number],
-      end: THREE.Vector3 | [number, number, number],
-      mid: THREE.Vector3 | [number, number, number]
-    ) => void
-  } | null>(null)
+  const lineRef = useRef<BezierLineHandle | null>(null)
+  const glowRef = useRef<BezierLineHandle | null>(null)
   const lineProgressRef = useRef(0)
   const currentEndRef = useRef(new THREE.Vector3())
   const currentMidRef = useRef(new THREE.Vector3())
   const lastCameraPosRef = useRef(new THREE.Vector3().copy(camera.position))
   const lastCameraQuatRef = useRef(new THREE.Quaternion().copy(camera.quaternion))
   const lastCameraFovRef = useRef(camera instanceof THREE.PerspectiveCamera ? camera.fov : 50)
+  const lineColor = isLinkHighlighted ? '#f8fafc' : 'white'
+  const baseLineWidth = isLinkHighlighted ? 4.2 : 2
+  const baseGlowWidth = isLinkHighlighted ? 12 : 6
+  const baseGlowOpacity = isLinkHighlighted ? 0.38 : 0.15
+  const titleStyle = useMemo(() => {
+    const style: CSSProperties & Record<string, string> = {
+      textShadow:
+        '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9), 1px -1px 2px rgba(0,0,0,0.9), -1px 1px 2px rgba(0,0,0,0.9)',
+      WebkitTextStroke: '0.5px rgba(0,0,0,0.6)',
+    }
+
+    if (isLinkHighlighted) {
+      style['--title-pulse-duration'] = `${linkPulseProfile.titleDuration.toFixed(2)}s`
+      style['--title-pulse-scale'] = linkPulseProfile.titleScale.toFixed(3)
+      style['--title-pulse-brightness'] = linkPulseProfile.titleBrightness.toFixed(3)
+    }
+
+    return style
+  }, [isLinkHighlighted, linkPulseProfile])
 
   const computeLayout = useMemo(
     () => () => {
@@ -705,7 +776,7 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount 
     return () => clearTimeout(timeout)
   }, [annotation.id])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     let layoutChanged = false
 
     const cameraMoved = lastCameraPosRef.current.distanceToSquared(camera.position) > CAMERA_POSITION_EPSILON_SQ
@@ -784,6 +855,16 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount 
 
     const { panelPos, midPos } = panelLayoutRef.current
     const hasLineEntryAnimation = lineProgressRef.current < 1
+    const pulseWave = Math.sin(state.clock.elapsedTime * linkPulseProfile.speed + linkPulseProfile.phase)
+    const pulseFactor = isLinkHighlighted ? 1 + pulseWave * linkPulseProfile.lineAmplitude : 1
+    const glowWave = Math.sin(
+      state.clock.elapsedTime * (linkPulseProfile.speed * 1.06) + linkPulseProfile.phase + 1.1
+    )
+    const glowPulseFactor = isLinkHighlighted ? 1 + glowWave * linkPulseProfile.glowAmplitude : 1
+
+    setLineWidth(lineRef.current, baseLineWidth * pulseFactor)
+    setLineWidth(glowRef.current, baseGlowWidth * pulseFactor)
+    setLineOpacity(glowRef.current, baseGlowOpacity * glowPulseFactor)
 
     if (layoutChanged || hasLineEntryAnimation) {
       panelGroupRef.current?.position.copy(panelPos)
@@ -822,18 +903,18 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount 
         start={markerPos}
         end={panelPos}
         mid={midPos}
-        color="white"
-        lineWidth={2}
+        color={lineColor}
+        lineWidth={baseLineWidth}
       />
       <QuadraticBezierLine
         ref={glowRef}
         start={markerPos}
         end={panelPos}
         mid={midPos}
-        color="white"
-        lineWidth={6}
+        color={lineColor}
+        lineWidth={baseGlowWidth}
         transparent
-        opacity={0.15}
+        opacity={baseGlowOpacity}
       />
       <group ref={panelGroupRef}>
       <Html
@@ -855,11 +936,11 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount 
         >
           <div className="flex items-start justify-between pb-1">
             <h3
-              className="text-sm font-semibold leading-tight text-white"
-              style={{
-                textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9), 1px -1px 2px rgba(0,0,0,0.9), -1px 1px 2px rgba(0,0,0,0.9)',
-                WebkitTextStroke: '0.5px rgba(0,0,0,0.6)',
-              }}
+              className={cn(
+                'text-sm font-semibold leading-tight text-white',
+                isLinkHighlighted && 'annotation-title-pulse'
+              )}
+              style={titleStyle}
             >
               {annotation.title}
             </h3>
@@ -938,6 +1019,7 @@ export function AnnotationPanel() {
   const annotations = useViewerStore((s) => s.annotations)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
   const openAnnotationPanelIds = useViewerStore((s) => s.openAnnotationPanelIds)
+  const hoveredAnnotationId = useViewerStore((s) => s.hoveredAnnotationId)
   const clearAnnotationPanels = useViewerStore((s) => s.clearAnnotationPanels)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
 
@@ -985,6 +1067,7 @@ export function AnnotationPanel() {
           envelope={envelope}
           panelIndex={index}
           panelCount={openAnnotations.length}
+          isLinkHighlighted={hoveredAnnotationId === annotation.id}
         />
       ))}
     </>

@@ -32,6 +32,7 @@ interface ViewerState {
 
   selectedAnnotationId: string | null
   openAnnotationPanelIds: string[]
+  hoveredAnnotationId: string | null
   annotationsVisible: boolean
   annotationsPanelOpen: boolean
   sidebarOpen: boolean
@@ -53,6 +54,7 @@ interface ViewerState {
   updateAnnotation: (id: string, text: string) => void
   updateAnnotationContent: (id: string, content: Partial<Pick<Annotation, 'title' | 'description' | 'images' | 'videoUrl' | 'links'>>) => void
   selectAnnotation: (id: string | null) => void
+  setHoveredAnnotation: (id: string | null) => void
   openAnnotationPanel: (id: string) => void
   closeAnnotationPanel: (id: string) => void
   toggleAnnotationPanel: (id: string) => void
@@ -95,6 +97,7 @@ export const useViewerStore = create<ViewerState>()(
 
       selectedAnnotationId: null,
       openAnnotationPanelIds: [],
+      hoveredAnnotationId: null,
       annotationsVisible: true,
       annotationsPanelOpen: false,
       sidebarOpen: false,
@@ -110,6 +113,7 @@ export const useViewerStore = create<ViewerState>()(
         measurements: [],
         selectedAnnotationId: null,
         openAnnotationPanelIds: [],
+        hoveredAnnotationId: null,
       }),
       setViewMode: (viewMode) => set({ viewMode }),
       setToolMode: (toolMode) => set((state) => {
@@ -130,13 +134,14 @@ export const useViewerStore = create<ViewerState>()(
       clearMeasurements: () => set({ measurements: [] }),
 
       addAnnotation: (a) =>
-        set((state) => ({ annotations: [...state.annotations, a] })),
+        set((state) => ({ annotations: [...state.annotations, a], annotationsVisible: true })),
       removeAnnotation: (id) => {
         imageStorage.deleteByAnnotation(id).catch(console.error)
         set((state) => ({
           annotations: state.annotations.filter((a) => a.id !== id),
           selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
           openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => panelId !== id),
+          hoveredAnnotationId: state.hoveredAnnotationId === id ? null : state.hoveredAnnotationId,
         }))
       },
       updateAnnotation: (id, text) =>
@@ -153,22 +158,31 @@ export const useViewerStore = create<ViewerState>()(
         })),
 
       selectAnnotation: (id) => set({ selectedAnnotationId: id }),
+      setHoveredAnnotation: (id) => set({ hoveredAnnotationId: id }),
       openAnnotationPanel: (id) =>
         set((state) => {
           if (state.openAnnotationPanelIds.includes(id)) return state
-          return { openAnnotationPanelIds: [...state.openAnnotationPanelIds, id] }
+          return {
+            openAnnotationPanelIds: [...state.openAnnotationPanelIds, id],
+            annotationsVisible: true,
+          }
         }),
       closeAnnotationPanel: (id) =>
         set((state) => ({
           openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => panelId !== id),
+          hoveredAnnotationId: state.hoveredAnnotationId === id ? null : state.hoveredAnnotationId,
         })),
       toggleAnnotationPanel: (id) =>
         set((state) => ({
           openAnnotationPanelIds: state.openAnnotationPanelIds.includes(id)
             ? state.openAnnotationPanelIds.filter((panelId) => panelId !== id)
             : [...state.openAnnotationPanelIds, id],
+          hoveredAnnotationId:
+            state.openAnnotationPanelIds.includes(id) && state.hoveredAnnotationId === id
+              ? null
+              : state.hoveredAnnotationId,
         })),
-      clearAnnotationPanels: () => set({ openAnnotationPanelIds: [] }),
+      clearAnnotationPanels: () => set({ openAnnotationPanelIds: [], hoveredAnnotationId: null }),
       toggleAnnotationsVisible: () =>
         set((state) => ({ annotationsVisible: !state.annotationsVisible })),
       setAnnotationsPanelOpen: (annotationsPanelOpen) => set({ annotationsPanelOpen }),
@@ -192,6 +206,7 @@ export const useViewerStore = create<ViewerState>()(
           activeSceneId: scene.id,
           selectedAnnotationId: null,
           openAnnotationPanelIds: [],
+          hoveredAnnotationId: null,
         })),
       removeUploadedScene: (id) =>
         set((state) => {
@@ -208,6 +223,10 @@ export const useViewerStore = create<ViewerState>()(
                 ? null
                 : state.selectedAnnotationId,
             openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => !removedIds.has(panelId)),
+            hoveredAnnotationId:
+              state.hoveredAnnotationId && removedIds.has(state.hoveredAnnotationId)
+                ? null
+                : state.hoveredAnnotationId,
           }
         }),
     }),

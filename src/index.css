@@ -137,6 +137,39 @@
   animation: marker-breathe 2s ease-in-out infinite;
 }
 
+@keyframes annotation-title-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(var(--title-pulse-scale, 1.03));
+    filter: brightness(var(--title-pulse-brightness, 1.18));
+  }
+}
+
+.annotation-title-pulse {
+  animation: annotation-title-pulse var(--title-pulse-duration, 1.55s) ease-in-out infinite;
+  transform-origin: left center;
+}
+
+@keyframes annotation-node-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(var(--node-pulse-scale, 1.2));
+    filter: brightness(var(--node-pulse-brightness, 1.25));
+  }
+}
+
+.annotation-node-pulse {
+  animation: annotation-node-pulse var(--node-pulse-duration, 0.95s) ease-in-out infinite;
+  transform-origin: center;
+}
+
 @keyframes panel-enter {
   from { transform: scale(0.3); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
