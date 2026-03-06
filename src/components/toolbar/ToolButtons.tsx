@@ -55,7 +55,7 @@ export function ToolButtons() {
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
                 annotationsVisible
-                  ? 'bg-zinc-800 text-zinc-200 border-zinc-600 hover:bg-zinc-700'
+                  ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-500'
                   : 'bg-zinc-900 text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:bg-zinc-800'
               )}
             >

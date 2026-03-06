@@ -92,7 +92,14 @@ export const useViewerStore = create<ViewerState>()(
       setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
       setActiveScene: (id) => set({ activeSceneId: id, measurements: [], selectedAnnotationId: null }),
       setViewMode: (viewMode) => set({ viewMode }),
-      setToolMode: (toolMode) => set({ toolMode }),
+      setToolMode: (toolMode) => set((state) => {
+        const togglingOff = toolMode !== 'orbit' && toolMode === state.toolMode
+        const nextMode = togglingOff ? 'orbit' : toolMode
+        return {
+          toolMode: nextMode,
+          annotationsVisible: nextMode === 'annotate' ? true : togglingOff && toolMode === 'annotate' ? false : state.annotationsVisible,
+        }
+      }),
 
       addMeasurement: (m) =>
         set((state) => ({ measurements: [...state.measurements, m] })),
