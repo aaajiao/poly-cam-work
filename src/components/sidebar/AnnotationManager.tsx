@@ -198,8 +198,8 @@ export function AnnotationManager() {
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
   const removeAnnotation = useViewerStore((s) => s.removeAnnotation)
-  const annotationsVisible = useViewerStore((s) => s.annotationsVisible)
-  const toggleAnnotationsVisible = useViewerStore((s) => s.toggleAnnotationsVisible)
+  const annotationsPanelOpen = useViewerStore((s) => s.annotationsPanelOpen)
+  const setAnnotationsPanelOpen = useViewerStore((s) => s.setAnnotationsPanelOpen)
 
   const sceneAnnotations = annotations.filter((a) => a.sceneId === activeSceneId)
   const selectedAnnotation = sceneAnnotations.find((a) => a.id === selectedAnnotationId) ?? null
@@ -232,20 +232,20 @@ export function AnnotationManager() {
         </div>
         <button
           data-testid="annotations-toggle"
-          onClick={toggleAnnotationsVisible}
+          onClick={() => setAnnotationsPanelOpen(!annotationsPanelOpen)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            annotationsVisible ? 'bg-blue-600' : 'bg-zinc-700'
+            annotationsPanelOpen ? 'bg-blue-600' : 'bg-zinc-700'
           }`}
         >
           <span
             className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-              annotationsVisible ? 'translate-x-5' : 'translate-x-1'
+              annotationsPanelOpen ? 'translate-x-5' : 'translate-x-1'
             }`}
           />
         </button>
       </div>
 
-      {annotationsVisible && (
+      {annotationsPanelOpen && (
         <>
           {sceneAnnotations.length === 0 && (
             <p className="text-zinc-600 text-xs text-center py-3">

@@ -47,6 +47,63 @@ describe('viewerStore', () => {
     expect(useViewerStore.getState().toolMode).toBe('measure')
   })
 
+  it('setToolMode toggles active tool back to orbit', () => {
+    const { setToolMode } = useViewerStore.getState()
+    setToolMode('measure')
+    expect(useViewerStore.getState().toolMode).toBe('measure')
+    setToolMode('measure')
+    expect(useViewerStore.getState().toolMode).toBe('orbit')
+  })
+
+  it('setToolMode does not toggle orbit', () => {
+    const { setToolMode } = useViewerStore.getState()
+    setToolMode('orbit')
+    expect(useViewerStore.getState().toolMode).toBe('orbit')
+  })
+
+  it('setToolMode annotate opens annotationsPanelOpen', () => {
+    const { setToolMode } = useViewerStore.getState()
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(false)
+    setToolMode('annotate')
+    expect(useViewerStore.getState().toolMode).toBe('annotate')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
+  })
+
+  it('setToolMode toggles annotate off and closes panel', () => {
+    const { setToolMode } = useViewerStore.getState()
+    setToolMode('annotate')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
+    setToolMode('annotate')
+    expect(useViewerStore.getState().toolMode).toBe('orbit')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(false)
+  })
+
+  it('setToolMode measure does not affect annotationsPanelOpen', () => {
+    const { setToolMode } = useViewerStore.getState()
+    setToolMode('annotate')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
+    setToolMode('measure')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
+  })
+
+  it('annotationsVisible and annotationsPanelOpen are independent', () => {
+    const { setToolMode, toggleAnnotationsVisible } = useViewerStore.getState()
+    setToolMode('annotate')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
+    expect(useViewerStore.getState().annotationsVisible).toBe(true)
+
+    toggleAnnotationsVisible()
+    expect(useViewerStore.getState().annotationsVisible).toBe(false)
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
+
+    toggleAnnotationsVisible()
+    expect(useViewerStore.getState().annotationsVisible).toBe(true)
+
+    setToolMode('annotate')
+    expect(useViewerStore.getState().annotationsPanelOpen).toBe(false)
+    expect(useViewerStore.getState().annotationsVisible).toBe(true)
+  })
+
   it('addMeasurement adds to measurements array', () => {
     const { addMeasurement } = useViewerStore.getState()
     addMeasurement({

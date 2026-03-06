@@ -32,6 +32,7 @@ interface ViewerState {
 
   selectedAnnotationId: string | null
   annotationsVisible: boolean
+  annotationsPanelOpen: boolean
 
   isLoading: boolean
   loadingProgress: number
@@ -50,6 +51,7 @@ interface ViewerState {
   updateAnnotationContent: (id: string, content: Partial<Pick<Annotation, 'title' | 'description' | 'images' | 'videoUrl' | 'links'>>) => void
   selectAnnotation: (id: string | null) => void
   toggleAnnotationsVisible: () => void
+  setAnnotationsPanelOpen: (open: boolean) => void
   setClipPlane: (state: Partial<ClipPlaneState>) => void
   setColorMapMode: (mode: ColorMapMode) => void
   setPointSize: (size: number) => void
@@ -84,6 +86,7 @@ export const useViewerStore = create<ViewerState>()(
 
       selectedAnnotationId: null,
       annotationsVisible: true,
+      annotationsPanelOpen: false,
 
       isLoading: false,
       loadingProgress: 0,
@@ -97,7 +100,7 @@ export const useViewerStore = create<ViewerState>()(
         const nextMode = togglingOff ? 'orbit' : toolMode
         return {
           toolMode: nextMode,
-          annotationsVisible: nextMode === 'annotate' ? true : togglingOff && toolMode === 'annotate' ? false : state.annotationsVisible,
+          annotationsPanelOpen: nextMode === 'annotate' ? true : togglingOff && toolMode === 'annotate' ? false : state.annotationsPanelOpen,
         }
       }),
 
@@ -129,6 +132,7 @@ export const useViewerStore = create<ViewerState>()(
       selectAnnotation: (id) => set({ selectedAnnotationId: id }),
       toggleAnnotationsVisible: () =>
         set((state) => ({ annotationsVisible: !state.annotationsVisible })),
+      setAnnotationsPanelOpen: (annotationsPanelOpen) => set({ annotationsPanelOpen }),
 
       setClipPlane: (partial) =>
         set((state) => ({ clipPlane: { ...state.clipPlane, ...partial } })),
