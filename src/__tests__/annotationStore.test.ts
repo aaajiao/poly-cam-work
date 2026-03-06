@@ -30,7 +30,13 @@ const makeAnnotation = (overrides: Partial<Annotation> = {}): Annotation => ({
 
 describe('annotation store', () => {
   beforeEach(() => {
-    useViewerStore.setState({ annotations: [], selectedAnnotationId: null, annotationsVisible: true })
+    useViewerStore.setState({
+      annotations: [],
+      selectedAnnotationId: null,
+      openAnnotationPanelIds: [],
+      annotationsVisible: true,
+      activeSceneId: 'scan-a',
+    })
   })
 
   it('addAnnotation adds to list', () => {
@@ -74,6 +80,30 @@ describe('annotation store', () => {
     expect(useViewerStore.getState().selectedAnnotationId).toBeNull()
   })
 
+  it('openAnnotationPanel appends unique ids only', () => {
+    const { openAnnotationPanel } = useViewerStore.getState()
+    openAnnotationPanel('ann-1')
+    openAnnotationPanel('ann-2')
+    openAnnotationPanel('ann-1')
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual(['ann-1', 'ann-2'])
+  })
+
+  it('toggleAnnotationPanel toggles panel id open and closed', () => {
+    const { toggleAnnotationPanel } = useViewerStore.getState()
+    toggleAnnotationPanel('ann-1')
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual(['ann-1'])
+    toggleAnnotationPanel('ann-1')
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual([])
+  })
+
+  it('clearAnnotationPanels closes all opened panels', () => {
+    const { openAnnotationPanel, clearAnnotationPanels } = useViewerStore.getState()
+    openAnnotationPanel('ann-1')
+    openAnnotationPanel('ann-2')
+    clearAnnotationPanels()
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual([])
+  })
+
   it('toggleAnnotationsVisible toggles boolean', () => {
     const { toggleAnnotationsVisible } = useViewerStore.getState()
     expect(useViewerStore.getState().annotationsVisible).toBe(true)
@@ -84,11 +114,27 @@ describe('annotation store', () => {
   })
 
   it('setActiveScene clears selectedAnnotationId', () => {
-    const { selectAnnotation, setActiveScene } = useViewerStore.getState()
+    const { selectAnnotation, openAnnotationPanel, setActiveScene } = useViewerStore.getState()
     selectAnnotation('ann-1')
+    openAnnotationPanel('ann-1')
     expect(useViewerStore.getState().selectedAnnotationId).toBe('ann-1')
     setActiveScene('scan-b')
     expect(useViewerStore.getState().selectedAnnotationId).toBeNull()
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual([])
+  })
+
+  it('removeAnnotation also clears selection and opened panel id for that annotation', () => {
+    const { addAnnotation, selectAnnotation, openAnnotationPanel, removeAnnotation } = useViewerStore.getState()
+    addAnnotation(makeAnnotation({ id: 'ann-rm' }))
+    selectAnnotation('ann-rm')
+    openAnnotationPanel('ann-rm')
+
+    removeAnnotation('ann-rm')
+
+    const state = useViewerStore.getState()
+    expect(state.annotations).toHaveLength(0)
+    expect(state.selectedAnnotationId).toBeNull()
+    expect(state.openAnnotationPanelIds).toEqual([])
   })
 
   it('migrate v0→v1: text field becomes title with empty defaults', () => {

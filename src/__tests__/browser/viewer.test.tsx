@@ -16,8 +16,10 @@ function resetStore() {
     annotations: [],
     measurements: [],
     selectedAnnotationId: null,
+    openAnnotationPanelIds: [],
     annotationsPanelOpen: false,
     sidebarOpen: false,
+    cameraControlsEnabled: true,
   })
 }
 

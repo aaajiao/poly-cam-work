@@ -31,15 +31,16 @@ function makeAnnotation(id: string, title: string, sceneId = 'scan-a'): Annotati
 
 function resetStore() {
   localStorage.removeItem('polycam-viewer-state')
-  useViewerStore.setState({
-    activeSceneId: 'scan-a',
-    toolMode: 'orbit',
-    measurements: [],
-    annotations: [],
-    selectedAnnotationId: null,
-    annotationsVisible: true,
-    annotationsPanelOpen: true,
-    sidebarOpen: true,
+    useViewerStore.setState({
+      activeSceneId: 'scan-a',
+      toolMode: 'orbit',
+      measurements: [],
+      annotations: [],
+      selectedAnnotationId: null,
+      openAnnotationPanelIds: [],
+      annotationsVisible: true,
+      annotationsPanelOpen: true,
+      sidebarOpen: true,
     clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false },
     uploadedScenes: [],
   })
@@ -139,5 +140,20 @@ describe('browser annotation manager', () => {
     await screen.getByTestId('annotation-delete-ann-del').click()
     expect(useViewerStore.getState().annotations).toHaveLength(0)
     await expect.element(screen.getByText(/No annotations yet/)).toBeVisible()
+  })
+
+  test('annotation list click toggles floating panel open state', async () => {
+    useViewerStore.setState({ annotations: [makeAnnotation('ann-toggle', 'Toggle Me')] })
+    const screen = await render(<AnnotationManager />)
+
+    await screen.getByTestId('annotation-item-ann-toggle').click()
+    let state = useViewerStore.getState()
+    expect(state.selectedAnnotationId).toBe('ann-toggle')
+    expect(state.openAnnotationPanelIds).toEqual(['ann-toggle'])
+
+    await screen.getByTestId('annotation-item-ann-toggle').click()
+    state = useViewerStore.getState()
+    expect(state.selectedAnnotationId).toBeNull()
+    expect(state.openAnnotationPanelIds).toEqual([])
   })
 })

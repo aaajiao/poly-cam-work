@@ -8,8 +8,10 @@ function resetStore() {
   useViewerStore.setState({
     toolMode: 'orbit',
     annotationsVisible: true,
+    openAnnotationPanelIds: [],
     annotationsPanelOpen: false,
     sidebarOpen: false,
+    cameraControlsEnabled: true,
     clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false },
   })
 }

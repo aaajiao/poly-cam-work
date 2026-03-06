@@ -10,9 +10,11 @@ describe('viewerStore', () => {
       toolMode: 'orbit',
       measurements: [],
       annotations: [],
+      openAnnotationPanelIds: [],
       clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false },
       colorMapMode: 'original',
       pointSize: 0.02,
+      cameraControlsEnabled: true,
       isLoading: false,
       loadingProgress: 0,
       loadingMessage: '',
@@ -138,5 +140,31 @@ describe('viewerStore', () => {
     expect(clip.enabled).toBe(true)
     expect(clip.axis).toBe('x')
     expect(clip.position).toBe(0.3)
+  })
+
+  it('setCameraControlsEnabled updates orbit-control lock state', () => {
+    const { setCameraControlsEnabled } = useViewerStore.getState()
+    setCameraControlsEnabled(false)
+    expect(useViewerStore.getState().cameraControlsEnabled).toBe(false)
+    setCameraControlsEnabled(true)
+    expect(useViewerStore.getState().cameraControlsEnabled).toBe(true)
+  })
+
+  it('addUploadedScene switches scene and clears annotation selection/open panels', () => {
+    const { addUploadedScene, selectAnnotation, openAnnotationPanel } = useViewerStore.getState()
+    selectAnnotation('ann-1')
+    openAnnotationPanel('ann-1')
+
+    addUploadedScene({
+      id: 'scan-upload-1',
+      name: 'Upload 1',
+      glbUrl: '/models/upload-1.glb',
+      plyUrl: '/models/upload-1.ply',
+    })
+
+    const state = useViewerStore.getState()
+    expect(state.activeSceneId).toBe('scan-upload-1')
+    expect(state.selectedAnnotationId).toBeNull()
+    expect(state.openAnnotationPanelIds).toEqual([])
   })
 })
