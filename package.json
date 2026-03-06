@@ -8,10 +8,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "bun run test:vitest",
+    "test:vitest": "vitest run",
+    "test:vitest:unit": "vitest run --project unit",
+    "test:vitest:browser": "vitest run --project browser",
     "test:watch": "vitest",
     "test:e2e": "playwright test e2e/smoke.test.ts",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "bun run test:vitest && bun run test:e2e"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
