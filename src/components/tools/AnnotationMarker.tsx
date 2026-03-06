@@ -31,7 +31,7 @@ export function AnnotationMarker({ annotation, isSelected, onSelect }: Annotatio
         onMouseLeave={() => setIsHovered(false)}
       >
         <div
-          className="w-3 h-3 rounded-full border-2 border-white shadow-lg transition-colors duration-150"
+          className={`w-3 h-3 rounded-full border-2 border-white shadow-lg transition-colors duration-150${!isSelected && !isHovered ? ' annotation-breathe' : ''}`}
           style={{ backgroundColor: dotColor }}
         />
         <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-zinc-900/95 border border-zinc-600 rounded px-2 py-0.5 whitespace-nowrap shadow-lg">

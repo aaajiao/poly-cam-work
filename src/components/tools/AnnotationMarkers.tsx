@@ -75,7 +75,8 @@ export function AnnotationMarkers() {
     const newLod = new Map<string, 'far' | 'close'>()
     let htmlCount = 0
     for (const { annotation, dist } of withDist) {
-      if (dist <= FAR_THRESHOLD && htmlCount < MAX_HTML_MARKERS) {
+      const forceClose = annotation.id === selectedAnnotationId
+      if (forceClose || (dist <= FAR_THRESHOLD && htmlCount < MAX_HTML_MARKERS)) {
         newLod.set(annotation.id, 'close')
         htmlCount++
       } else {
