@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { Html, QuadraticBezierLine } from '@react-three/drei'
@@ -10,6 +10,97 @@ import { VimeoEmbed } from '@/components/ui/VimeoEmbed'
 import type { Annotation, AnnotationImage } from '@/types'
 
 type AnimState = 'entering' | 'visible' | 'exiting' | 'hidden'
+
+interface ResizableMediaProps {
+  children: ReactNode
+  defaultWidth?: number
+  defaultHeight?: number
+  minWidth?: number
+  maxWidth?: number
+  minHeight?: number
+  maxHeight?: number
+  maintainAspectRatio?: boolean
+  aspectRatio?: number
+}
+
+function ResizableMedia({
+  children,
+  defaultWidth,
+  defaultHeight,
+  minWidth = 100,
+  maxWidth = 600,
+  minHeight = 60,
+  maxHeight = 400,
+  maintainAspectRatio = false,
+}: ResizableMediaProps) {
+  const [size, setSize] = useState({
+    width: defaultWidth,
+    height: defaultHeight,
+  })
+  const isDragging = useRef(false)
+  const startPos = useRef({ x: 0, y: 0 })
+  const startSize = useRef({ width: defaultWidth ?? 0, height: defaultHeight ?? 0 })
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    isDragging.current = true
+    startPos.current = { x: e.clientX, y: e.clientY }
+    startSize.current = {
+      width: size.width ?? defaultWidth ?? 200,
+      height: size.height ?? defaultHeight ?? 100,
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const dx = e.clientX - startPos.current.x
+      const dy = e.clientY - startPos.current.y
+
+      if (maintainAspectRatio) {
+        const newWidth = Math.min(maxWidth, Math.max(minWidth, startSize.current.width + dx))
+        setSize({ width: newWidth, height: undefined })
+      } else {
+        const newWidth = defaultWidth !== undefined
+          ? Math.min(maxWidth, Math.max(minWidth, startSize.current.width + dx))
+          : undefined
+        const newHeight = defaultHeight !== undefined
+          ? Math.min(maxHeight, Math.max(minHeight, startSize.current.height + dy))
+          : undefined
+        setSize({ width: newWidth, height: newHeight })
+      }
+    }
+
+    const handleMouseUp = () => {
+      isDragging.current = false
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
+  return (
+    <div
+      className="relative"
+      style={{
+        width: size.width !== undefined ? `${size.width}px` : undefined,
+        height: size.height !== undefined ? `${size.height}px` : undefined,
+      }}
+    >
+      {children}
+      <div
+        className="absolute bottom-0 right-0 w-4 h-4 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+        style={{ cursor: 'nwse-resize', pointerEvents: 'auto' }}
+        onMouseDown={handleMouseDown}
+      >
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+        </svg>
+      </div>
+    </div>
+  )
+}
 
 function ImageThumbnails({ images }: { images: AnnotationImage[] }) {
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({})
@@ -213,11 +304,25 @@ export function AnnotationPanel() {
             )}
 
             {displayAnnotation.images.length > 0 && (
-              <ImageThumbnails images={displayAnnotation.images} />
+              <ResizableMedia
+                defaultHeight={100}
+                minHeight={60}
+                maxHeight={400}
+              >
+                <ImageThumbnails images={displayAnnotation.images} />
+              </ResizableMedia>
             )}
 
             {vimeoId && (
-              <VimeoEmbed videoId={vimeoId} />
+              <ResizableMedia
+                defaultWidth={288}
+                minWidth={150}
+                maxWidth={600}
+                maintainAspectRatio
+                aspectRatio={16 / 9}
+              >
+                <VimeoEmbed videoId={vimeoId} className="w-full" />
+              </ResizableMedia>
             )}
 
             {displayAnnotation.links.length > 0 && (
