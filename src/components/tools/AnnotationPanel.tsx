@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html, QuadraticBezierLine } from '@react-three/drei'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, GripVertical } from 'lucide-react'
 import { useViewerStore } from '@/store/viewerStore'
 import { imageStorage } from '@/storage/imageStorage'
 import { extractVimeoId } from '@/utils/vimeo'
@@ -135,6 +135,11 @@ interface PanelSize {
   height: number
 }
 
+interface ScreenOffset {
+  x: number
+  y: number
+}
+
 interface TransitionProfile {
   durationScale: number
   delay: number
@@ -207,7 +212,8 @@ function getPanelLayout(
   envelope: SceneEnvelope,
   panelSize: PanelSize,
   panelIndex: number,
-  offsetSeed: number
+  offsetSeed: number,
+  manualOffset: ScreenOffset
 ): PanelLayout {
   const markerScreen = worldToScreen(markerPos, camera, viewportWidth, viewportHeight)
   const sceneCenter = new THREE.Vector3(...envelope.center)
@@ -249,8 +255,8 @@ function getPanelLayout(
   const stackX = (col - 1) * 26
   const stackY = row * 22
 
-  const targetX = markerScreen.x + dirX * baseOffset + stackX
-  const targetY = markerScreen.y + dirY * baseOffset + stackY
+  const targetX = markerScreen.x + dirX * baseOffset + stackX + manualOffset.x
+  const targetY = markerScreen.y + dirY * baseOffset + stackY + manualOffset.y
 
   const marginX = Math.min(PANEL_SCREEN_SAFE_MARGIN_X, Math.max(viewportWidth * 0.12, 24))
   const marginY = Math.min(PANEL_SCREEN_SAFE_MARGIN_Y, Math.max(viewportHeight * 0.12, 24))
@@ -517,6 +523,8 @@ interface AnnotationFloatingPanelProps {
   panelIndex: number
   panelCount: number
   isLinkHighlighted: boolean
+  zIndex: number
+  onBringToFront: () => void
 }
 
 function AnnotationFloatingPanel({
@@ -525,9 +533,14 @@ function AnnotationFloatingPanel({
   panelIndex,
   panelCount,
   isLinkHighlighted,
+  zIndex,
+  onBringToFront,
 }: AnnotationFloatingPanelProps) {
   const { camera, size } = useThree()
+  const setCameraControlsEnabled = useViewerStore((s) => s.setCameraControlsEnabled)
+  const setHoveredAnnotation = useViewerStore((s) => s.setHoveredAnnotation)
   const [entered, setEntered] = useState(false)
+  const [isPanelDragging, setIsPanelDragging] = useState(false)
   const [primaryImageAspectRatio, setPrimaryImageAspectRatio] = useState(4 / 3)
   const offsetSeed = useMemo(() => {
     let hash = 0
@@ -548,6 +561,32 @@ function AnnotationFloatingPanel({
       titleBrightness: 1.18 + seed * 0.22,
     }
   }, [annotation.id])
+  const panelStyleProfile = useMemo(() => {
+    let seed = hashString(`${annotation.id}:panel-style`)
+    const next = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed / 0xffffffff
+    }
+
+    return {
+      initialOffsetX: (next() - 0.5) * 56,
+      initialOffsetY: (next() - 0.5) * 40,
+      tiltDeg: (next() - 0.5) * 3.2,
+    }
+  }, [annotation.id])
+
+  const dragOffsetRef = useRef<ScreenOffset>({
+    x: panelStyleProfile.initialOffsetX,
+    y: panelStyleProfile.initialOffsetY,
+  })
+  const isPanelDraggingRef = useRef(false)
+  const didDragRef = useRef(false)
+  const dragPointerIdRef = useRef<number | null>(null)
+  const dragHandleElementRef = useRef<HTMLButtonElement | null>(null)
+  const suppressClickUntilRef = useRef(0)
+  const dragStartRef = useRef<ScreenOffset>({ x: 0, y: 0 })
+  const dragStartOffsetRef = useRef<ScreenOffset>({ x: 0, y: 0 })
+  const detachPanelDragRef = useRef<(() => void) | null>(null)
   const markerPos = useMemo(
     () => new THREE.Vector3(...annotation.position),
     [annotation.position]
@@ -560,7 +599,8 @@ function AnnotationFloatingPanel({
     envelope,
     { width: 320, height: 220 },
     panelIndex,
-    offsetSeed
+    offsetSeed,
+    dragOffsetRef.current
   )
   const panelLayoutRef = useRef<PanelLayout>({
     panelPos: initialLayout.panelPos.clone(),
@@ -627,7 +667,8 @@ function AnnotationFloatingPanel({
         envelope,
         panelSizeRef.current,
         panelIndex,
-        offsetSeed
+        offsetSeed,
+        dragOffsetRef.current
       )
     },
     [markerPos, camera, size.width, size.height, envelope, panelIndex, offsetSeed]
@@ -728,6 +769,123 @@ function AnnotationFloatingPanel({
     [computeLayout, camera, size.width, size.height, annotation.id, panelCount]
   )
 
+  const syncPanelPositionAndLine = useMemo(
+    () => () => {
+      const { panelPos, midPos } = panelLayoutRef.current
+      panelGroupRef.current?.position.copy(panelPos)
+      lineRef.current?.setPoints(markerPos, panelPos, midPos)
+      glowRef.current?.setPoints(markerPos, panelPos, midPos)
+    },
+    [markerPos]
+  )
+
+  const applyDraggedLayoutImmediately = useMemo(
+    () => () => {
+      applyLayoutImmediate()
+      lineProgressRef.current = 1
+      syncPanelPositionAndLine()
+    },
+    [applyLayoutImmediate, syncPanelPositionAndLine]
+  )
+
+  const handleDragStart = useMemo(
+    () => (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      onBringToFront()
+      setHoveredAnnotation(annotation.id)
+
+      dragPointerIdRef.current = e.pointerId
+      dragHandleElementRef.current = e.currentTarget
+      if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      }
+
+      detachPanelDragRef.current?.()
+      detachPanelDragRef.current = null
+
+      isPanelDraggingRef.current = true
+      didDragRef.current = false
+      setIsPanelDragging(true)
+      setCameraControlsEnabled(false)
+      dragStartRef.current = { x: e.clientX, y: e.clientY }
+      dragStartOffsetRef.current = { ...dragOffsetRef.current }
+
+      const handlePointerMove = (event: PointerEvent) => {
+        if (!isPanelDraggingRef.current) return
+
+        const dx = event.clientX - dragStartRef.current.x
+        const dy = event.clientY - dragStartRef.current.y
+
+        if (!didDragRef.current && Math.hypot(dx, dy) >= 2) {
+          didDragRef.current = true
+        }
+
+        dragOffsetRef.current = {
+          x: dragStartOffsetRef.current.x + dx,
+          y: dragStartOffsetRef.current.y + dy,
+        }
+
+        applyDraggedLayoutImmediately()
+      }
+
+      const stopDragging = () => {
+        if (!isPanelDraggingRef.current) return
+        isPanelDraggingRef.current = false
+        setIsPanelDragging(false)
+        setCameraControlsEnabled(true)
+        setHoveredAnnotation(null)
+        pendingRelayoutRef.current = true
+
+        if (didDragRef.current) {
+          suppressClickUntilRef.current = performance.now() + 180
+        }
+
+        const handleElement = dragHandleElementRef.current
+        const pointerId = dragPointerIdRef.current
+        if (handleElement && pointerId !== null && handleElement.hasPointerCapture(pointerId)) {
+          handleElement.releasePointerCapture(pointerId)
+        }
+        dragHandleElementRef.current = null
+        dragPointerIdRef.current = null
+
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', stopDragging)
+        window.removeEventListener('pointercancel', stopDragging)
+        window.removeEventListener('blur', stopDragging)
+        detachPanelDragRef.current = null
+      }
+
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', stopDragging)
+      window.addEventListener('pointercancel', stopDragging)
+      window.addEventListener('blur', stopDragging)
+
+      detachPanelDragRef.current = () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', stopDragging)
+        window.removeEventListener('pointercancel', stopDragging)
+        window.removeEventListener('blur', stopDragging)
+
+        const handleElement = dragHandleElementRef.current
+        const pointerId = dragPointerIdRef.current
+        if (handleElement && pointerId !== null && handleElement.hasPointerCapture(pointerId)) {
+          handleElement.releasePointerCapture(pointerId)
+        }
+        dragHandleElementRef.current = null
+        dragPointerIdRef.current = null
+      }
+    },
+    [
+      annotation.id,
+      applyDraggedLayoutImmediately,
+      onBringToFront,
+      setHoveredAnnotation,
+      setCameraControlsEnabled,
+    ]
+  )
+
   useEffect(() => {
     const root = panelRootRef.current
     if (!root) return
@@ -776,8 +934,38 @@ function AnnotationFloatingPanel({
     return () => clearTimeout(timeout)
   }, [annotation.id])
 
+  useEffect(() => {
+    return () => {
+      detachPanelDragRef.current?.()
+      detachPanelDragRef.current = null
+      isPanelDraggingRef.current = false
+      setIsPanelDragging(false)
+      setCameraControlsEnabled(true)
+      setHoveredAnnotation(null)
+    }
+  }, [setCameraControlsEnabled, setHoveredAnnotation])
+
   useFrame((state, delta) => {
     let layoutChanged = false
+
+    if (isPanelDraggingRef.current) {
+      const { panelPos, midPos } = panelLayoutRef.current
+      const pulseWave = Math.sin(state.clock.elapsedTime * linkPulseProfile.speed + linkPulseProfile.phase)
+      const pulseFactor = isLinkHighlighted ? 1 + pulseWave * linkPulseProfile.lineAmplitude : 1
+      const glowWave = Math.sin(
+        state.clock.elapsedTime * (linkPulseProfile.speed * 1.06) + linkPulseProfile.phase + 1.1
+      )
+      const glowPulseFactor = isLinkHighlighted ? 1 + glowWave * linkPulseProfile.glowAmplitude : 1
+
+      setLineWidth(lineRef.current, baseLineWidth * pulseFactor)
+      setLineWidth(glowRef.current, baseGlowWidth * pulseFactor)
+      setLineOpacity(glowRef.current, baseGlowOpacity * glowPulseFactor)
+
+      panelGroupRef.current?.position.copy(panelPos)
+      lineRef.current?.setPoints(markerPos, panelPos, midPos)
+      glowRef.current?.setPoints(markerPos, panelPos, midPos)
+      return
+    }
 
     const cameraMoved = lastCameraPosRef.current.distanceToSquared(camera.position) > CAMERA_POSITION_EPSILON_SQ
     const cameraRotated = 1 - Math.abs(lastCameraQuatRef.current.dot(camera.quaternion)) > CAMERA_ROTATION_EPSILON
@@ -927,14 +1115,43 @@ function AnnotationFloatingPanel({
           className={cn(vimeoId ? 'w-fit max-w-[42rem]' : 'max-w-xs')}
           style={{
             pointerEvents: 'auto',
-            transform: entered ? 'scale(1)' : 'scale(0.85)',
+            transform: entered
+              ? `scale(1) rotate(${isPanelDragging ? panelStyleProfile.tiltDeg * 0.35 : panelStyleProfile.tiltDeg}deg)`
+              : `scale(0.85) rotate(${panelStyleProfile.tiltDeg * 0.8}deg)`,
             opacity: entered ? 1 : 0,
             transition: 'transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms cubic-bezier(0.16, 1, 0.3, 1)',
             transformOrigin: 'bottom left',
+            zIndex,
           }}
           onClick={(e) => e.stopPropagation()}
+          onClickCapture={(e) => {
+            if (performance.now() < suppressClickUntilRef.current) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
+          onPointerDownCapture={() => onBringToFront()}
         >
-          <div className="flex items-start justify-between pb-1">
+          <div className="flex items-start gap-1.5 pb-1">
+            <button
+              type="button"
+              data-testid={`annotation-panel-drag-${annotation.id}`}
+              className={cn(
+                'mt-[1px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-zinc-700/80 bg-zinc-900/85 text-zinc-300 transition-colors',
+                isPanelDragging
+                  ? 'cursor-grabbing border-blue-400/80 text-blue-200'
+                  : 'cursor-grab hover:border-zinc-500 hover:text-zinc-100'
+              )}
+              onPointerDown={handleDragStart}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              aria-label="Drag annotation panel"
+              title="Drag panel"
+            >
+              <GripVertical size={11} />
+            </button>
             <h3
               className={cn(
                 'text-sm font-semibold leading-tight text-white',
@@ -1022,6 +1239,8 @@ export function AnnotationPanel() {
   const hoveredAnnotationId = useViewerStore((s) => s.hoveredAnnotationId)
   const clearAnnotationPanels = useViewerStore((s) => s.clearAnnotationPanels)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
+  const zCounterRef = useRef(20)
+  const [panelZIndexById, setPanelZIndexById] = useState<Record<string, number>>({})
 
   const sceneAnnotations = useMemo(
     () => annotations.filter((annotation) => annotation.sceneId === activeSceneId),
@@ -1042,6 +1261,39 @@ export function AnnotationPanel() {
       .filter((annotation): annotation is Annotation => annotation !== undefined),
     [openAnnotationPanelIds, annotationMap]
   )
+
+  useEffect(() => {
+    setPanelZIndexById((prev) => {
+      const next: Record<string, number> = {}
+      let changed = false
+
+      for (const annotation of openAnnotations) {
+        if (prev[annotation.id] !== undefined) {
+          next[annotation.id] = prev[annotation.id]
+          continue
+        }
+
+        zCounterRef.current += 1
+        next[annotation.id] = zCounterRef.current
+        changed = true
+      }
+
+      if (Object.keys(prev).length !== Object.keys(next).length) {
+        changed = true
+      }
+
+      return changed ? next : prev
+    })
+  }, [openAnnotations])
+
+  const bringPanelToFront = (id: string) => {
+    setPanelZIndexById((prev) => {
+      zCounterRef.current += 1
+      const nextZ = zCounterRef.current
+      if (prev[id] === nextZ) return prev
+      return { ...prev, [id]: nextZ }
+    })
+  }
 
   const envelope = useMemo(() => getSceneEnvelope(sceneAnnotations), [sceneAnnotations])
 
@@ -1068,6 +1320,8 @@ export function AnnotationPanel() {
           panelIndex={index}
           panelCount={openAnnotations.length}
           isLinkHighlighted={hoveredAnnotationId === annotation.id}
+          zIndex={panelZIndexById[annotation.id] ?? index + 1}
+          onBringToFront={() => bringPanelToFront(annotation.id)}
         />
       ))}
     </>
