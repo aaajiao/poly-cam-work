@@ -19,8 +19,17 @@ const PANEL_SCREEN_SAFE_MARGIN_Y = 96
 const CAMERA_POSITION_EPSILON_SQ = 0.04
 const CAMERA_ROTATION_EPSILON = 0.0008
 const CAMERA_FOV_EPSILON = 0.25
-const CAMERA_SETTLE_DELAY = 0.18
-const PANEL_REPOSITION_DURATION = 0.22
+const CAMERA_SETTLE_DELAY = 0.26
+const PANEL_REPOSITION_BASE_DURATION = 0.18
+const PANEL_REPOSITION_MIN_DURATION = 0.42
+const PANEL_REPOSITION_MAX_DURATION = 1.05
+const PANEL_REPOSITION_PIXELS_PER_SECOND = 420
+
+function easeInOutQuart(t: number) {
+  return t < 0.5
+    ? 8 * t * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 4) / 2
+}
 
 interface SceneEnvelope {
   center: [number, number, number]
@@ -79,6 +88,46 @@ interface PanelLayout {
 interface PanelSize {
   width: number
   height: number
+}
+
+interface TransitionProfile {
+  durationScale: number
+  delay: number
+  lateralPixels: number
+  verticalFactor: number
+  lateralSign: -1 | 1
+  verticalSign: -1 | 1
+  phase: number
+}
+
+function hashString(value: string) {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function createTransitionProfile(annotationId: string, transitionIndex: number, panelCount: number): TransitionProfile {
+  let seed = hashString(`${annotationId}:${transitionIndex}`)
+  const next = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed / 0xffffffff
+  }
+
+  const crowdFactor = panelCount > 8 ? 0.55 : panelCount > 4 ? 0.72 : 1
+  const speedVariance = panelCount > 8 ? 0.24 : 0.4
+
+  return {
+    durationScale: 0.9 + (next() - 0.5) * speedVariance,
+    delay: next() * 0.11 * crowdFactor,
+    lateralPixels: (12 + next() * 28) * crowdFactor,
+    verticalFactor: (0.2 + next() * 0.3) * crowdFactor,
+    lateralSign: next() > 0.5 ? 1 : -1,
+    verticalSign: next() > 0.5 ? 1 : -1,
+    phase: next() * Math.PI * 2,
+  }
 }
 
 function worldToScreen(point: THREE.Vector3, camera: THREE.Camera, viewportWidth: number, viewportHeight: number) {
@@ -421,9 +470,10 @@ interface AnnotationFloatingPanelProps {
   annotation: Annotation
   envelope: SceneEnvelope
   panelIndex: number
+  panelCount: number
 }
 
-function AnnotationFloatingPanel({ annotation, envelope, panelIndex }: AnnotationFloatingPanelProps) {
+function AnnotationFloatingPanel({ annotation, envelope, panelIndex, panelCount }: AnnotationFloatingPanelProps) {
   const { camera, size } = useThree()
   const [entered, setEntered] = useState(false)
   const [primaryImageAspectRatio, setPrimaryImageAspectRatio] = useState(4 / 3)
@@ -461,6 +511,12 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex }: Annotatio
     midPos: initialLayout.midPos.clone(),
   })
   const panelLayoutTransitionRef = useRef(1)
+  const panelTransitionDurationRef = useRef(PANEL_REPOSITION_MIN_DURATION)
+  const panelTransitionDelayRef = useRef(0)
+  const transitionIndexRef = useRef(0)
+  const transitionLateralOffsetRef = useRef(new THREE.Vector3())
+  const transitionVerticalOffsetRef = useRef(new THREE.Vector3())
+  const transitionPhaseRef = useRef(0)
   const pendingRelayoutRef = useRef(false)
   const cameraMovingRef = useRef(false)
   const cameraStillTimeRef = useRef(0)
@@ -516,6 +572,11 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex }: Annotatio
       panelLayoutTargetRef.current.panelPos.copy(nextLayout.panelPos)
       panelLayoutTargetRef.current.midPos.copy(nextLayout.midPos)
       panelLayoutTransitionRef.current = 1
+      panelTransitionDurationRef.current = PANEL_REPOSITION_MIN_DURATION
+      panelTransitionDelayRef.current = 0
+      transitionLateralOffsetRef.current.set(0, 0, 0)
+      transitionVerticalOffsetRef.current.set(0, 0, 0)
+      transitionPhaseRef.current = 0
     },
     [computeLayout]
   )
@@ -523,13 +584,77 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex }: Annotatio
   const startLayoutTransition = useMemo(
     () => () => {
       const nextLayout = computeLayout()
+      const currentScreen = worldToScreen(panelLayoutRef.current.panelPos, camera, size.width, size.height)
+      const nextScreen = worldToScreen(nextLayout.panelPos, camera, size.width, size.height)
+      const screenDistance = Math.hypot(nextScreen.x - currentScreen.x, nextScreen.y - currentScreen.y)
+      const pathLength = panelLayoutRef.current.panelPos.distanceTo(nextLayout.panelPos)
+
+      transitionIndexRef.current += 1
+      const profile = createTransitionProfile(annotation.id, transitionIndexRef.current, panelCount)
+
       panelLayoutStartRef.current.panelPos.copy(panelLayoutRef.current.panelPos)
       panelLayoutStartRef.current.midPos.copy(panelLayoutRef.current.midPos)
       panelLayoutTargetRef.current.panelPos.copy(nextLayout.panelPos)
       panelLayoutTargetRef.current.midPos.copy(nextLayout.midPos)
       panelLayoutTransitionRef.current = 0
+
+      panelTransitionDurationRef.current = THREE.MathUtils.clamp(
+        PANEL_REPOSITION_BASE_DURATION + screenDistance / PANEL_REPOSITION_PIXELS_PER_SECOND,
+        PANEL_REPOSITION_MIN_DURATION,
+        PANEL_REPOSITION_MAX_DURATION
+      ) * profile.durationScale
+      panelTransitionDurationRef.current = THREE.MathUtils.clamp(
+        panelTransitionDurationRef.current,
+        PANEL_REPOSITION_MIN_DURATION,
+        PANEL_REPOSITION_MAX_DURATION
+      )
+
+      panelTransitionDelayRef.current = screenDistance > 8 ? profile.delay : 0
+      transitionPhaseRef.current = profile.phase
+
+      if (screenDistance < 10 || pathLength < 0.05) {
+        transitionLateralOffsetRef.current.set(0, 0, 0)
+        transitionVerticalOffsetRef.current.set(0, 0, 0)
+        return
+      }
+
+      const midpoint = panelLayoutRef.current.panelPos.clone().lerp(nextLayout.panelPos, 0.5)
+      const depth = camera.position.distanceTo(midpoint)
+      const fovRadians = camera instanceof THREE.PerspectiveCamera
+        ? THREE.MathUtils.degToRad(camera.fov)
+        : THREE.MathUtils.degToRad(50)
+      const worldPerPixel = (2 * depth * Math.tan(fovRadians * 0.5)) / Math.max(size.height, 1)
+
+      const pathDir = nextLayout.panelPos.clone().sub(panelLayoutRef.current.panelPos)
+      if (pathDir.lengthSq() < 0.0001) {
+        transitionLateralOffsetRef.current.set(0, 0, 0)
+        transitionVerticalOffsetRef.current.set(0, 0, 0)
+        return
+      }
+
+      pathDir.normalize()
+      const upAxis = camera.up.clone()
+      if (upAxis.lengthSq() < 0.0001) {
+        upAxis.set(0, 1, 0)
+      }
+      upAxis.normalize()
+
+      const sideAxis = new THREE.Vector3().crossVectors(pathDir, upAxis)
+      if (sideAxis.lengthSq() < 0.0001) {
+        sideAxis.crossVectors(pathDir, camera.position.clone().sub(panelLayoutRef.current.panelPos))
+      }
+      if (sideAxis.lengthSq() < 0.0001) {
+        sideAxis.set(1, 0, 0)
+      }
+      sideAxis.normalize()
+
+      const lateralAmplitude = profile.lateralPixels * worldPerPixel * profile.lateralSign
+      const verticalAmplitude = lateralAmplitude * profile.verticalFactor * profile.verticalSign
+
+      transitionLateralOffsetRef.current.copy(sideAxis).multiplyScalar(lateralAmplitude)
+      transitionVerticalOffsetRef.current.copy(upAxis).multiplyScalar(verticalAmplitude)
     },
-    [computeLayout]
+    [computeLayout, camera, size.width, size.height, annotation.id, panelCount]
   )
 
   useEffect(() => {
@@ -581,6 +706,8 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex }: Annotatio
   }, [annotation.id])
 
   useFrame((_, delta) => {
+    let layoutChanged = false
+
     const cameraMoved = lastCameraPosRef.current.distanceToSquared(camera.position) > CAMERA_POSITION_EPSILON_SQ
     const cameraRotated = 1 - Math.abs(lastCameraQuatRef.current.dot(camera.quaternion)) > CAMERA_ROTATION_EPSILON
     const currentFov = camera instanceof THREE.PerspectiveCamera ? camera.fov : 50
@@ -613,27 +740,60 @@ function AnnotationFloatingPanel({ annotation, envelope, panelIndex }: Annotatio
     }
 
     if (panelLayoutTransitionRef.current < 1) {
-      panelLayoutTransitionRef.current = Math.min(
-        panelLayoutTransitionRef.current + delta / PANEL_REPOSITION_DURATION,
-        1
-      )
-      const t = panelLayoutTransitionRef.current
-      const eased = t * t * (3 - 2 * t)
-      panelLayoutRef.current.panelPos
-        .copy(panelLayoutStartRef.current.panelPos)
-        .lerp(panelLayoutTargetRef.current.panelPos, eased)
-      panelLayoutRef.current.midPos
-        .copy(panelLayoutStartRef.current.midPos)
-        .lerp(panelLayoutTargetRef.current.midPos, eased)
+      if (panelTransitionDelayRef.current > 0) {
+        panelTransitionDelayRef.current = Math.max(panelTransitionDelayRef.current - delta, 0)
+      } else {
+        const transitionDuration = Math.max(panelTransitionDurationRef.current, PANEL_REPOSITION_MIN_DURATION)
+        const nextProgress = Math.min(
+          panelLayoutTransitionRef.current + delta / transitionDuration,
+          1
+        )
+        if (nextProgress !== panelLayoutTransitionRef.current) {
+          layoutChanged = true
+        }
+        panelLayoutTransitionRef.current = nextProgress
+
+        const t = panelLayoutTransitionRef.current
+        const eased = easeInOutQuart(t)
+        const arc = Math.sin(Math.PI * eased)
+        const sway = Math.sin(Math.PI * 2 * eased + transitionPhaseRef.current)
+        const lateralFactor = arc * (1 + sway * 0.22)
+        const verticalFactor = arc * arc
+
+        panelLayoutRef.current.panelPos
+          .copy(panelLayoutStartRef.current.panelPos)
+          .lerp(panelLayoutTargetRef.current.panelPos, eased)
+          .addScaledVector(transitionLateralOffsetRef.current, lateralFactor)
+          .addScaledVector(transitionVerticalOffsetRef.current, verticalFactor)
+
+        panelLayoutRef.current.midPos
+          .copy(panelLayoutStartRef.current.midPos)
+          .lerp(panelLayoutTargetRef.current.midPos, eased)
+          .addScaledVector(transitionLateralOffsetRef.current, lateralFactor * 0.7)
+          .addScaledVector(transitionVerticalOffsetRef.current, verticalFactor * 1.25)
+      }
     } else {
-      panelLayoutRef.current.panelPos.copy(panelLayoutTargetRef.current.panelPos)
-      panelLayoutRef.current.midPos.copy(panelLayoutTargetRef.current.midPos)
+      const panelDiff = panelLayoutRef.current.panelPos.distanceToSquared(panelLayoutTargetRef.current.panelPos)
+      const midDiff = panelLayoutRef.current.midPos.distanceToSquared(panelLayoutTargetRef.current.midPos)
+      if (panelDiff > 0.000001 || midDiff > 0.000001) {
+        panelLayoutRef.current.panelPos.copy(panelLayoutTargetRef.current.panelPos)
+        panelLayoutRef.current.midPos.copy(panelLayoutTargetRef.current.midPos)
+        layoutChanged = true
+      }
     }
 
     const { panelPos, midPos } = panelLayoutRef.current
-    panelGroupRef.current?.position.copy(panelPos)
+    const hasLineEntryAnimation = lineProgressRef.current < 1
 
-    if (lineProgressRef.current >= 1) {
+    if (layoutChanged || hasLineEntryAnimation) {
+      panelGroupRef.current?.position.copy(panelPos)
+    }
+
+    if (!layoutChanged && !hasLineEntryAnimation) {
+      return
+    }
+
+    if (!hasLineEntryAnimation) {
       lineRef.current?.setPoints(markerPos, panelPos, midPos)
       glowRef.current?.setPoints(markerPos, panelPos, midPos)
       return
@@ -824,6 +984,7 @@ export function AnnotationPanel() {
           annotation={annotation}
           envelope={envelope}
           panelIndex={index}
+          panelCount={openAnnotations.length}
         />
       ))}
     </>
