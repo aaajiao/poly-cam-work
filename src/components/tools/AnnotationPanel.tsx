@@ -7,6 +7,7 @@ import { useViewerStore } from '@/store/viewerStore'
 import { imageStorage } from '@/storage/imageStorage'
 import { extractVimeoId } from '@/utils/vimeo'
 import { VimeoEmbed } from '@/components/ui/VimeoEmbed'
+import { cn } from '@/lib/utils'
 import type { Annotation, AnnotationImage } from '@/types'
 
 type AnimState = 'entering' | 'visible' | 'exiting' | 'hidden'
@@ -21,6 +22,7 @@ interface ResizableMediaProps {
   maxHeight?: number
   maintainAspectRatio?: boolean
   aspectRatio?: number
+  showHandleAlways?: boolean
 }
 
 function ResizableMedia({
@@ -32,6 +34,7 @@ function ResizableMedia({
   minHeight = 60,
   maxHeight = 400,
   maintainAspectRatio = false,
+  showHandleAlways = false,
 }: ResizableMediaProps) {
   const [size, setSize] = useState({
     width: defaultWidth,
@@ -82,7 +85,7 @@ function ResizableMedia({
 
   return (
     <div
-      className="relative"
+      className="group relative"
       style={{
         width: size.width !== undefined ? `${size.width}px` : undefined,
         height: size.height !== undefined ? `${size.height}px` : undefined,
@@ -90,12 +93,16 @@ function ResizableMedia({
     >
       {children}
       <div
-        className="absolute bottom-0 right-0 w-4 h-4 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+        className={cn(
+          'absolute bottom-1 right-1 z-20 flex h-5 w-5 items-center justify-center rounded-sm border border-zinc-600 bg-zinc-900/90 text-zinc-100 transition-opacity',
+          showHandleAlways ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-100 hover:opacity-100'
+        )}
         style={{ cursor: 'nwse-resize', pointerEvents: 'auto' }}
         onMouseDown={handleMouseDown}
+        aria-label="Resize media"
       >
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-          <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M9 3L3 9M9 6L6 9M9 9H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </div>
     </div>
@@ -269,7 +276,7 @@ export function AnnotationPanel() {
       >
         <div
           data-testid={`annotation-panel-${displayAnnotation.id}`}
-          className="max-w-xs"
+          className={cn(vimeoId ? 'w-fit max-w-[42rem]' : 'max-w-xs')}
           style={{
             pointerEvents: 'auto',
             transform: animState === 'entering' || animState === 'exiting' ? 'scale(0.85)' : 'scale(1)',
@@ -315,11 +322,12 @@ export function AnnotationPanel() {
 
             {vimeoId && (
               <ResizableMedia
-                defaultWidth={288}
-                minWidth={150}
+                defaultWidth={320}
+                minWidth={180}
                 maxWidth={600}
                 maintainAspectRatio
                 aspectRatio={16 / 9}
+                showHandleAlways
               >
                 <VimeoEmbed videoId={vimeoId} className="w-full" />
               </ResizableMedia>

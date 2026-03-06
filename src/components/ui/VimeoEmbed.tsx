@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Play } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 interface VimeoEmbedProps {
@@ -7,52 +6,64 @@ interface VimeoEmbedProps {
   className?: string
 }
 
-export function VimeoEmbed({ videoId, className }: VimeoEmbedProps) {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [thumbError, setThumbError] = useState(false)
+interface VimeoOEmbedResponse {
+  width?: number
+  height?: number
+}
 
-  const thumbnailUrl = `https://vumbnail.com/${videoId}.jpg`
-  const iframeSrc = `https://player.vimeo.com/video/${videoId}?title=0&byline=0&portrait=0&dnt=1&autoplay=1`
+const DEFAULT_ASPECT_RATIO = 16 / 9
+
+export function VimeoEmbed({ videoId, className }: VimeoEmbedProps) {
+  const [aspectRatio, setAspectRatio] = useState(DEFAULT_ASPECT_RATIO)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadAspectRatio = async () => {
+      try {
+        const videoUrl = encodeURIComponent(`https://vimeo.com/${videoId}`)
+        const response = await fetch(`https://vimeo.com/api/oembed.json?url=${videoUrl}`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          setAspectRatio(DEFAULT_ASPECT_RATIO)
+          return
+        }
+
+        const data = (await response.json()) as VimeoOEmbedResponse
+        if (data.width && data.height && data.height > 0) {
+          setAspectRatio(data.width / data.height)
+          return
+        }
+
+        setAspectRatio(DEFAULT_ASPECT_RATIO)
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+
+        setAspectRatio(DEFAULT_ASPECT_RATIO)
+      }
+    }
+
+    void loadAspectRatio()
+    return () => controller.abort()
+  }, [videoId])
+
+  const iframeSrc = `https://player.vimeo.com/video/${videoId}?title=0&byline=0&portrait=0&dnt=1`
 
   return (
     <div
-      className={cn('relative w-full overflow-hidden rounded', className)}
-      style={{ paddingBottom: '56.25%' }}
+      className={cn('relative w-full overflow-hidden rounded bg-black', className)}
+      style={{ aspectRatio }}
     >
-      {isPlaying ? (
-        <iframe
-          src={iframeSrc}
-          className="absolute inset-0 w-full h-full"
-          allow="autoplay; fullscreen; picture-in-picture"
-          allowFullScreen
-          title="Vimeo video player"
-        />
-      ) : (
-        <div
-          className="absolute inset-0 w-full h-full cursor-pointer group"
-          onClick={() => setIsPlaying(true)}
-        >
-          {/* Cover image or fallback */}
-          {!thumbError ? (
-            <img
-              src={thumbnailUrl}
-              alt="Video thumbnail"
-              className="w-full h-full object-cover"
-              onError={() => setThumbError(true)}
-            />
-          ) : (
-            <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-              <Play size={32} className="text-zinc-500" />
-            </div>
-          )}
-          {/* Play button overlay */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center group-hover:bg-black/80 transition-colors">
-              <Play size={24} className="text-white ml-1" fill="white" />
-            </div>
-          </div>
-        </div>
-      )}
+      <iframe
+        src={iframeSrc}
+        className="absolute inset-0 h-full w-full"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+        title="Vimeo video player"
+      />
     </div>
   )
 }
