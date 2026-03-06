@@ -23,9 +23,7 @@ export function AnnotationMarkers() {
   const closeAnnotationPanel = useViewerStore((s) => s.closeAnnotationPanel)
   const { camera } = useThree()
 
-  // Triggers a single re-render after the first useFrame populates LOD state,
-  // so that close-LOD Html markers appear correctly after page refresh.
-  const [lodReady, setLodReady] = useState(false)
+  const [closeMarkerIds, setCloseMarkerIds] = useState<string[]>([])
 
   const sceneAnnotations = useMemo(
     () => annotations.filter((a) => a.sceneId === activeSceneId),
@@ -72,9 +70,9 @@ export function AnnotationMarkers() {
     []
   )
 
-  const lodStateRef = useRef<Map<string, 'far' | 'close'>>(new Map())
   // Maps instancedMesh instance index → annotation, kept in sync each frame.
   const farAnnotationsRef = useRef<Annotation[]>([])
+  const closeMarkerKeyRef = useRef('')
   const openPanelIdSet = useMemo(() => new Set(openAnnotationPanelIds), [openAnnotationPanelIds])
   const [hoveredFarId, setHoveredFarId] = useState<string | null>(null)
 
@@ -86,6 +84,13 @@ export function AnnotationMarkers() {
       setHoveredFarId(null)
     }
   }, [hoveredFarId, visibleAnnotations])
+
+  const setCloseIdsIfChanged = useCallback((ids: string[]) => {
+    const key = ids.join('|')
+    if (key === closeMarkerKeyRef.current) return
+    closeMarkerKeyRef.current = key
+    setCloseMarkerIds(ids)
+  }, [])
 
   const handlePanelToggle = useCallback((id: string) => {
     if (openPanelIdSet.has(id)) {
@@ -115,8 +120,8 @@ export function AnnotationMarkers() {
         haloMesh.count = 0
         haloMesh.instanceMatrix.needsUpdate = true
       }
-      lodStateRef.current = new Map()
       farAnnotationsRef.current = []
+      setCloseIdsIfChanged([])
       if (hoveredFarId) setHoveredFarId(null)
       return
     }
@@ -130,20 +135,19 @@ export function AnnotationMarkers() {
     withDist.sort((a, b) => a.dist - b.dist)
 
     const newLod = new Map<string, 'far' | 'close'>()
+    const nextCloseIds: string[] = []
     let htmlCount = 0
     for (const { annotation } of withDist) {
       const forceClose = openPanelIdSet.has(annotation.id)
       if (forceClose || htmlCount < MAX_HTML_MARKERS) {
         newLod.set(annotation.id, 'close')
+        nextCloseIds.push(annotation.id)
         htmlCount++
       } else {
         newLod.set(annotation.id, 'far')
       }
     }
-    lodStateRef.current = newLod
-
-    // One-shot: trigger re-render so React picks up LOD state for close markers.
-    if (!lodReady) setLodReady(true)
+    setCloseIdsIfChanged(nextCloseIds)
 
     if (!coreMesh || !haloMesh) return
 
@@ -223,8 +227,16 @@ export function AnnotationMarkers() {
 
   const instanceCapacity = Math.max(sceneAnnotations.length, 1)
 
-  const closeAnnotations = visibleAnnotations.filter(
-    (a) => lodStateRef.current.get(a.id) === 'close'
+  const visibleAnnotationById = useMemo(
+    () => new Map(visibleAnnotations.map((annotation) => [annotation.id, annotation] as const)),
+    [visibleAnnotations]
+  )
+
+  const closeAnnotations = useMemo(
+    () => closeMarkerIds
+      .map((id) => visibleAnnotationById.get(id))
+      .filter((annotation): annotation is Annotation => annotation !== undefined),
+    [closeMarkerIds, visibleAnnotationById]
   )
 
   return (
