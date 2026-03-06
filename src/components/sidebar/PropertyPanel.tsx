@@ -26,8 +26,6 @@ function formatNumber(n: number): string {
 export function PropertyPanel() {
   const activeScene = useActiveScene()
   const viewMode = useViewerStore((s) => s.viewMode)
-  const pointSize = useViewerStore((s) => s.pointSize)
-  const setPointSize = useViewerStore((s) => s.setPointSize)
 
   if (!activeScene) {
     return (
@@ -62,9 +60,22 @@ export function PropertyPanel() {
           )}
         </div>
       )}
+    </div>
+  )
+}
 
+export function ToolsPanel() {
+  const activeScene = useActiveScene()
+  const viewMode = useViewerStore((s) => s.viewMode)
+  const pointSize = useViewerStore((s) => s.pointSize)
+  const setPointSize = useViewerStore((s) => s.setPointSize)
+
+  if (!activeScene) return null
+
+  return (
+    <div className="space-y-3" data-testid="tools-panel">
       {(viewMode === 'pointcloud' || viewMode === 'both') && (
-        <div className="border-t border-zinc-800 pt-2">
+        <div>
           <div className="flex justify-between items-center mb-1">
             <span className="text-zinc-500 text-xs">Point size</span>
             <span className="text-zinc-300 text-xs font-mono">{pointSize.toFixed(3)}</span>
@@ -82,9 +93,7 @@ export function PropertyPanel() {
         </div>
       )}
 
-      <div className="border-t border-zinc-800 pt-2">
-        <ClipControls />
-      </div>
+      <ClipControls />
 
       <div className="border-t border-zinc-800 pt-2">
         <ColorMapControls />
