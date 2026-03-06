@@ -33,7 +33,6 @@ interface ViewerState {
   selectedAnnotationId: string | null
   annotationsVisible: boolean
   annotationsPanelOpen: boolean
-  sidebarOpen: boolean
 
   isLoading: boolean
   loadingProgress: number
@@ -53,7 +52,6 @@ interface ViewerState {
   selectAnnotation: (id: string | null) => void
   toggleAnnotationsVisible: () => void
   setAnnotationsPanelOpen: (open: boolean) => void
-  setSidebarOpen: (open: boolean) => void
   setClipPlane: (state: Partial<ClipPlaneState>) => void
   setColorMapMode: (mode: ColorMapMode) => void
   setPointSize: (size: number) => void
@@ -88,8 +86,7 @@ export const useViewerStore = create<ViewerState>()(
 
       selectedAnnotationId: null,
       annotationsVisible: true,
-      annotationsPanelOpen: true,
-      sidebarOpen: true,
+      annotationsPanelOpen: false,
 
       isLoading: false,
       loadingProgress: 0,
@@ -101,11 +98,9 @@ export const useViewerStore = create<ViewerState>()(
       setToolMode: (toolMode) => set((state) => {
         const togglingOff = toolMode !== 'orbit' && toolMode === state.toolMode
         const nextMode = togglingOff ? 'orbit' : toolMode
-        const panelOpen = nextMode === 'annotate' ? true : togglingOff && toolMode === 'annotate' ? false : state.annotationsPanelOpen
         return {
           toolMode: nextMode,
-          annotationsPanelOpen: panelOpen,
-          sidebarOpen: nextMode === 'annotate' ? true : state.sidebarOpen,
+          annotationsPanelOpen: nextMode === 'annotate' ? true : togglingOff && toolMode === 'annotate' ? false : state.annotationsPanelOpen,
         }
       }),
 
@@ -138,13 +133,9 @@ export const useViewerStore = create<ViewerState>()(
       toggleAnnotationsVisible: () =>
         set((state) => ({ annotationsVisible: !state.annotationsVisible })),
       setAnnotationsPanelOpen: (annotationsPanelOpen) => set({ annotationsPanelOpen }),
-      setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
 
       setClipPlane: (partial) =>
-        set((state) => ({
-          clipPlane: { ...state.clipPlane, ...partial },
-          sidebarOpen: partial.enabled ? true : state.sidebarOpen,
-        })),
+        set((state) => ({ clipPlane: { ...state.clipPlane, ...partial } })),
       setColorMapMode: (colorMapMode) => set({ colorMapMode }),
       setPointSize: (pointSize) => set({ pointSize }),
 
