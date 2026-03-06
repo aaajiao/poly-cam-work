@@ -88,7 +88,7 @@ export const useViewerStore = create<ViewerState>()(
 
       selectedAnnotationId: null,
       annotationsVisible: true,
-      annotationsPanelOpen: true,
+      annotationsPanelOpen: false,
       sidebarOpen: false,
 
       isLoading: false,
