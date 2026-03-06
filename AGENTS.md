@@ -1,114 +1,178 @@
 # Polycam 3D Scan Viewer
 
-Web-based visualization tool for Polycam LiDAR scan exports. Renders GLB textured meshes and PLY colored point clouds with measurement, clipping, annotation, and color mapping tools.
+Web-based visualization tool for Polycam LiDAR exports.
+It renders GLB textured meshes + PLY point clouds and provides measurement, clipping, annotation, and rich-media workflows.
 
 ## Stack
 
-Vite 6 + React 19 + TypeScript strict | @react-three/fiber v9 + drei v9 + Three.js | zustand (persist) | shadcn/ui + Tailwind v4 | bun
+Vite 6 + React 19 + TypeScript strict + bun  
+@react-three/fiber v9 + drei v9 + Three.js  
+zustand (persist) + shadcn/ui + Tailwind v4
 
-## Structure
+---
 
-```
+## Repository Map
+
+```text
 src/
 ├── components/
-│   ├── viewer/    # R3F Canvas + GLB/PLY renderers (see viewer/AGENTS.md)
-│   ├── tools/     # 3D interactive tools: measure, clip, annotate (see tools/AGENTS.md)
-│   ├── sidebar/   # FileManager, PropertyPanel, ClipControls, ColorMapControls, AnnotationManager
-│   ├── toolbar/   # Toolbar, ToolButtons, ViewModeToggle
-│   ├── upload/    # DropZone (drag-and-drop .glb/.ply)
-│   └── ui/        # shadcn components + ErrorBoundary, LoadingOverlay, StatusBar, VimeoEmbed, ImageUpload, ImagePreview
-├── storage/       # ImageStorage abstraction + IndexedDB implementation (images for annotations)
-├── store/         # zustand: viewerStore (single store, persist v1 with migration), presetScenes config
-├── hooks/         # usePLYLoader (Worker bridge), useFileUpload, useScreenshot
-├── workers/       # ply-parser.worker.ts (binary PLY → Float32Array, off-thread)
-├── types/         # All shared types: ScanScene, ViewMode, ToolMode, Measurement, etc.
-├── utils/         # Pure functions: colorMapping, measurement, screenshot, vimeo, raycasting
-└── lib/           # shadcn cn() utility
-e2e/               # Playwright E2E tests (chromium only)
-public/models/     # Scan data files (gitignored, ~272MB)
+│   ├── viewer/      # R3F Canvas + GLB/PLY renderers (see viewer/AGENTS.md)
+│   ├── tools/       # 3D interaction tools (see tools/AGENTS.md)
+│   ├── sidebar/     # FileManager, PropertyPanel, AnnotationManager, etc.
+│   ├── toolbar/     # Toolbar, ToolButtons, ViewModeToggle
+│   ├── upload/      # DropZone + upload UI
+│   └── ui/          # shadcn + app-specific UI (VimeoEmbed, StatusBar, etc.)
+├── hooks/           # usePLYLoader, useFileUpload, useScreenshot
+├── lib/             # shared cn() helper
+├── storage/         # IndexedDB-backed image storage abstraction
+├── store/           # zustand viewerStore + presetScenes
+├── types/           # shared app types
+├── utils/           # pure helpers: colorMapping, measurement, vimeo, raycasting, screenshot
+└── workers/         # ply-parser.worker.ts (off-thread PLY parsing)
+
+e2e/                 # Playwright smoke E2E tests only
 ```
 
-## WHERE TO LOOK
+---
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Add new 3D tool | `src/components/tools/` + register in `SceneCanvas.tsx` | Use `raycastScene` from `utils/raycasting.ts` |
-| Change view modes | `src/types/index.ts` ViewMode + `viewerStore.ts` + `ViewModeToggle.tsx` | |
-| Modify point cloud rendering | `src/components/viewer/PointCloudViewer.tsx` | Coord transform here |
-| Change PLY parsing | `src/workers/ply-parser.worker.ts` + `src/hooks/usePLYLoader.ts` | Worker ↔ hook protocol |
-| Add sidebar controls | `src/components/sidebar/PropertyPanel.tsx` | Import + render new panel |
-| Modify annotation system | `src/components/tools/Annotation*.tsx` + `sidebar/AnnotationManager.tsx` | Types → Store → Tools → Sidebar |
-| Modify annotation storage | `src/storage/imageStorage.ts` | Abstract `ImageStorage` interface, IndexedDB impl |
-| Add keyboard shortcut | `src/components/toolbar/Toolbar.tsx` useEffect keydown handler | |
-| Modify store state | `src/types/index.ts` + `src/store/viewerStore.ts` | Types first, then store |
-| Add unit test | `src/__tests__/` | 88 tests, vitest + jsdom |
-| Add E2E test | `e2e/` | 22+ tests, playwright, use `data-testid` |
+## Architecture & Data Flows
 
-## CRITICAL: Coordinate Systems
+### 1) Rendering flow (3D core)
 
-PLY files are **Z-up** (Polycam convention). GLB files are **Y-up** (glTF standard).
+`SceneCanvas.tsx` is the entry point for all 3D runtime:
+- mounts viewers (`GLBViewer`, `PointCloudViewer`)
+- mounts tools (`MeasurementTool`, `ClippingPlaneController`, `AnnotationTool`, `AnnotationMarkers`, `AnnotationPanel`)
+- owns `OrbitControls` and binds `enabled={cameraControlsEnabled}`
 
-Transform applied in `PointCloudViewer.tsx`: `<group rotation={[-Math.PI / 2, 0, 0]}>` converts PLY(x,y,z) → Scene(x,z,-y).
+### 2) PLY flow (worker)
 
-Height mapping in `colorMapping.ts` uses **Z** from raw PLY positions (index `[i*3+2]`), NOT scene Y.
+`usePLYLoader` → `workers/ply-parser.worker.ts` (transferable Float32Arrays).  
+Never parse large PLY on main thread.
 
-## CRITICAL: File Pairing
+### 3) Annotation interaction flow (current model)
 
-Original Polycam export numbers do NOT match between GLB and PLY. Correct pairing (verified by bounding box alignment):
+Store fields (in `viewerStore.ts`) drive behavior:
+- `selectedAnnotationId`: focused annotation
+- `openAnnotationPanelIds`: supports multiple opened floating panels
+- `cameraControlsEnabled`: temporary orbit lock during media resize
 
-| Scan | GLB source | PLY source | Description |
-|------|-----------|-----------|-------------|
-| scan-a | was `01.glb` | was `00.ply` | Corridor ~5x3x13m |
-| scan-b | was `00.glb` | was `01.ply` | Large room ~13x4x16m |
-| scan-c | was `02.glb` | was `02.ply` | Multi-room ~14x4x19m |
+Main interaction:
+1. Marker/list click toggles panel open state (`openAnnotationPanel` / `closeAnnotationPanel`)
+2. `AnnotationPanel.tsx` renders one floating panel per opened id
+3. Panel layout is screen-space aware (`worldToScreen` + clamp + `screenToWorld`)
+4. During camera motion, relayout is deferred; after settle, panel transitions with eased/randomized motion profile
+5. Media resize handles disable camera controls while dragging
 
-Config: `src/store/presetScenes.ts`
+### 4) Rich media flow
 
-## ANTI-PATTERNS
+- Images: thumbnails from IndexedDB (`imageStorage.getThumbnail`), single-image ratio derived from actual image size
+- Video: `VimeoEmbed` uses Vimeo oEmbed to derive aspect ratio and renders inline player (no fake overlay)
 
-- **No `as any` / `@ts-ignore`** — strict mode enforced, `noUnusedLocals` + `noUnusedParameters`
-- **No Three.js objects in zustand** — BufferGeometry/Mesh are not serializable; use refs
-- **No main-thread PLY parsing** — always via WebWorker (`usePLYLoader` → `ply-parser.worker.ts`)
-- **No `console.log` in prod** — `console.error` in error handlers only
-- **Never forget `preserveDrawingBuffer: true`** on Canvas — screenshot depends on it
-- **Never forget `material.side = DoubleSide`** when clipping active — GLB has no back faces
+---
 
-## CONVENTIONS
+## Where To Look
 
-- **Path alias**: `@/` → `src/` (tsconfig paths + vite alias)
-- **Tailwind v4**: via `@tailwindcss/vite` plugin, NO `tailwind.config.js` — config in CSS
-- **shadcn/ui**: components in `src/components/ui/`, config in `components.json`
-- **Store**: single zustand store, `persist` middleware (version 1) for annotations/colorMap/pointSize/viewMode/selectedAnnotationId/annotationsVisible
-- **Image storage**: annotation images in IndexedDB (abstract `ImageStorage` interface), metadata (`imageIds[]`) in zustand. Never base64 in localStorage.
-- **Tests**: `data-testid` attributes on all interactive elements
-- **Workers**: Vite module worker syntax: `new Worker(new URL('../workers/X.ts', import.meta.url), { type: 'module' })`
-- **Transferable**: PLY parser returns Float32Arrays via transfer list (zero-copy)
+| Task | Primary Files |
+|------|---------------|
+| Add/update 3D tool | `src/components/tools/*` + registration in `src/components/viewer/SceneCanvas.tsx` |
+| Change annotation panel behavior | `src/components/tools/AnnotationPanel.tsx` |
+| Change marker click/open rules | `src/components/tools/AnnotationMarkers.tsx`, `src/components/sidebar/AnnotationManager.tsx` |
+| Change annotation state model | `src/store/viewerStore.ts` + `src/types/index.ts` |
+| Change PLY parsing/perf | `src/workers/ply-parser.worker.ts`, `src/hooks/usePLYLoader.ts` |
+| Change clipping behavior | `src/components/tools/ClippingPlane.tsx` |
+| Change screenshot behavior | `src/components/viewer/ScreenshotButton.tsx`, `src/hooks/useScreenshot.ts` |
+| Change Vimeo URL handling | `src/utils/vimeo.ts`, `src/components/ui/VimeoEmbed.tsx` |
+| Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx` |
+| Add/adjust E2E smoke test | `e2e/smoke.test.ts` |
 
-## SHARED WORKSPACE (macOS + Linux)
+---
 
-This project directory is shared between macOS (user) and Linux (AI agent) via OrbStack mount.
+## Critical Invariants
 
-**Rules**:
-- **Agent (Linux)**: Owns `bun install` and all commands (`bun run dev/build/test/test:e2e`). Node_modules contains Linux-only native binaries.
-- **User (macOS)**: Accesses dev server at `http://localhost:5173/` (OrbStack auto-forwards ports). Does NOT run `bun install` or `bun run` commands — all execution happens on Linux side.
+### Coordinate system
 
-## COMMANDS
+PLY is Z-up, GLB is Y-up.
+
+In `PointCloudViewer.tsx`:
+```tsx
+<group rotation={[-Math.PI / 2, 0, 0]}>
+```
+
+Do not apply this transform to GLB path.
+
+### Canvas screenshot contract
+
+`preserveDrawingBuffer: true` must stay enabled in Canvas config, otherwise screenshot capture breaks.
+
+### Clipping consistency
+
+Tools and clipping constants must stay aligned (`CLIP_SCENE_HALF` vs clipping plane world mapping).
+
+---
+
+## Test Strategy (Unified)
+
+Use a 3-layer test model and keep responsibilities strict.
+
+### Layer boundaries
+
+1. **Unit (Vitest + jsdom)**
+   - Pure functions, store transitions, parser/math logic
+   - No full UI journey expectations
+
+2. **Browser integration (Vitest browser project)**
+   - Component interactions and store integration through UI
+   - Primary place for annotation/sidebar/tool interaction behavior
+
+3. **E2E (Playwright)**
+   - Keep minimal and high-value only
+   - Smoke-level workflows and app shell integrity
+   - Avoid duplicating component-level scenarios already covered by browser Vitest
+
+### Commands
 
 ```bash
-bun run dev        # Vite dev server → localhost:5173 (user runs on macOS)
-bun run build      # Production build → dist/
-bun run test       # Vitest: 88 unit tests
-bun run test:e2e   # Playwright: 22+ E2E tests (chromium)
+bun run test                # alias to test:vitest
+bun run test:vitest         # unit + browser projects
+bun run test:vitest:unit    # unit only
+bun run test:vitest:browser # browser integration only
+bun run test:e2e            # Playwright smoke only (e2e/smoke.test.ts)
+bun run test:all            # vitest + smoke e2e
+bun run build               # typecheck + production build
 ```
 
-## GOTCHAS
+### E2E policy (important)
 
-- `scan-b.ply` is 132MB / 5.1M points — always loads via WebWorker with progress
-- Screenshot button uses `window.__takeScreenshot` bridge (useScreenshot needs useThree → must be inside Canvas)
-- Sidebar toggle button needs `z-10 relative` on `<aside>` so canvas doesn't intercept clicks
-- ClippingPlane stores `_originalSide` on THREE.Material instances to restore after disabling
-- `setActiveScene` clears measurements AND `selectedAnnotationId` (intentional — both are position-specific)
-- Annotation markers use 2-tier LOD: InstancedMesh (>10m) + drei Html (≤10m), max 15 Html elements
-- Annotation images stored in IndexedDB (`polycam-images` DB), NOT in localStorage — `imageStorage.deleteByAnnotation()` cleans up on annotation/scene delete
-- `removeUploadedScene` cascades: removes annotations for that scene + deletes their images from IndexedDB
-- Clipping plane hides annotations on the clipped side (uses same `SCENE_HALF=15` constant as `ClippingPlane.tsx`)
+- E2E should cover only what must be validated in full app runtime.
+- Prefer browser Vitest for annotation/store/UI behavior validation.
+- Do not grow E2E suite for state transitions or component internals.
+
+---
+
+## Conventions
+
+- Path alias: `@/` → `src/`
+- Tailwind v4 via `@tailwindcss/vite` (no tailwind.config.js)
+- shadcn components in `src/components/ui/`
+- Single zustand store (`viewerStore.ts`), serializable state only
+- `data-testid` required on interactive UI used by tests
+- Worker syntax: `new Worker(new URL('...', import.meta.url), { type: 'module' })`
+
+---
+
+## Anti-Patterns (Do Not Introduce)
+
+- `as any`, `@ts-ignore`, `@ts-expect-error`
+- Three.js objects in persisted zustand state
+- Main-thread parsing for large PLY files
+- Expanding E2E to cover scenarios already in browser Vitest
+- Removing `preserveDrawingBuffer` from Canvas
+- Breaking clipping material-side restore behavior
+
+---
+
+## Environment Notes (Shared macOS + Linux workspace)
+
+- Linux side (agent runtime) owns dependency install and command execution.
+- macOS side accesses dev server through forwarded localhost port.
+- Standard local URL: `http://localhost:5173`.
