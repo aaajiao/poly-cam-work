@@ -47,12 +47,12 @@ const DIALOG_WIDTH = 224   // w-56 = 14rem = 224px
 const DIALOG_HEIGHT = 120  // approximate height
 
 function AnnotationInputDialog() {
-  const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
-  const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
-  const addAnnotation = useViewerStore((s) => s.addAnnotation)
-  const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
-  const activeSceneId = useViewerStore((s) => s.activeSceneId)
-  const [inputText, setInputText] = useState('')
+   const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
+   const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
+   const addAnnotation = useViewerStore((s) => s.addAnnotation)
+   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
+   const activeSceneId = useViewerStore((s) => s.activeSceneId)
+   const [inputText, setInputText] = useState('')
 
   const handleConfirm = useCallback(() => {
     if (!pendingAnnotationInput || !inputText.trim() || !activeSceneId) return
@@ -135,6 +135,15 @@ export function SceneCanvas() {
   const isLoading = useViewerStore((s) => s.isLoading)
   const loadingProgress = useViewerStore((s) => s.loadingProgress)
   const loadingMessage = useViewerStore((s) => s.loadingMessage)
+  const toolMode = useViewerStore((s) => s.toolMode)
+  const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
+  const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
+
+  const handlePointerMissed = useCallback(() => {
+    if (toolMode !== 'annotate' && selectedAnnotationId) {
+      selectAnnotation(null)
+    }
+  }, [toolMode, selectedAnnotationId, selectAnnotation])
 
   return (
     <div className="w-full h-full relative" data-testid="scene-canvas">
@@ -147,6 +156,7 @@ export function SceneCanvas() {
           toneMappingExposure: 1,
         }}
         shadows
+        onPointerMissed={handlePointerMissed}
       >
         <ambientLight intensity={0.6} />
         <directionalLight

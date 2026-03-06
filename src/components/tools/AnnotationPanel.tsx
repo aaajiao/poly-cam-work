@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as THREE from 'three'
 import { Html } from '@react-three/drei'
-import { X, ExternalLink } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useViewerStore } from '@/store/viewerStore'
 import { imageStorage } from '@/storage/imageStorage'
 import { extractVimeoId } from '@/utils/vimeo'
@@ -81,16 +81,10 @@ export function AnnotationPanel() {
         data-testid={`annotation-panel-${annotation.id}`}
         className="bg-zinc-900/95 border border-zinc-600 rounded-lg shadow-xl w-72 max-h-96 overflow-y-auto"
         style={{ pointerEvents: 'auto' }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between p-3 border-b border-zinc-700">
           <h3 className="text-white text-sm font-semibold leading-tight pr-2">{annotation.title}</h3>
-          <button
-            data-testid={`annotation-panel-close-${annotation.id}`}
-            onClick={() => selectAnnotation(null)}
-            className="text-zinc-500 hover:text-zinc-300 flex-shrink-0"
-          >
-            <X size={14} />
-          </button>
         </div>
 
         <div className="p-3 space-y-3">

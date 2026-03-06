@@ -26,7 +26,10 @@ export function AnnotationMarker({ annotation, isSelected, onSelect }: Annotatio
         data-testid={`annotation-marker-${annotation.id}`}
         className="relative cursor-pointer"
         style={{ pointerEvents: 'auto' }}
-        onClick={onSelect}
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelect()
+        }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
