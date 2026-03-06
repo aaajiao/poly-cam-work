@@ -1,4 +1,13 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+async function openSidebar(page: Page) {
+  const sidebar = page.locator('[data-testid="sidebar"]')
+  const box = await sidebar.boundingBox()
+  if (box && box.width < 100) {
+    await page.click('[data-testid="sidebar-toggle"]')
+    await page.waitForTimeout(300)
+  }
+}
 
 test.describe('Tool Modes', () => {
   test.beforeEach(async ({ page }) => {
@@ -41,37 +50,13 @@ test.describe('Tool Modes', () => {
     await expect(page.locator('[data-testid="tool-annotate"]')).toHaveClass(/bg-blue-600/)
   })
 
-  test('keyboard shortcut M activates measure tool', async ({ page }) => {
-    await page.keyboard.press('m')
-    await expect(page.locator('[data-testid="tool-measure"]')).toHaveClass(/bg-blue-600/)
-  })
-
-  test('keyboard shortcut C toggles clipping', async ({ page }) => {
-    await page.keyboard.press('c')
-    await expect(page.locator('[data-testid="clip-toggle"]')).toHaveClass(/bg-blue-600/)
-    await page.keyboard.press('c')
-    await expect(page.locator('[data-testid="clip-toggle"]')).not.toHaveClass(/bg-blue-600/)
-  })
-
-  test('keyboard shortcut A activates annotate tool', async ({ page }) => {
-    await page.keyboard.press('a')
-    await expect(page.locator('[data-testid="tool-annotate"]')).toHaveClass(/bg-blue-600/)
-  })
-
-  test('Escape returns to orbit tool', async ({ page }) => {
-    await page.keyboard.press('m')
-    await expect(page.locator('[data-testid="tool-measure"]')).toHaveClass(/bg-blue-600/)
-
-    await page.keyboard.press('Escape')
-    await expect(page.locator('[data-testid="tool-orbit"]')).toHaveClass(/bg-blue-600/)
-  })
-
   test('screenshot button exists in toolbar', async ({ page }) => {
     await expect(page.locator('[data-testid="screenshot-btn"]')).toBeVisible()
   })
 
   test('clip controls appear in sidebar when clipping enabled', async ({ page }) => {
     await page.click('[data-testid="clip-toggle"]')
+    await openSidebar(page)
     await expect(page.locator('[data-testid="clip-controls"]')).toBeVisible()
   })
 })

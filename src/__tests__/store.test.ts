@@ -62,7 +62,8 @@ describe('viewerStore', () => {
   })
 
   it('setToolMode annotate opens annotationsPanelOpen', () => {
-    const { setToolMode } = useViewerStore.getState()
+    const { setToolMode, setAnnotationsPanelOpen } = useViewerStore.getState()
+    setAnnotationsPanelOpen(false)
     expect(useViewerStore.getState().annotationsPanelOpen).toBe(false)
     setToolMode('annotate')
     expect(useViewerStore.getState().toolMode).toBe('annotate')
