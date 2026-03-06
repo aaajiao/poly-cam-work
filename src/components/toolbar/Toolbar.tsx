@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Camera, Scissors } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -8,32 +7,10 @@ import { useViewerStore } from '@/store/viewerStore'
 import { cn } from '@/lib/utils'
 
 export function Toolbar() {
-  const setToolMode = useViewerStore((s) => s.setToolMode)
   const clipEnabled = useViewerStore((s) => s.clipPlane.enabled)
   const setClipPlane = useViewerStore((s) => s.setClipPlane)
-  const toggleAnnotationsVisible = useViewerStore((s) => s.toggleAnnotationsVisible)
 
   const toggleClip = () => setClipPlane({ enabled: !clipEnabled })
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-
-      switch (e.key.toLowerCase()) {
-        case 'o': setToolMode('orbit'); break
-        case 'm': setToolMode('measure'); break
-        case 'c': toggleClip(); break
-        case 'a': setToolMode('annotate'); break
-        case 'escape': setToolMode('orbit'); break
-        case 'v':
-          e.preventDefault()
-          toggleAnnotationsVisible()
-          break
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setToolMode, toggleClip, toggleAnnotationsVisible])
 
   const handleScreenshot = () => {
     const fn = (window as Window & { __takeScreenshot?: () => void }).__takeScreenshot
@@ -68,7 +45,7 @@ export function Toolbar() {
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Toggle clipping plane <kbd className="ml-1 px-1 bg-zinc-700 rounded text-zinc-300">C</kbd>
+            Toggle clipping plane
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -81,7 +58,7 @@ export function Toolbar() {
         data-testid="screenshot-btn"
         onClick={handleScreenshot}
         className="h-8 w-8 text-zinc-400 hover:text-zinc-100"
-        title="Screenshot (Ctrl+S)"
+        title="Screenshot"
       >
         <Camera size={16} />
       </Button>

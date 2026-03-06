@@ -4,10 +4,10 @@ import type { ToolMode } from '@/types'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
-const TOOLS: { value: ToolMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
-  { value: 'orbit', label: 'Orbit', icon: <MousePointer2 size={14} />, shortcut: 'O' },
-  { value: 'measure', label: 'Measure', icon: <Ruler size={14} />, shortcut: 'M' },
-  { value: 'annotate', label: 'Annotate', icon: <Tag size={14} />, shortcut: 'A' },
+const TOOLS: { value: ToolMode; label: string; icon: React.ReactNode }[] = [
+  { value: 'orbit', label: 'Orbit', icon: <MousePointer2 size={14} /> },
+  { value: 'measure', label: 'Measure', icon: <Ruler size={14} /> },
+  { value: 'annotate', label: 'Annotate', icon: <Tag size={14} /> },
 ]
 
 export function ToolButtons() {
@@ -41,7 +41,7 @@ export function ToolButtons() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                {tool.label} <kbd className="ml-1 px-1 bg-zinc-700 rounded text-zinc-300">{tool.shortcut}</kbd>
+                {tool.label}
               </TooltipContent>
             </Tooltip>
           ))}
@@ -64,7 +64,7 @@ export function ToolButtons() {
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Toggle annotations <kbd className="ml-1 px-1 bg-zinc-700 rounded text-zinc-300">V</kbd>
+            Toggle annotations
           </TooltipContent>
         </Tooltip>
       </div>
