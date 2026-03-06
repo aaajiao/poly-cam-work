@@ -14,9 +14,12 @@ export function AnnotationMarkers() {
   const annotations = useViewerStore((s) => s.annotations)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
+  const openAnnotationPanelIds = useViewerStore((s) => s.openAnnotationPanelIds)
   const annotationsVisible = useViewerStore((s) => s.annotationsVisible)
   const clipPlane = useViewerStore((s) => s.clipPlane)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
+  const openAnnotationPanel = useViewerStore((s) => s.openAnnotationPanel)
+  const closeAnnotationPanel = useViewerStore((s) => s.closeAnnotationPanel)
   const { camera } = useThree()
 
   // Triggers a single re-render after the first useFrame populates LOD state,
@@ -48,6 +51,20 @@ export function AnnotationMarkers() {
   const lodStateRef = useRef<Map<string, 'far' | 'close'>>(new Map())
   // Maps instancedMesh instance index → annotation, kept in sync each frame.
   const farAnnotationsRef = useRef<Annotation[]>([])
+  const openPanelIdSet = useMemo(() => new Set(openAnnotationPanelIds), [openAnnotationPanelIds])
+
+  const handlePanelToggle = useCallback((id: string) => {
+    if (openPanelIdSet.has(id)) {
+      closeAnnotationPanel(id)
+      if (selectedAnnotationId === id) {
+        selectAnnotation(null)
+      }
+      return
+    }
+
+    openAnnotationPanel(id)
+    selectAnnotation(id)
+  }, [openPanelIdSet, closeAnnotationPanel, selectedAnnotationId, selectAnnotation, openAnnotationPanel])
 
   useFrame(({ clock }) => {
     if (!annotationsVisible) return
@@ -75,7 +92,7 @@ export function AnnotationMarkers() {
     const newLod = new Map<string, 'far' | 'close'>()
     let htmlCount = 0
     for (const { annotation, dist } of withDist) {
-      const forceClose = annotation.id === selectedAnnotationId
+      const forceClose = annotation.id === selectedAnnotationId || openPanelIdSet.has(annotation.id)
       if (forceClose || (dist <= FAR_THRESHOLD && htmlCount < MAX_HTML_MARKERS)) {
         newLod.set(annotation.id, 'close')
         htmlCount++
@@ -111,10 +128,10 @@ export function AnnotationMarkers() {
       e.stopPropagation()
       const idx = e.instanceId
       if (idx !== undefined && farAnnotationsRef.current[idx]) {
-        selectAnnotation(farAnnotationsRef.current[idx].id)
+        handlePanelToggle(farAnnotationsRef.current[idx].id)
       }
     },
-    [selectAnnotation]
+    [handlePanelToggle]
   )
 
   if (!annotationsVisible) return null
@@ -135,8 +152,8 @@ export function AnnotationMarkers() {
         <AnnotationMarker
           key={annotation.id}
           annotation={annotation}
-          isSelected={selectedAnnotationId === annotation.id}
-          onSelect={() => selectAnnotation(annotation.id)}
+          isSelected={openPanelIdSet.has(annotation.id) || selectedAnnotationId === annotation.id}
+          onSelect={() => handlePanelToggle(annotation.id)}
         />
       ))}
     </>

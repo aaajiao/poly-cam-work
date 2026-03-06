@@ -50,6 +50,7 @@ function AnnotationInputDialog() {
    const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
    const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
    const addAnnotation = useViewerStore((s) => s.addAnnotation)
+   const openAnnotationPanel = useViewerStore((s) => s.openAnnotationPanel)
    const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
    const activeSceneId = useViewerStore((s) => s.activeSceneId)
    const [inputText, setInputText] = useState('')
@@ -69,10 +70,11 @@ function AnnotationInputDialog() {
       sceneId: activeSceneId,
       createdAt: Date.now(),
     })
+    openAnnotationPanel(newId)
     selectAnnotation(newId)
     setPendingAnnotationInput(null)
     setInputText('')
-  }, [pendingAnnotationInput, inputText, activeSceneId, addAnnotation, selectAnnotation, setPendingAnnotationInput])
+  }, [pendingAnnotationInput, inputText, activeSceneId, addAnnotation, openAnnotationPanel, selectAnnotation, setPendingAnnotationInput])
 
   const handleCancel = useCallback(() => {
     setPendingAnnotationInput(null)
@@ -136,6 +138,7 @@ export function SceneCanvas() {
   const loadingProgress = useViewerStore((s) => s.loadingProgress)
   const loadingMessage = useViewerStore((s) => s.loadingMessage)
   const toolMode = useViewerStore((s) => s.toolMode)
+  const cameraControlsEnabled = useViewerStore((s) => s.cameraControlsEnabled)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
 
@@ -180,6 +183,7 @@ export function SceneCanvas() {
 
         <OrbitControls
           makeDefault
+          enabled={cameraControlsEnabled}
           enableDamping
           dampingFactor={0.05}
           minDistance={0.5}

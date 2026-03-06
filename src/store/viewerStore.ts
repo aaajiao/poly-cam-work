@@ -31,9 +31,11 @@ interface ViewerState {
   pendingAnnotationInput: PendingAnnotationInput | null
 
   selectedAnnotationId: string | null
+  openAnnotationPanelIds: string[]
   annotationsVisible: boolean
   annotationsPanelOpen: boolean
   sidebarOpen: boolean
+  cameraControlsEnabled: boolean
 
   isLoading: boolean
   loadingProgress: number
@@ -51,9 +53,14 @@ interface ViewerState {
   updateAnnotation: (id: string, text: string) => void
   updateAnnotationContent: (id: string, content: Partial<Pick<Annotation, 'title' | 'description' | 'images' | 'videoUrl' | 'links'>>) => void
   selectAnnotation: (id: string | null) => void
+  openAnnotationPanel: (id: string) => void
+  closeAnnotationPanel: (id: string) => void
+  toggleAnnotationPanel: (id: string) => void
+  clearAnnotationPanels: () => void
   toggleAnnotationsVisible: () => void
   setAnnotationsPanelOpen: (open: boolean) => void
   setSidebarOpen: (open: boolean) => void
+  setCameraControlsEnabled: (enabled: boolean) => void
   setClipPlane: (state: Partial<ClipPlaneState>) => void
   setColorMapMode: (mode: ColorMapMode) => void
   setPointSize: (size: number) => void
@@ -87,16 +94,23 @@ export const useViewerStore = create<ViewerState>()(
       pendingAnnotationInput: null,
 
       selectedAnnotationId: null,
+      openAnnotationPanelIds: [],
       annotationsVisible: true,
       annotationsPanelOpen: false,
       sidebarOpen: false,
+      cameraControlsEnabled: true,
 
       isLoading: false,
       loadingProgress: 0,
       loadingMessage: '',
 
       setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
-      setActiveScene: (id) => set({ activeSceneId: id, measurements: [], selectedAnnotationId: null }),
+      setActiveScene: (id) => set({
+        activeSceneId: id,
+        measurements: [],
+        selectedAnnotationId: null,
+        openAnnotationPanelIds: [],
+      }),
       setViewMode: (viewMode) => set({ viewMode }),
       setToolMode: (toolMode) => set((state) => {
         const togglingOff = toolMode !== 'orbit' && toolMode === state.toolMode
@@ -119,7 +133,11 @@ export const useViewerStore = create<ViewerState>()(
         set((state) => ({ annotations: [...state.annotations, a] })),
       removeAnnotation: (id) => {
         imageStorage.deleteByAnnotation(id).catch(console.error)
-        set((state) => ({ annotations: state.annotations.filter((a) => a.id !== id) }))
+        set((state) => ({
+          annotations: state.annotations.filter((a) => a.id !== id),
+          selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
+          openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => panelId !== id),
+        }))
       },
       updateAnnotation: (id, text) =>
         set((state) => ({
@@ -135,10 +153,27 @@ export const useViewerStore = create<ViewerState>()(
         })),
 
       selectAnnotation: (id) => set({ selectedAnnotationId: id }),
+      openAnnotationPanel: (id) =>
+        set((state) => {
+          if (state.openAnnotationPanelIds.includes(id)) return state
+          return { openAnnotationPanelIds: [...state.openAnnotationPanelIds, id] }
+        }),
+      closeAnnotationPanel: (id) =>
+        set((state) => ({
+          openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => panelId !== id),
+        })),
+      toggleAnnotationPanel: (id) =>
+        set((state) => ({
+          openAnnotationPanelIds: state.openAnnotationPanelIds.includes(id)
+            ? state.openAnnotationPanelIds.filter((panelId) => panelId !== id)
+            : [...state.openAnnotationPanelIds, id],
+        })),
+      clearAnnotationPanels: () => set({ openAnnotationPanelIds: [] }),
       toggleAnnotationsVisible: () =>
         set((state) => ({ annotationsVisible: !state.annotationsVisible })),
       setAnnotationsPanelOpen: (annotationsPanelOpen) => set({ annotationsPanelOpen }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+      setCameraControlsEnabled: (cameraControlsEnabled) => set({ cameraControlsEnabled }),
 
       setClipPlane: (partial) =>
         set((state) => ({
@@ -155,16 +190,24 @@ export const useViewerStore = create<ViewerState>()(
         set((state) => ({
           uploadedScenes: [...state.uploadedScenes, scene],
           activeSceneId: scene.id,
+          selectedAnnotationId: null,
+          openAnnotationPanelIds: [],
         })),
       removeUploadedScene: (id) =>
         set((state) => {
           const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
+          const removedIds = new Set(removedAnnotations.map((a) => a.id))
           for (const a of removedAnnotations) {
             imageStorage.deleteByAnnotation(a.id).catch(console.error)
           }
           return {
             uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
             annotations: state.annotations.filter((a) => a.sceneId !== id),
+            selectedAnnotationId:
+              state.selectedAnnotationId && removedIds.has(state.selectedAnnotationId)
+                ? null
+                : state.selectedAnnotationId,
+            openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => !removedIds.has(panelId)),
           }
         }),
     }),

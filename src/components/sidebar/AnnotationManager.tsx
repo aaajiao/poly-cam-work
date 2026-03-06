@@ -196,7 +196,10 @@ export function AnnotationManager() {
   const annotations = useViewerStore((s) => s.annotations)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
+  const openAnnotationPanelIds = useViewerStore((s) => s.openAnnotationPanelIds)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
+  const openAnnotationPanel = useViewerStore((s) => s.openAnnotationPanel)
+  const closeAnnotationPanel = useViewerStore((s) => s.closeAnnotationPanel)
   const removeAnnotation = useViewerStore((s) => s.removeAnnotation)
   const annotationsPanelOpen = useViewerStore((s) => s.annotationsPanelOpen)
   const setAnnotationsPanelOpen = useViewerStore((s) => s.setAnnotationsPanelOpen)
@@ -208,12 +211,13 @@ export function AnnotationManager() {
     (annotation: Annotation) => {
       if (window.confirm('Delete this annotation?')) {
         removeAnnotation(annotation.id)
+        closeAnnotationPanel(annotation.id)
         if (selectedAnnotationId === annotation.id) {
           selectAnnotation(null)
         }
       }
     },
-    [removeAnnotation, selectAnnotation, selectedAnnotationId]
+    [removeAnnotation, closeAnnotationPanel, selectAnnotation, selectedAnnotationId]
   )
 
   return (
@@ -256,12 +260,24 @@ export function AnnotationManager() {
           {sceneAnnotations.length > 0 && (
             <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5 mt-3" data-testid="annotation-list">
               {sceneAnnotations.map((annotation) => {
-                const isSelected = annotation.id === selectedAnnotationId
+                const isPanelOpen = openAnnotationPanelIds.includes(annotation.id)
+                const isSelected = annotation.id === selectedAnnotationId || isPanelOpen
                 return (
                   <div
                     key={annotation.id}
                     data-testid={`annotation-item-${annotation.id}`}
-                    onClick={() => selectAnnotation(isSelected ? null : annotation.id)}
+                    onClick={() => {
+                      if (isPanelOpen) {
+                        closeAnnotationPanel(annotation.id)
+                        if (selectedAnnotationId === annotation.id) {
+                          selectAnnotation(null)
+                        }
+                        return
+                      }
+
+                      openAnnotationPanel(annotation.id)
+                      selectAnnotation(annotation.id)
+                    }}
                     className={cn(
                       'flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer transition-colors group',
                       isSelected
