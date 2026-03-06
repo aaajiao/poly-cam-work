@@ -198,6 +198,8 @@ export function AnnotationManager() {
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
   const removeAnnotation = useViewerStore((s) => s.removeAnnotation)
+  const annotationsVisible = useViewerStore((s) => s.annotationsVisible)
+  const toggleAnnotationsVisible = useViewerStore((s) => s.toggleAnnotationsVisible)
 
   const sceneAnnotations = annotations.filter((a) => a.sceneId === activeSceneId)
   const selectedAnnotation = sceneAnnotations.find((a) => a.id === selectedAnnotationId) ?? null
@@ -216,72 +218,91 @@ export function AnnotationManager() {
 
   return (
     <div data-testid="annotation-manager">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-zinc-500 uppercase tracking-wider">Annotations</p>
-        {sceneAnnotations.length > 0 && (
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider">Annotations</p>
+          {sceneAnnotations.length > 0 && (
+            <span
+              className="bg-zinc-700 text-zinc-300 text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+              data-testid="annotation-count-badge"
+            >
+              {sceneAnnotations.length}
+            </span>
+          )}
+        </div>
+        <button
+          data-testid="annotations-toggle"
+          onClick={toggleAnnotationsVisible}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+            annotationsVisible ? 'bg-blue-600' : 'bg-zinc-700'
+          }`}
+        >
           <span
-            className="bg-zinc-700 text-zinc-300 text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-            data-testid="annotation-count-badge"
-          >
-            {sceneAnnotations.length}
-          </span>
-        )}
+            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+              annotationsVisible ? 'translate-x-5' : 'translate-x-1'
+            }`}
+          />
+        </button>
       </div>
 
-      {sceneAnnotations.length === 0 && (
-        <p className="text-zinc-600 text-xs text-center py-3">
-          No annotations yet. Press <kbd className="bg-zinc-800 px-1 rounded">A</kbd> to add markers.
-        </p>
-      )}
+      {annotationsVisible && (
+        <>
+          {sceneAnnotations.length === 0 && (
+            <p className="text-zinc-600 text-xs text-center py-3">
+              No annotations yet. Press <kbd className="bg-zinc-800 px-1 rounded">A</kbd> to add markers.
+            </p>
+          )}
 
-      {sceneAnnotations.length > 0 && (
-        <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5" data-testid="annotation-list">
-          {sceneAnnotations.map((annotation) => {
-            const isSelected = annotation.id === selectedAnnotationId
-            return (
-              <div
-                key={annotation.id}
-                data-testid={`annotation-item-${annotation.id}`}
-                onClick={() => selectAnnotation(isSelected ? null : annotation.id)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer transition-colors group',
-                  isSelected
-                    ? 'bg-blue-500/10 border border-blue-500/50'
-                    : 'border border-transparent hover:bg-zinc-800'
-                )}
-              >
-                <span
-                  className={cn(
-                    'flex-1 text-xs truncate',
-                    isSelected ? 'text-blue-300' : 'text-zinc-300'
-                  )}
-                >
-                  {annotation.title || <span className="italic text-zinc-600">Untitled</span>}
-                </span>
+          {sceneAnnotations.length > 0 && (
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5 mt-3" data-testid="annotation-list">
+              {sceneAnnotations.map((annotation) => {
+                const isSelected = annotation.id === selectedAnnotationId
+                return (
+                  <div
+                    key={annotation.id}
+                    data-testid={`annotation-item-${annotation.id}`}
+                    onClick={() => selectAnnotation(isSelected ? null : annotation.id)}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer transition-colors group',
+                      isSelected
+                        ? 'bg-blue-500/10 border border-blue-500/50'
+                        : 'border border-transparent hover:bg-zinc-800'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'flex-1 text-xs truncate',
+                        isSelected ? 'text-blue-300' : 'text-zinc-300'
+                      )}
+                    >
+                      {annotation.title || <span className="italic text-zinc-600">Untitled</span>}
+                    </span>
 
-                <MediaIndicators annotation={annotation} />
+                    <MediaIndicators annotation={annotation} />
 
-                <button
-                  data-testid={`annotation-delete-${annotation.id}`}
-                  aria-label="Delete annotation"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDelete(annotation)
-                  }}
-                  className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all shrink-0"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
+                    <button
+                      data-testid={`annotation-delete-${annotation.id}`}
+                      aria-label="Delete annotation"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDelete(annotation)
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all shrink-0"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
-      {selectedAnnotation && (
-        <div className="border-t border-zinc-800 mt-3" data-testid="annotation-editor">
-          <AnnotationEditor key={selectedAnnotation.id} annotation={selectedAnnotation} />
-        </div>
+          {selectedAnnotation && (
+            <div className="border-t border-zinc-800 mt-3" data-testid="annotation-editor">
+              <AnnotationEditor key={selectedAnnotation.id} annotation={selectedAnnotation} />
+            </div>
+          )}
+        </>
       )}
     </div>
   )
