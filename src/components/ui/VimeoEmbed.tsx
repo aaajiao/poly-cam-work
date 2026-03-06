@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 interface VimeoEmbedProps {
   videoId: string
   className?: string
+  sourceUrl?: string | null
 }
 
 interface VimeoOEmbedResponse {
@@ -13,7 +14,7 @@ interface VimeoOEmbedResponse {
 
 const DEFAULT_ASPECT_RATIO = 16 / 9
 
-export function VimeoEmbed({ videoId, className }: VimeoEmbedProps) {
+export function VimeoEmbed({ videoId, className, sourceUrl }: VimeoEmbedProps) {
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_ASPECT_RATIO)
 
   useEffect(() => {
@@ -50,7 +51,8 @@ export function VimeoEmbed({ videoId, className }: VimeoEmbedProps) {
     return () => controller.abort()
   }, [videoId])
 
-  const iframeSrc = `https://player.vimeo.com/video/${videoId}?title=0&byline=0&portrait=0&dnt=1`
+  const publicUrl = sourceUrl?.trim() ? sourceUrl.trim() : `https://vimeo.com/${videoId}`
+  const iframeSrc = `https://player.vimeo.com/video/${videoId}?title=0&byline=0&portrait=0&dnt=1&autoplay=0&muted=0&background=0&controls=1&vimeo_logo=0&badge=0`
 
   return (
     <div
@@ -60,10 +62,35 @@ export function VimeoEmbed({ videoId, className }: VimeoEmbedProps) {
       <iframe
         src={iframeSrc}
         className="absolute inset-0 h-full w-full"
-        allow="autoplay; fullscreen; picture-in-picture"
+        allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media"
         allowFullScreen
         title="Vimeo video player"
       />
+      <div
+        className="absolute right-0 top-0 z-10 h-10 w-20"
+        onPointerDown={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }}
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }}
+        aria-hidden="true"
+      >
+        <div className="absolute inset-0 rounded-bl-md bg-gradient-to-l from-black/95 via-black/70 to-transparent" />
+      </div>
+      <a
+        href={publicUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute right-1 top-1 z-20 flex h-6 w-6 items-center justify-center rounded bg-zinc-900/85 text-[10px] font-semibold text-zinc-100 transition-colors hover:bg-zinc-800/90"
+        onClick={(e) => e.stopPropagation()}
+        aria-label="Open on Vimeo"
+        title="Open on Vimeo"
+      >
+        V
+      </a>
     </div>
   )
 }

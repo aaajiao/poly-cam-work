@@ -1201,7 +1201,7 @@ function AnnotationFloatingPanel({
                 maintainAspectRatio
                 showHandleAlways
               >
-                <VimeoEmbed videoId={vimeoId} className="w-full" />
+                <VimeoEmbed videoId={vimeoId} sourceUrl={annotation.videoUrl} className="w-full" />
               </ResizableMedia>
             )}
 
