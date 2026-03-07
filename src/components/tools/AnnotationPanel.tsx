@@ -446,6 +446,10 @@ function imageKey(image: AnnotationImage): string {
   return isRemoteImage(image) ? `remote:${image.url}` : `local:${image.localId}`
 }
 
+function isGifFilename(filename: string): boolean {
+  return /\.gif$/i.test(filename.trim())
+}
+
 function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnailsProps) {
   const [thumbs, setThumbs] = useState<Record<string, LoadedThumb>>({})
 
@@ -468,8 +472,9 @@ function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnails
         }
 
         if (!isLocalImage(img)) continue
-        const thumbnailBlob = await imageStorage.getThumbnail(img.localId)
-        const sourceBlob = thumbnailBlob ?? (await imageStorage.get(img.localId))
+        const sourceBlob = isGifFilename(img.filename)
+          ? await imageStorage.get(img.localId)
+          : (await imageStorage.getThumbnail(img.localId)) ?? (await imageStorage.get(img.localId))
         if (!sourceBlob) continue
 
         const objectUrl = URL.createObjectURL(sourceBlob)

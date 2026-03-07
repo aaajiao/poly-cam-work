@@ -29,6 +29,14 @@ function imageKey(image: AnnotationImage): string {
   return isRemoteImage(image) ? `remote:${image.url}` : `local:${image.localId}`
 }
 
+function isGifFilename(filename: string): boolean {
+  return /\.gif$/i.test(filename.trim())
+}
+
+function isGifFile(file: File): boolean {
+  return file.type === 'image/gif' || isGifFilename(file.name)
+}
+
 async function compressImage(file: File, maxBytes: number): Promise<Blob> {
   if (file.size <= maxBytes) return file
 
@@ -96,8 +104,9 @@ export function ImageUpload({
 
         if (!isLocalImage(image)) continue
 
-        const thumbnailBlob = await imageStorage.getThumbnail(image.localId)
-        const sourceBlob = thumbnailBlob ?? (await imageStorage.get(image.localId))
+        const sourceBlob = isGifFilename(image.filename)
+          ? await imageStorage.get(image.localId)
+          : (await imageStorage.getThumbnail(image.localId)) ?? (await imageStorage.get(image.localId))
         if (!sourceBlob || cancelled) continue
 
         const localUrl = URL.createObjectURL(sourceBlob)
@@ -149,9 +158,11 @@ export function ImageUpload({
         }
 
         try {
-          const compressed = await compressImage(file, 1 * 1024 * 1024)
+          const imageBlob = isGifFile(file)
+            ? file
+            : await compressImage(file, 1 * 1024 * 1024)
           const localId = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`
-          await imageStorage.save(localId, compressed, {
+          await imageStorage.save(localId, imageBlob, {
             annotationId,
             filename: file.name,
           })

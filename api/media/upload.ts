@@ -2,7 +2,7 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { requireAuth } from '../_lib/auth'
 import { badRequest, methodNotAllowed, unauthorized } from '../_lib/http'
 
-const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+export const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
 interface MediaUploadPayload {
   sceneId?: string
@@ -39,13 +39,13 @@ export default async function handler(request: Request) {
     return methodNotAllowed(['POST'])
   }
 
-  if (!requireAuth(request)) {
-    return unauthorized()
-  }
-
   const body = (await request.json().catch(() => null)) as HandleUploadBody | null
   if (!body) {
     return badRequest('Invalid upload body')
+  }
+
+  if (body.type === 'blob.generate-client-token' && !requireAuth(request)) {
+    return unauthorized()
   }
 
   const response = await handleUpload({
