@@ -13,6 +13,7 @@ interface CreateModelBody {
   name?: string
   glbUrl?: string
   plyUrl?: string
+  mergeById?: boolean
 }
 
 const MODEL_REGISTRY_PATH = 'models/index.json'
@@ -143,6 +144,44 @@ async function createModelWithRetry(input: {
   throw new Error('Failed to persist model registration due to concurrent updates')
 }
 
+async function upsertModelByIdWithRetry(input: {
+  id: string
+  name: string
+  glbUrl: string
+  plyUrl: string
+}) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const registry = await readModelRegistry()
+    const now = Date.now()
+    const existing = registry.models.find((model) => model.id === input.id)
+
+    const merged: ScanScene = {
+      id: input.id,
+      name: input.name,
+      glbUrl: input.glbUrl,
+      plyUrl: input.plyUrl,
+      source: 'cloud',
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    const models = [merged, ...registry.models.filter((model) => model.id !== input.id)]
+    await writeModelRegistry(models)
+
+    const confirmed = await readModelRegistry()
+    const confirmedModel = confirmed.models.find((model) => model.id === input.id)
+    if (
+      confirmedModel &&
+      confirmedModel.glbUrl === input.glbUrl &&
+      confirmedModel.plyUrl === input.plyUrl
+    ) {
+      return merged
+    }
+  }
+
+  throw new Error('Failed to merge model registration due to concurrent updates')
+}
+
 export default async function handler(request: Request) {
   if (request.method !== 'GET' && request.method !== 'POST') {
     return methodNotAllowed(['GET', 'POST'])
@@ -170,12 +209,23 @@ export default async function handler(request: Request) {
   }
 
   const requestedId = typeof body.id === 'string' ? sanitizeSceneId(body.id) : ''
-  const model = await createModelWithRetry({
-    requestedId,
-    name,
-    glbUrl,
-    plyUrl,
-  })
+  if (body.mergeById && !requestedId) {
+    return badRequest('id is required when mergeById is true')
+  }
+
+  const model = body.mergeById
+    ? await upsertModelByIdWithRetry({
+        id: requestedId,
+        name,
+        glbUrl,
+        plyUrl,
+      })
+    : await createModelWithRetry({
+        requestedId,
+        name,
+        glbUrl,
+        plyUrl,
+      })
 
   return jsonResponse({ ok: true, model })
 }

@@ -4,6 +4,7 @@ import * as publishApi from '@/lib/publishApi'
 import * as modelApi from '@/lib/modelApi'
 import { imageStorage } from '@/storage/imageStorage'
 import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
+import { vercelBlobModelStorage } from '@/storage/vercelBlobModelStorage'
 import type { SceneDraft } from '@/types'
 
 describe('viewerStore', () => {
@@ -305,6 +306,78 @@ describe('viewerStore', () => {
     const state = useViewerStore.getState()
     expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-new', 'cloud-old'])
     expect(state.activeSceneId).toBe('cloud-new')
+  })
+
+  it('syncPresetScenesToCloud uploads all preset pairs and merges by preset ids', async () => {
+    useViewerStore.setState({ isAuthenticated: true })
+
+    const uploadSpy = vi
+      .spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+      .mockImplementation(async (url, params) => `https://blob.example/${params.sceneKey}/${params.kind}-${url.split('/').pop()}`)
+
+    const createModelSpy = vi
+      .spyOn(modelApi, 'createModel')
+      .mockImplementation(async (input) => ({
+        id: input.id ?? 'cloud-generated',
+        name: input.name,
+        glbUrl: input.glbUrl,
+        plyUrl: input.plyUrl,
+        source: 'cloud',
+      }))
+
+    vi.spyOn(modelApi, 'getModels').mockResolvedValue([
+      {
+        id: 'scan-a',
+        name: 'Scan A (Corridor)',
+        glbUrl: 'https://blob.example/scan-a/glb-scan-a.glb',
+        plyUrl: 'https://blob.example/scan-a/ply-scan-a.ply',
+        source: 'cloud',
+      },
+      {
+        id: 'scan-b',
+        name: 'Scan B (Large Room)',
+        glbUrl: 'https://blob.example/scan-b/glb-scan-b.glb',
+        plyUrl: 'https://blob.example/scan-b/ply-scan-b.ply',
+        source: 'cloud',
+      },
+      {
+        id: 'scan-c',
+        name: 'Scan C (Multi-Room)',
+        glbUrl: 'https://blob.example/scan-c/glb-scan-c.glb',
+        plyUrl: 'https://blob.example/scan-c/ply-scan-c.ply',
+        source: 'cloud',
+      },
+    ])
+
+    const { syncPresetScenesToCloud } = useViewerStore.getState()
+    const synced = await syncPresetScenesToCloud()
+
+    expect(uploadSpy).toHaveBeenCalledTimes(6)
+    expect(createModelSpy).toHaveBeenCalledTimes(3)
+    expect(createModelSpy).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: 'scan-a', mergeById: true })
+    )
+    expect(createModelSpy).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: 'scan-b', mergeById: true })
+    )
+    expect(createModelSpy).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ id: 'scan-c', mergeById: true })
+    )
+    expect(synced).toHaveLength(3)
+    expect(useViewerStore.getState().cloudScenes.map((scene) => scene.id)).toEqual([
+      'scan-a',
+      'scan-b',
+      'scan-c',
+    ])
+  })
+
+  it('syncPresetScenesToCloud requires login', async () => {
+    useViewerStore.setState({ isAuthenticated: false })
+    const { syncPresetScenesToCloud } = useViewerStore.getState()
+    await expect(syncPresetScenesToCloud()).rejects.toThrow('Login required to sync preset models.')
   })
 
   it('loadPublishedVersions stores sorted versions and live version mapping', async () => {

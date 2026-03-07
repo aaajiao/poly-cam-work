@@ -44,6 +44,7 @@ export async function createModel(input: {
   glbUrl: string
   plyUrl: string
   id?: string
+  mergeById?: boolean
 }): Promise<ScanScene> {
   const result = await requestJson<CreateModelResponse>('/api/models', {
     method: 'POST',

@@ -15,6 +15,7 @@ import type {
 import { PRESET_SCENES } from './presetScenes'
 import { imageStorage } from '@/storage/imageStorage'
 import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
+import { vercelBlobModelStorage } from '@/storage/vercelBlobModelStorage'
 import * as publishApi from '@/lib/publishApi'
 import * as modelApi from '@/lib/modelApi'
 
@@ -246,6 +247,7 @@ interface ViewerState {
   removeUploadedScene: (id: string) => void
   loadCloudScenes: () => Promise<void>
   addCloudScene: (scene: ScanScene) => void
+  syncPresetScenesToCloud: () => Promise<ScanScene[]>
   loadDraft: (sceneId: string) => Promise<void>
   loadPublishedVersions: (sceneId: string) => Promise<void>
   saveDraft: (sceneId: string) => Promise<number>
@@ -483,6 +485,38 @@ export const useViewerStore = create<ViewerState>()(
           openAnnotationPanelIds: [],
           hoveredAnnotationId: null,
         }))
+      },
+      syncPresetScenesToCloud: async () => {
+        if (!get().isAuthenticated) {
+          throw new Error('Login required to sync preset models.')
+        }
+
+        const presetScenes = get().scenes
+        const syncedModels: ScanScene[] = []
+        for (const scene of presetScenes) {
+          const [glbUrl, plyUrl] = await Promise.all([
+            vercelBlobModelStorage.uploadFromUrl(scene.glbUrl, {
+              sceneKey: scene.id,
+              kind: 'glb',
+            }),
+            vercelBlobModelStorage.uploadFromUrl(scene.plyUrl, {
+              sceneKey: scene.id,
+              kind: 'ply',
+            }),
+          ])
+
+          const mergedModel = await modelApi.createModel({
+            id: scene.id,
+            name: scene.name,
+            glbUrl,
+            plyUrl,
+            mergeById: true,
+          })
+          syncedModels.push(mergedModel)
+        }
+
+        await get().loadCloudScenes()
+        return syncedModels
       },
       removeUploadedScene: (id) =>
         set((state) => {

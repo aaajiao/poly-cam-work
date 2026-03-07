@@ -2,6 +2,10 @@ import { upload } from '@vercel/blob/client'
 
 type ModelFileKind = 'glb' | 'ply'
 
+function defaultFilename(kind: ModelFileKind) {
+  return kind === 'glb' ? 'model.glb' : 'model.ply'
+}
+
 function sanitizeSegment(value: string) {
   return value
     .trim()
@@ -37,6 +41,26 @@ class VercelBlobModelStorage {
     })
 
     return result.url
+  }
+
+  async uploadFromUrl(url: string, params: { sceneKey: string; kind: ModelFileKind }): Promise<string> {
+    const response = await fetch(url, {
+      credentials: 'omit',
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch model asset: ${url}`)
+    }
+
+    const blob = await response.blob()
+    const pathname = new URL(url, window.location.origin).pathname
+    const nameSegment = pathname.split('/').filter(Boolean).pop() ?? defaultFilename(params.kind)
+    const file = new File([blob], nameSegment, {
+      type: blob.type || 'application/octet-stream',
+    })
+
+    return this.upload(file, params)
   }
 }
 
