@@ -24,15 +24,18 @@ src/
 │   ├── upload/      # DropZone + upload UI
 │   └── ui/          # shadcn + app-specific UI (VimeoEmbed, StatusBar, etc.)
 ├── hooks/           # usePLYLoader, useFileUpload, useScreenshot
-├── lib/             # shared cn() helper
-├── storage/         # IndexedDB-backed image storage abstraction
+├── lib/             # shared helpers + API clients (modelApi, publishApi, utils)
+├── storage/         # IndexedDB + Vercel Blob adapters for images/models
 ├── store/           # zustand viewerStore + presetScenes
 ├── types/           # shared app types
 ├── utils/           # pure helpers: colorMapping, measurement, vimeo, raycasting, screenshot
 └── workers/         # ply-parser.worker.ts (off-thread PLY parsing)
 
+api/                 # Vercel Functions for auth/draft/media/models/publish/release/rollback
 e2e/                 # Playwright smoke E2E tests only
-api/                 # Vercel Functions for auth/draft/media/publish/release/rollback
+public/              # static assets (source model files live in public/models)
+scripts/             # maintenance scripts (cleanup-orphan-assets)
+docs/                # planning and implementation notes
 ```
 
 ---
@@ -79,6 +82,14 @@ Main interaction:
 - Rollback API: `POST /api/rollback/:sceneId` moves live pointer and syncs draft baseline
 - UI controls: `PublishButton` shows `saved/unsaved`, release dropdown, rollback click, and delete with confirmation
 
+### 6) Model registry + cloud scene flow
+
+- Model registry API: `GET/POST /api/models` stores cloud scene metadata in Blob (`models/index.json`)
+- Model upload API: `POST /api/models/upload` issues client upload tokens with strict path/metadata checks
+- Frontend API client: `src/lib/modelApi.ts` powers list/create/replace model operations
+- Store integration: `viewerStore.loadCloudScenes` and `syncPresetScenesToCloud` hydrate cloud scenes and keep active scene valid
+- Stale model/image cleanup: handled in registry replacement code and `scripts/cleanup-orphan-assets.ts`
+
 ---
 
 ## Where To Look
@@ -93,8 +104,11 @@ Main interaction:
 | Change clipping behavior | `src/components/tools/ClippingPlane.tsx` |
 | Change screenshot behavior | `src/components/viewer/ScreenshotButton.tsx`, `src/hooks/useScreenshot.ts` |
 | Change Vimeo URL handling | `src/utils/vimeo.ts`, `src/components/ui/VimeoEmbed.tsx` |
+| Change cloud model loading/sync behavior | `src/store/viewerStore.ts`, `src/lib/modelApi.ts` |
+| Change model registry or upload token logic | `api/models/index.ts`, `api/models/upload.ts` |
 | Change publish workflow APIs | `api/*`, `api/_lib/*`, `src/lib/publishApi.ts` |
 | Change publish UI/labels/version menu | `src/components/sidebar/PublishButton.tsx`, `src/components/sidebar/LoginDialog.tsx` |
+| Change orphaned blob cleanup behavior | `api/_lib/sceneAssetCleanup.ts`, `scripts/cleanup-orphan-assets.ts` |
 | Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx` |
 | Add/adjust E2E smoke test | `e2e/smoke.test.ts` |
 
@@ -120,6 +134,11 @@ Do not apply this transform to GLB path.
 ### Clipping consistency
 
 Tools and clipping constants must stay aligned (`CLIP_SCENE_HALF` vs clipping plane world mapping).
+
+### Cloud model URL hygiene
+
+Cloud scenes are filtered by `hasValidSceneAssetUrls` before runtime use.
+Keep model `glbUrl`/`plyUrl` as valid HTTP(S) URLs with non-placeholder hosts, or scenes will be excluded.
 
 ---
 
@@ -153,6 +172,8 @@ bun run test:vitest:browser # browser integration only
 bun run test:e2e            # Playwright smoke only (e2e/smoke.test.ts)
 bun run test:e2e:ui         # Playwright UI mode
 bun run test:all            # vitest + smoke e2e
+bun run cleanup:orphans     # delete unreferenced Blob assets (apply)
+bun run cleanup:orphans:dry # preview unreferenced Blob assets (dry run)
 bun run build               # typecheck + production build
 
 # Local API runtime (recommended)
@@ -178,6 +199,7 @@ vercel dev
 - Single zustand store (`viewerStore.ts`), serializable state only
 - `data-testid` required on interactive UI used by tests
 - Worker syntax: `new Worker(new URL('...', import.meta.url), { type: 'module' })`
+- Cloud model IDs are normalized to lowercase slug form (prefixed `cloud-`) in `/api/models`
 
 ---
 
@@ -191,6 +213,7 @@ vercel dev
 - Breaking clipping material-side restore behavior
 - Overwriting dirty local draft state by auto-loading remote draft on refresh
 - Uploading local images immediately during annotation editing (must upload on publish path)
+- Bypassing `/api/models/upload` validation path for cloud model uploads
 
 ---
 
