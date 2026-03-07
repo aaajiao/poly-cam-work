@@ -6,8 +6,9 @@ Web-based viewer for Polycam LiDAR exports. It renders textured GLB meshes and P
 
 - GLB + PLY scene rendering with React Three Fiber
 - Annotation system with image/video/link content
-- Draft save + publish + rollback workflow on Vercel
-- Media upload to Vercel Blob via client upload tokens
+- Local-first draft workflow (edits persist in browser before publish)
+- Publish/release workflow on Vercel with rollback + version management
+- Media upload to Vercel Blob at publish time via client upload tokens
 - Smoke and browser-level test coverage
 
 ## Tech Stack
@@ -31,7 +32,7 @@ docs/         Planning and implementation docs
 
 - Bun 1.3+
 - Node.js 20+
-- (For API local runtime) Vercel CLI
+- (Optional) Vercel CLI for `vercel dev`
 
 ## Environment Variables
 
@@ -55,16 +56,16 @@ Run frontend dev server:
 bun run dev
 ```
 
-To run API routes locally, run Vercel Functions runtime in another terminal:
-
-```bash
-vercel dev
-```
-
-If you want full local API testing without Vercel CLI login, use:
+Run API routes locally (recommended, no Vercel login required):
 
 ```bash
 bun run dev:api
+```
+
+Alternative API runtime using Vercel CLI:
+
+```bash
+vercel dev
 ```
 
 ## Scripts
@@ -83,11 +84,20 @@ bun run build
 Authenticated editor flow:
 
 1. Login via `POST /api/auth/login`
-2. Save scene draft via `PUT /api/draft/:sceneId`
-3. Upload media via `POST /api/media/upload` + client direct upload
-4. Publish release via `POST /api/publish/:sceneId`
-5. Public clients read latest release via `GET /api/release/:sceneId`
-6. Roll back via `POST /api/rollback/:sceneId`
+2. Session restore check via `GET /api/auth/session`
+3. Local edits stay in browser storage until publish
+4. Publish via `POST /api/publish/:sceneId` (uploads local images, saves draft, creates release)
+5. Manage releases via `GET /api/publish/:sceneId` (list) and `DELETE /api/publish/:sceneId` (delete version)
+6. Public clients read latest release via `GET /api/release/:sceneId`
+7. Roll back via `POST /api/rollback/:sceneId`
+
+## Editor Semantics
+
+- `Import`: load a local draft JSON file into the current scene
+- `Export`: download current local draft JSON
+- `Publish`: push local draft (including local images) to cloud release
+- `saved` / `unsaved`: local draft publish state for current scene
+- `live`: currently served release version tag
 
 ## Models and Build Output
 

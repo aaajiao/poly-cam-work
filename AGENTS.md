@@ -67,8 +67,17 @@ Main interaction:
 
 ### 4) Rich media flow
 
-- Images: thumbnails from IndexedDB (`imageStorage.getThumbnail`), single-image ratio derived from actual image size
+- Images: local-first storage in IndexedDB (`localId`) during editing; upload to Blob happens during publish and then becomes remote URL (`url`)
 - Video: `VimeoEmbed` uses Vimeo oEmbed to derive aspect ratio and renders inline player (no fake overlay)
+
+### 5) Draft + release flow (current model)
+
+- Auth session: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/session`
+- Draft API: `GET/PUT /api/draft/:sceneId` with revision conflict control
+- Publish API: `POST /api/publish/:sceneId` creates immutable release + updates live pointer
+- Release management: `GET /api/publish/:sceneId` lists versions, `DELETE /api/publish/:sceneId` deletes one version
+- Rollback API: `POST /api/rollback/:sceneId` moves live pointer and syncs draft baseline
+- UI controls: `PublishButton` shows `saved/unsaved`, release dropdown, rollback click, and delete with confirmation
 
 ---
 
@@ -85,6 +94,7 @@ Main interaction:
 | Change screenshot behavior | `src/components/viewer/ScreenshotButton.tsx`, `src/hooks/useScreenshot.ts` |
 | Change Vimeo URL handling | `src/utils/vimeo.ts`, `src/components/ui/VimeoEmbed.tsx` |
 | Change publish workflow APIs | `api/*`, `api/_lib/*`, `src/lib/publishApi.ts` |
+| Change publish UI/labels/version menu | `src/components/sidebar/PublishButton.tsx`, `src/components/sidebar/LoginDialog.tsx` |
 | Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx` |
 | Add/adjust E2E smoke test | `e2e/smoke.test.ts` |
 
@@ -145,7 +155,10 @@ bun run test:e2e:ui         # Playwright UI mode
 bun run test:all            # vitest + smoke e2e
 bun run build               # typecheck + production build
 
-# Vercel Functions local runtime (for /api endpoints)
+# Local API runtime (recommended)
+bun run dev:api
+
+# Vercel Functions runtime (alternative)
 vercel dev
 ```
 
@@ -176,6 +189,8 @@ vercel dev
 - Expanding E2E to cover scenarios already in browser Vitest
 - Removing `preserveDrawingBuffer` from Canvas
 - Breaking clipping material-side restore behavior
+- Overwriting dirty local draft state by auto-loading remote draft on refresh
+- Uploading local images immediately during annotation editing (must upload on publish path)
 
 ---
 
