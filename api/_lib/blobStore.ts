@@ -1,4 +1,42 @@
-import { list, put } from '@vercel/blob'
+import { del, list, put } from '@vercel/blob'
+
+interface BlobItem {
+  url: string
+  pathname: string
+}
+
+export async function listBlobsByPrefix(prefix: string): Promise<BlobItem[]> {
+  const blobs: BlobItem[] = []
+  let cursor: string | undefined
+
+  do {
+    const page = await list({
+      prefix,
+      limit: 1000,
+      cursor,
+    })
+
+    blobs.push(
+      ...page.blobs.map((blob) => ({
+        url: blob.url,
+        pathname: blob.pathname,
+      }))
+    )
+
+    cursor = page.hasMore ? page.cursor : undefined
+  } while (cursor)
+
+  return blobs
+}
+
+export async function deleteBlobByPathname(pathname: string): Promise<boolean> {
+  const blobs = await listBlobsByPrefix(pathname)
+  const target = blobs.find((blob) => blob.pathname === pathname)
+  if (!target) return false
+
+  await del(target.url)
+  return true
+}
 
 async function getBlobUrlByPath(pathname: string) {
   const { blobs } = await list({

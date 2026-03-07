@@ -206,6 +206,7 @@ interface ViewerState {
   draftRevisionByScene: Record<string, number>
   draftRevisionSourceByScene: Record<string, DraftRevisionSource>
   publishedVersionByScene: Record<string, number>
+  publishedVersionsByScene: Record<string, number[]>
   sceneMutationVersion: Record<string, number>
   loadRequestVersionByScene: Record<string, number>
 
@@ -237,9 +238,11 @@ interface ViewerState {
   addUploadedScene: (scene: ScanScene) => void
   removeUploadedScene: (id: string) => void
   loadDraft: (sceneId: string) => Promise<void>
+  loadPublishedVersions: (sceneId: string) => Promise<void>
   saveDraft: (sceneId: string) => Promise<number>
   publishDraft: (sceneId: string, message?: string) => Promise<number>
   rollbackToVersion: (sceneId: string, version: number) => Promise<number>
+  deletePublishedVersion: (sceneId: string, version: number) => Promise<void>
   login: (password: string) => Promise<void>
   logout: () => Promise<void>
   refreshAuthSession: () => Promise<void>
@@ -290,6 +293,7 @@ export const useViewerStore = create<ViewerState>()(
       draftRevisionByScene: {},
       draftRevisionSourceByScene: {},
       publishedVersionByScene: {},
+      publishedVersionsByScene: {},
       sceneMutationVersion: {},
       loadRequestVersionByScene: {},
 
@@ -442,6 +446,35 @@ export const useViewerStore = create<ViewerState>()(
                 : state.hoveredAnnotationId,
           }
         }),
+      loadPublishedVersions: async (sceneId) => {
+        try {
+          const result = await publishApi.getPublishedVersions(sceneId)
+
+          set((state) => {
+            const nextPublishedVersionByScene = { ...state.publishedVersionByScene }
+            if (typeof result.liveVersion === 'number') {
+              nextPublishedVersionByScene[sceneId] = result.liveVersion
+            } else {
+              delete nextPublishedVersionByScene[sceneId]
+            }
+
+            return {
+              publishedVersionByScene: nextPublishedVersionByScene,
+              publishedVersionsByScene: {
+                ...state.publishedVersionsByScene,
+                [sceneId]: result.versions,
+              },
+            }
+          })
+        } catch {
+          set((state) => ({
+            publishedVersionsByScene: {
+              ...state.publishedVersionsByScene,
+              [sceneId]: state.publishedVersionsByScene[sceneId] ?? [],
+            },
+          }))
+        }
+      },
       loadDraft: async (sceneId) => {
         const mutationVersionAtStart = get().sceneMutationVersion[sceneId] ?? 0
         const requestVersion = (get().loadRequestVersionByScene[sceneId] ?? 0) + 1
@@ -736,6 +769,12 @@ export const useViewerStore = create<ViewerState>()(
             ...state.publishedVersionByScene,
             [sceneId]: result.version,
           },
+          publishedVersionsByScene: {
+            ...state.publishedVersionsByScene,
+            [sceneId]: Array.from(
+              new Set([result.version, ...(state.publishedVersionsByScene[sceneId] ?? [])])
+            ).sort((a, b) => b - a),
+          },
         }))
         return result.version
       },
@@ -747,8 +786,34 @@ export const useViewerStore = create<ViewerState>()(
             ...state.publishedVersionByScene,
             [sceneId]: result.version,
           },
+          publishedVersionsByScene: {
+            ...state.publishedVersionsByScene,
+            [sceneId]: Array.from(
+              new Set([result.version, ...(state.publishedVersionsByScene[sceneId] ?? [])])
+            ).sort((a, b) => b - a),
+          },
         }))
         return result.version
+      },
+      deletePublishedVersion: async (sceneId, version) => {
+        const result = await publishApi.deletePublishedVersion(sceneId, version)
+
+        set((state) => {
+          const nextPublishedVersionByScene = { ...state.publishedVersionByScene }
+          if (typeof result.liveVersion === 'number') {
+            nextPublishedVersionByScene[sceneId] = result.liveVersion
+          } else {
+            delete nextPublishedVersionByScene[sceneId]
+          }
+
+          return {
+            publishedVersionByScene: nextPublishedVersionByScene,
+            publishedVersionsByScene: {
+              ...state.publishedVersionsByScene,
+              [sceneId]: result.versions,
+            },
+          }
+        })
       },
       login: async (password) => {
         await publishApi.login(password)

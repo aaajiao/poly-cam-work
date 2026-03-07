@@ -15,6 +15,15 @@ interface RollbackResponse {
   version: number
 }
 
+interface PublishedVersionsResponse {
+  versions: number[]
+  liveVersion: number | null
+}
+
+interface DeleteVersionResponse extends PublishedVersionsResponse {
+  ok: true
+}
+
 interface SessionResponse {
   authenticated: boolean
 }
@@ -102,6 +111,21 @@ export async function publishDraft(sceneId: string, message?: string): Promise<P
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
+  })
+}
+
+export async function getPublishedVersions(sceneId: string): Promise<PublishedVersionsResponse> {
+  return requestJson<PublishedVersionsResponse>(`/api/publish/${encodeURIComponent(sceneId)}`)
+}
+
+export async function deletePublishedVersion(
+  sceneId: string,
+  version: number
+): Promise<DeleteVersionResponse> {
+  return requestJson<DeleteVersionResponse>(`/api/publish/${encodeURIComponent(sceneId)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version }),
   })
 }
 

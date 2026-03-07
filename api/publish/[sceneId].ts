@@ -1,10 +1,20 @@
 import type { LivePointer, SceneDraft } from '../../src/types'
 import { requireAuth } from '../_lib/auth'
-import { readJsonBlob, writeImmutableJsonBlob, writeJsonBlob } from '../_lib/blobStore'
-import { badRequest, jsonResponse, methodNotAllowed, unauthorized } from '../_lib/http'
+import {
+  deleteBlobByPathname,
+  listBlobsByPrefix,
+  readJsonBlob,
+  writeImmutableJsonBlob,
+  writeJsonBlob,
+} from '../_lib/blobStore'
+import { badRequest, jsonResponse, methodNotAllowed, notFound, unauthorized } from '../_lib/http'
 
 interface PublishBody {
   message?: string
+}
+
+interface DeleteBody {
+  version?: number
 }
 
 function extractSceneId(pathname: string) {
@@ -26,9 +36,34 @@ function releasePath(sceneId: string, version: number) {
   return `scenes/${sceneId}/releases/${version}.json`
 }
 
+function releasesPrefix(sceneId: string) {
+  return `scenes/${sceneId}/releases/`
+}
+
+function validLiveVersion(value: number | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
+function releaseVersionFromPath(pathname: string): number | null {
+  const match = pathname.match(/\/releases\/(\d+)\.json$/)
+  if (!match) return null
+
+  const version = Number.parseInt(match[1], 10)
+  return Number.isFinite(version) && version > 0 ? version : null
+}
+
+async function listReleaseVersions(sceneId: string): Promise<number[]> {
+  const blobs = await listBlobsByPrefix(releasesPrefix(sceneId))
+  const versions = blobs
+    .map((blob) => releaseVersionFromPath(blob.pathname))
+    .filter((version): version is number => version !== null)
+
+  return Array.from(new Set(versions)).sort((a, b) => b - a)
+}
+
 export default async function handler(request: Request) {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== 'GET' && request.method !== 'POST' && request.method !== 'DELETE') {
+    return methodNotAllowed(['GET', 'POST', 'DELETE'])
   }
 
   if (!requireAuth(request)) {
@@ -38,6 +73,47 @@ export default async function handler(request: Request) {
   const sceneId = extractSceneId(new URL(request.url).pathname)
   if (!sceneId) {
     return badRequest('Invalid scene id')
+  }
+
+  if (request.method === 'GET') {
+    const versions = await listReleaseVersions(sceneId)
+    const live = await readJsonBlob<LivePointer>(livePath(sceneId))
+    const liveVersion = validLiveVersion(live?.version)
+
+    return jsonResponse({
+      versions,
+      liveVersion: liveVersion && versions.includes(liveVersion) ? liveVersion : null,
+    })
+  }
+
+  if (request.method === 'DELETE') {
+    const body = (await request.json().catch(() => null)) as DeleteBody | null
+    const version = body?.version
+    if (!Number.isFinite(version) || !version || version <= 0) {
+      return badRequest('version must be a positive number')
+    }
+
+    const deleted = await deleteBlobByPathname(releasePath(sceneId, version))
+    if (!deleted) {
+      return notFound('Release not found')
+    }
+
+    const versions = await listReleaseVersions(sceneId)
+    const live = await readJsonBlob<LivePointer>(livePath(sceneId))
+    const currentLiveVersion = validLiveVersion(live?.version)
+
+    let liveVersion = currentLiveVersion
+    if (liveVersion === version || (liveVersion !== null && !versions.includes(liveVersion))) {
+      liveVersion = versions[0] ?? null
+    }
+
+    await writeJsonBlob(livePath(sceneId), { version: liveVersion ?? 0 })
+
+    return jsonResponse({
+      ok: true,
+      versions,
+      liveVersion,
+    })
   }
 
   const draft = await readJsonBlob<SceneDraft>(draftPath(sceneId))
