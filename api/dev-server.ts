@@ -54,6 +54,14 @@ const routes: Route[] = [
     load: () => import('./media/upload.ts'),
   },
   {
+    pattern: /^\/api\/models\/?$/,
+    load: () => import('./models/index.ts'),
+  },
+  {
+    pattern: /^\/api\/models\/upload\/?$/,
+    load: () => import('./models/upload.ts'),
+  },
+  {
     pattern: /^\/api\/draft\/[^/]+\/?$/,
     load: () => import('./draft/[sceneId].ts'),
   },

@@ -16,6 +16,7 @@ import { PRESET_SCENES } from './presetScenes'
 import { imageStorage } from '@/storage/imageStorage'
 import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
 import * as publishApi from '@/lib/publishApi'
+import * as modelApi from '@/lib/modelApi'
 
 const PERSIST_KEY = 'polycam-viewer-state'
 
@@ -177,6 +178,7 @@ function sanitizeLinks(value: unknown): { url: string; label: string }[] {
 
 interface ViewerState {
   scenes: ScanScene[]
+  cloudScenes: ScanScene[]
   uploadedScenes: ScanScene[]
   activeSceneId: string | null
 
@@ -242,6 +244,8 @@ interface ViewerState {
   setLoading: (loading: boolean, progress?: number, message?: string) => void
   addUploadedScene: (scene: ScanScene) => void
   removeUploadedScene: (id: string) => void
+  loadCloudScenes: () => Promise<void>
+  addCloudScene: (scene: ScanScene) => void
   loadDraft: (sceneId: string) => Promise<void>
   loadPublishedVersions: (sceneId: string) => Promise<void>
   saveDraft: (sceneId: string) => Promise<number>
@@ -260,6 +264,7 @@ export const useViewerStore = create<ViewerState>()(
   persist(
     (set, get) => ({
       scenes: PRESET_SCENES,
+      cloudScenes: [],
       uploadedScenes: [],
       activeSceneId: PRESET_SCENES[0].id,
 
@@ -457,6 +462,28 @@ export const useViewerStore = create<ViewerState>()(
           openAnnotationPanelIds: [],
           hoveredAnnotationId: null,
         })),
+      loadCloudScenes: async () => {
+        try {
+          const models = await modelApi.getModels()
+          set((state) => ({
+            cloudScenes: models,
+            activeSceneId:
+              state.activeSceneId ??
+              (models[0]?.id ?? state.scenes[0]?.id ?? null),
+          }))
+        } catch {
+          set((state) => ({ cloudScenes: state.cloudScenes }))
+        }
+      },
+      addCloudScene: (scene) => {
+        set((state) => ({
+          cloudScenes: [scene, ...state.cloudScenes.filter((item) => item.id !== scene.id)],
+          activeSceneId: scene.id,
+          selectedAnnotationId: null,
+          openAnnotationPanelIds: [],
+          hoveredAnnotationId: null,
+        }))
+      },
       removeUploadedScene: (id) =>
         set((state) => {
           const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
@@ -1223,6 +1250,6 @@ if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__store 
 
 export const useActiveScene = () =>
   useViewerStore((state) => {
-    const allScenes = [...state.scenes, ...state.uploadedScenes]
+    const allScenes = [...state.cloudScenes, ...state.scenes, ...state.uploadedScenes]
     return allScenes.find((s) => s.id === state.activeSceneId) ?? null
   })

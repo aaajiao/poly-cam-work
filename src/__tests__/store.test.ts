@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useViewerStore } from '@/store/viewerStore'
 import * as publishApi from '@/lib/publishApi'
+import * as modelApi from '@/lib/modelApi'
 import { imageStorage } from '@/storage/imageStorage'
 import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
 import type { SceneDraft } from '@/types'
@@ -12,6 +13,7 @@ describe('viewerStore', () => {
     // Reset store to initial state
     useViewerStore.setState({
       activeSceneId: 'scan-a',
+      cloudScenes: [],
       viewMode: 'mesh',
       toolMode: 'orbit',
       measurements: [],
@@ -28,6 +30,8 @@ describe('viewerStore', () => {
       draftRevisionByScene: {},
       draftRevisionSourceByScene: {},
       draftDirtyByScene: {},
+      publishedVersionByScene: {},
+      publishedVersionsByScene: {},
       loadRequestVersionByScene: {},
     })
   })
@@ -205,6 +209,102 @@ describe('viewerStore', () => {
     expect(state.activeSceneId).toBe('scan-upload-1')
     expect(state.selectedAnnotationId).toBeNull()
     expect(state.openAnnotationPanelIds).toEqual([])
+  })
+
+  it('loadCloudScenes hydrates cloud model list and keeps active scene', async () => {
+    vi.spyOn(modelApi, 'getModels').mockResolvedValue([
+      {
+        id: 'cloud-1',
+        name: 'Cloud One',
+        glbUrl: 'https://blob.example/cloud-1.glb',
+        plyUrl: 'https://blob.example/cloud-1.ply',
+        source: 'cloud',
+      },
+      {
+        id: 'cloud-2',
+        name: 'Cloud Two',
+        glbUrl: 'https://blob.example/cloud-2.glb',
+        plyUrl: 'https://blob.example/cloud-2.ply',
+        source: 'cloud',
+      },
+    ])
+
+    const { loadCloudScenes } = useViewerStore.getState()
+    await loadCloudScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.cloudScenes).toHaveLength(2)
+    expect(state.activeSceneId).toBe('scan-a')
+  })
+
+  it('loadCloudScenes sets active scene when no scene is selected', async () => {
+    useViewerStore.setState({ activeSceneId: null })
+
+    vi.spyOn(modelApi, 'getModels').mockResolvedValue([
+      {
+        id: 'cloud-first',
+        name: 'Cloud First',
+        glbUrl: 'https://blob.example/cloud-first.glb',
+        plyUrl: 'https://blob.example/cloud-first.ply',
+        source: 'cloud',
+      },
+    ])
+
+    const { loadCloudScenes } = useViewerStore.getState()
+    await loadCloudScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-first'])
+    expect(state.activeSceneId).toBe('cloud-first')
+  })
+
+  it('loadCloudScenes keeps previous cloud list when request fails', async () => {
+    useViewerStore.setState({
+      cloudScenes: [
+        {
+          id: 'cloud-existing',
+          name: 'Cloud Existing',
+          glbUrl: 'https://blob.example/cloud-existing.glb',
+          plyUrl: 'https://blob.example/cloud-existing.ply',
+          source: 'cloud',
+        },
+      ],
+    })
+
+    vi.spyOn(modelApi, 'getModels').mockRejectedValue(new Error('network down'))
+
+    const { loadCloudScenes } = useViewerStore.getState()
+    await loadCloudScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-existing'])
+  })
+
+  it('addCloudScene prepends and activates uploaded cloud model', () => {
+    useViewerStore.setState({
+      cloudScenes: [
+        {
+          id: 'cloud-old',
+          name: 'Cloud Old',
+          glbUrl: 'https://blob.example/cloud-old.glb',
+          plyUrl: 'https://blob.example/cloud-old.ply',
+          source: 'cloud',
+        },
+      ],
+    })
+
+    const { addCloudScene } = useViewerStore.getState()
+    addCloudScene({
+      id: 'cloud-new',
+      name: 'Cloud New',
+      glbUrl: 'https://blob.example/cloud-new.glb',
+      plyUrl: 'https://blob.example/cloud-new.ply',
+      source: 'cloud',
+    })
+
+    const state = useViewerStore.getState()
+    expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-new', 'cloud-old'])
+    expect(state.activeSceneId).toBe('cloud-new')
   })
 
   it('loadPublishedVersions stores sorted versions and live version mapping', async () => {

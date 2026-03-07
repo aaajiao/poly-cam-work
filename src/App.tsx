@@ -15,12 +15,18 @@ export default function App() {
   const annotations = useViewerStore((state) => state.annotations)
   const draftDirtyByScene = useViewerStore((state) => state.draftDirtyByScene)
   const loadDraft = useViewerStore((state) => state.loadDraft)
+  const loadCloudScenes = useViewerStore((state) => state.loadCloudScenes)
   const refreshAuthSession = useViewerStore((state) => state.refreshAuthSession)
+  const isAuthenticated = useViewerStore((state) => state.isAuthenticated)
   const attemptedSceneLoadsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     void refreshAuthSession()
   }, [refreshAuthSession])
+
+  useEffect(() => {
+    void loadCloudScenes()
+  }, [loadCloudScenes])
 
   useEffect(() => {
     if (!activeSceneId) return
@@ -31,11 +37,13 @@ export default function App() {
     const hasLocalSceneAnnotations = annotations.some((annotation) => annotation.sceneId === activeSceneId)
     if (hasLocalSceneAnnotations) return
 
-    if (attemptedSceneLoadsRef.current.has(activeSceneId)) return
-    attemptedSceneLoadsRef.current.add(activeSceneId)
+    const authMode = isAuthenticated ? 'auth' : 'anon'
+    const loadKey = `${activeSceneId}:${authMode}`
+    if (attemptedSceneLoadsRef.current.has(loadKey)) return
+    attemptedSceneLoadsRef.current.add(loadKey)
 
     void loadDraft(activeSceneId)
-  }, [activeSceneId, annotations, draftDirtyByScene, loadDraft])
+  }, [activeSceneId, annotations, draftDirtyByScene, isAuthenticated, loadDraft])
 
   return (
     <>

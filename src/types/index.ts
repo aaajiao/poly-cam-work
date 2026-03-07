@@ -5,6 +5,9 @@ export interface ScanScene {
   glbUrl: string
   plyUrl: string
   metadata?: ScanMetadata
+  source?: 'preset' | 'cloud' | 'local'
+  createdAt?: number
+  updatedAt?: number
 }
 
 // Scan metadata (populated after loading)

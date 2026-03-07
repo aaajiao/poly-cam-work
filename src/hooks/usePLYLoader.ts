@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { PLYParseResult } from '@/types'
+import { fetchModelArrayBuffer } from '@/storage/modelAssetCache'
 
 interface PLYLoaderState {
   data: PLYParseResult | null
@@ -33,9 +34,7 @@ export function usePLYLoader(url: string | null) {
     abortRef.current = abort
 
     try {
-      const response = await fetch(plyUrl, { signal: abort.signal })
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${plyUrl}`)
-      const buffer = await response.arrayBuffer()
+      const buffer = await fetchModelArrayBuffer(plyUrl, abort.signal)
 
       if (abort.signal.aborted) return
 

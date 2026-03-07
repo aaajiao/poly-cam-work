@@ -1,8 +1,11 @@
-import { Layers, Upload } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Layers, Upload, Cloud, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { useViewerStore } from '@/store/viewerStore'
 import type { ScanScene } from '@/types'
+import { vercelBlobModelStorage } from '@/storage/vercelBlobModelStorage'
+import * as modelApi from '@/lib/modelApi'
 
 function SceneItem({ scene, isActive, onClick }: {
   scene: ScanScene
@@ -32,18 +35,149 @@ function SceneItem({ scene, isActive, onClick }: {
   )
 }
 
+function extension(file: File) {
+  const dotIndex = file.name.lastIndexOf('.')
+  if (dotIndex < 0) return ''
+  return file.name.slice(dotIndex).toLowerCase()
+}
+
+function baseName(file: File) {
+  return file.name.replace(/\.[^.]+$/, '')
+}
+
+function sceneIdFromName(name: string) {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return `cloud-${normalized || `scene-${Date.now()}`}`
+}
+
 export function FileManager() {
   const scenes = useViewerStore((s) => s.scenes)
+  const cloudScenes = useViewerStore((s) => s.cloudScenes)
   const uploadedScenes = useViewerStore((s) => s.uploadedScenes)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
+  const isAuthenticated = useViewerStore((s) => s.isAuthenticated)
   const setActiveScene = useViewerStore((s) => s.setActiveScene)
+  const addCloudScene = useViewerStore((s) => s.addCloudScene)
+
+  const [isUploadingModel, setIsUploadingModel] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const onModelFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : []
+    event.currentTarget.value = ''
+    if (files.length === 0) return
+
+    const glbFile = files.find((file) => extension(file) === '.glb')
+    const plyFile = files.find((file) => extension(file) === '.ply')
+
+    if (!glbFile || !plyFile) {
+      setUploadError('Select one GLB file and one PLY file together.')
+      return
+    }
+
+    if (!isAuthenticated) {
+      setUploadError('Login required to upload models.')
+      return
+    }
+
+    setUploadError(null)
+    setIsUploadingModel(true)
+
+    try {
+      const displayName = baseName(glbFile) || baseName(plyFile)
+      const sceneId = sceneIdFromName(displayName)
+
+      const [glbUrl, plyUrl] = await Promise.all([
+        vercelBlobModelStorage.upload(glbFile, { sceneKey: sceneId, kind: 'glb' }),
+        vercelBlobModelStorage.upload(plyFile, { sceneKey: sceneId, kind: 'ply' }),
+      ])
+
+      const model = await modelApi.createModel({
+        id: sceneId,
+        name: displayName,
+        glbUrl,
+        plyUrl,
+      })
+
+      addCloudScene({
+        ...model,
+        source: 'cloud',
+      })
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Model upload failed.')
+    } finally {
+      setIsUploadingModel(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 px-1">
-          Preset Scans
-        </p>
+        <div className="mb-2 flex items-center justify-between px-1">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider">Cloud Models</p>
+          <button
+            type="button"
+            data-testid="upload-model-button"
+            disabled={!isAuthenticated || isUploadingModel}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              'flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
+              !isAuthenticated || isUploadingModel
+                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                : 'bg-blue-600/20 text-blue-300 hover:bg-blue-600/30'
+            )}
+          >
+            {isUploadingModel ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            <span>{isUploadingModel ? 'Uploading...' : 'Upload'}</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            data-testid="upload-model-input"
+            type="file"
+            accept=".glb,.ply"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void onModelFileChange(event)
+            }}
+          />
+        </div>
+
+        {uploadError && (
+          <p className="mb-2 px-1 text-[11px] text-red-400" data-testid="upload-model-error">
+            {uploadError}
+          </p>
+        )}
+
+        {!isAuthenticated && (
+          <p className="mb-2 px-1 text-[11px] text-zinc-500">Login to upload model pairs (GLB + PLY).</p>
+        )}
+
+        <div className="space-y-1" data-testid="cloud-scan-list">
+          {cloudScenes.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-600">No cloud models yet.</p>
+          ) : (
+            cloudScenes.map((scene) => (
+              <SceneItem
+                key={scene.id}
+                scene={scene}
+                isActive={scene.id === activeSceneId}
+                onClick={() => setActiveScene(scene.id)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 px-1">Preset Scans</p>
         <div className="space-y-1" data-testid="scan-list">
           {scenes.map((scene) => (
             <SceneItem
@@ -59,8 +193,8 @@ export function FileManager() {
       {uploadedScenes.length > 0 && (
         <div>
           <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 px-1 flex items-center gap-1">
-            <Upload size={10} />
-            Uploaded
+            <Cloud size={10} />
+            Uploaded (Session)
           </p>
           <div className="space-y-1" data-testid="uploaded-scan-list">
             {uploadedScenes.map((scene) => (
