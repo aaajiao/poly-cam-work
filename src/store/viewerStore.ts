@@ -242,6 +242,7 @@ interface ViewerState {
   rollbackToVersion: (sceneId: string, version: number) => Promise<number>
   login: (password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshAuthSession: () => Promise<void>
   downloadLocalDraft: (sceneId: string) => Promise<void>
   importLocalDraftFile: (sceneId: string, file: File) => Promise<void>
   importLocalData: (sceneId: string) => Promise<void>
@@ -756,6 +757,14 @@ export const useViewerStore = create<ViewerState>()(
       logout: async () => {
         await publishApi.logout()
         set({ isAuthenticated: false })
+      },
+      refreshAuthSession: async () => {
+        try {
+          const session = await publishApi.getSession()
+          set({ isAuthenticated: session.authenticated })
+        } catch {
+          set({ isAuthenticated: false })
+        }
       },
       downloadLocalDraft: async (sceneId) => {
         const sceneDraftAnnotations = sceneAnnotations(get().annotations, sceneId)

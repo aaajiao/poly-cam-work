@@ -14,7 +14,12 @@ export default function App() {
   const activeSceneId = useViewerStore((state) => state.activeSceneId)
   const annotations = useViewerStore((state) => state.annotations)
   const loadDraft = useViewerStore((state) => state.loadDraft)
+  const refreshAuthSession = useViewerStore((state) => state.refreshAuthSession)
   const attemptedSceneLoadsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    void refreshAuthSession()
+  }, [refreshAuthSession])
 
   useEffect(() => {
     if (!activeSceneId) return

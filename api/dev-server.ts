@@ -46,6 +46,10 @@ const routes: Route[] = [
     load: () => import('./auth/logout.ts'),
   },
   {
+    pattern: /^\/api\/auth\/session\/?$/,
+    load: () => import('./auth/session.ts'),
+  },
+  {
     pattern: /^\/api\/media\/upload\/?$/,
     load: () => import('./media/upload.ts'),
   },

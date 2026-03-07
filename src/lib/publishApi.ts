@@ -15,6 +15,10 @@ interface RollbackResponse {
   version: number
 }
 
+interface SessionResponse {
+  authenticated: boolean
+}
+
 interface ApiErrorPayload {
   error?: string
 }
@@ -71,6 +75,10 @@ export async function logout(): Promise<void> {
   await requestJson<{ ok: true }>('/api/auth/logout', {
     method: 'POST',
   })
+}
+
+export async function getSession(): Promise<SessionResponse> {
+  return requestJson<SessionResponse>('/api/auth/session')
 }
 
 export async function getDraft(sceneId: string): Promise<SceneDraft> {

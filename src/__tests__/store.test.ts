@@ -349,6 +349,17 @@ describe('viewerStore', () => {
     expect(useViewerStore.getState().draftStatus).toBe('idle')
   })
 
+  it('refreshAuthSession syncs authentication flag from API', async () => {
+    useViewerStore.setState({ isAuthenticated: false })
+
+    vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+    const { refreshAuthSession } = useViewerStore.getState()
+    await refreshAuthSession()
+
+    expect(useViewerStore.getState().isAuthenticated).toBe(true)
+  })
+
   it('loadDraft keeps local annotation created while request is in flight', async () => {
     const resolver: { current: ((value: SceneDraft) => void) | null } = { current: null }
     const draftPromise = new Promise<SceneDraft>((resolve) => {
