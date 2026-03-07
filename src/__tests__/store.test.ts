@@ -555,8 +555,60 @@ describe('viewerStore', () => {
     ])
 
     expect(deleteSpy).toHaveBeenCalledWith('local-img-2')
-    expect(publishSpy).toHaveBeenCalledWith('scan-a', undefined)
+    expect(publishSpy).toHaveBeenCalledTimes(1)
+    const publishInput = publishSpy.mock.calls[0]?.[1]
+    expect(publishInput).toBeTruthy()
+    expect(publishInput?.expectedRevision).toBe(1)
+    expect(publishInput?.message).toBeUndefined()
+    expect(publishInput?.draft?.annotations[0]?.images).toEqual([
+      { filename: 'pending.jpg', url: 'https://blob.example/pending.jpg' },
+    ])
     expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(false)
+  })
+
+  it('publishDraft preserves GIF blob type for local GIF images', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-upload-gif',
+          position: [0, 0, 0],
+          title: 'Upload gif on publish',
+          description: '',
+          images: [{ filename: 'animated.gif', localId: 'local-gif-1' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 0 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
+    })
+
+    vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['gif'], { type: 'image/gif' }))
+    vi.spyOn(imageStorage, 'delete').mockResolvedValue()
+    const uploadSpy = vi.spyOn(vercelBlobImageStorage, 'upload').mockImplementation(async (blob, metadata) => {
+      expect(blob.type).toBe('image/gif')
+      expect(metadata.filename).toBe('animated.gif')
+      return {
+        filename: 'animated.gif',
+        url: 'https://blob.example/animated.gif',
+      }
+    })
+    vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 1,
+    })
+    vi.spyOn(publishApi, 'publishDraft').mockResolvedValue({
+      ok: true,
+      version: 2,
+    })
+
+    const { publishDraft } = useViewerStore.getState()
+    await publishDraft('scan-a')
+
+    expect(uploadSpy).toHaveBeenCalledTimes(1)
   })
 
   it('saveDraft refreshes revision when local source is release', async () => {

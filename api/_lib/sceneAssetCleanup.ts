@@ -76,18 +76,28 @@ async function collectReferencedSceneImagePathnames(sceneId: string): Promise<Se
   return referenced
 }
 
-export async function reconcileSceneImageAssets(sceneId: string, candidatePathnames: string[] = []) {
+export async function reconcileSceneImageAssets(
+  sceneId: string,
+  candidatePathnames: string[] = [],
+  protectedPathnames: string[] = []
+) {
   const referenced = await collectReferencedSceneImagePathnames(sceneId)
   const stale = new Set<string>()
+  const protectedSet = new Set(
+    protectedPathnames
+      .filter((pathname) => typeof pathname === 'string' && pathname.length > 0)
+  )
 
   const sceneImages = await listBlobsByPrefix(sceneImagesPrefix(sceneId))
   for (const blob of sceneImages) {
+    if (protectedSet.has(blob.pathname)) continue
     if (!referenced.has(blob.pathname)) {
       stale.add(blob.pathname)
     }
   }
 
   for (const pathname of candidatePathnames) {
+    if (protectedSet.has(pathname)) continue
     if (!pathname || referenced.has(pathname)) continue
     stale.add(pathname)
   }

@@ -10,6 +10,12 @@ interface PublishResponse {
   version: number
 }
 
+interface PublishDraftInput {
+  message?: string
+  draft?: SceneDraft
+  expectedRevision?: number
+}
+
 interface RollbackResponse {
   ok: true
   version: number
@@ -106,11 +112,25 @@ export async function saveDraft(
   })
 }
 
-export async function publishDraft(sceneId: string, message?: string): Promise<PublishResponse> {
+export async function publishDraft(
+  sceneId: string,
+  input: PublishDraftInput = {}
+): Promise<PublishResponse> {
+  const body: PublishDraftInput = {}
+  if (typeof input.message === 'string') {
+    body.message = input.message
+  }
+  if (input.draft) {
+    body.draft = input.draft
+  }
+  if (typeof input.expectedRevision === 'number') {
+    body.expectedRevision = input.expectedRevision
+  }
+
   return requestJson<PublishResponse>(`/api/publish/${encodeURIComponent(sceneId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(body),
   })
 }
 

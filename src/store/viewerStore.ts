@@ -144,6 +144,22 @@ function toRemoteImages(images: AnnotationImage[]): AnnotationImage[] {
     }))
 }
 
+function buildSceneDraftPayload(
+  annotations: Annotation[],
+  sceneId: string,
+  revision: number
+): SceneDraft {
+  return {
+    sceneId,
+    revision,
+    annotations: sceneAnnotations(annotations, sceneId).map((annotation) => ({
+      ...annotation,
+      images: toRemoteImages(annotation.images),
+    })),
+    updatedAt: Date.now(),
+  }
+}
+
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -792,16 +808,7 @@ export const useViewerStore = create<ViewerState>()(
         }
 
         const buildDraft = (revision: number): SceneDraft => {
-          const state = get()
-          return {
-            sceneId,
-            revision,
-            annotations: sceneAnnotations(state.annotations, sceneId).map((annotation) => ({
-              ...annotation,
-              images: toRemoteImages(annotation.images),
-            })),
-            updatedAt: Date.now(),
-          }
+          return buildSceneDraftPayload(get().annotations, sceneId, revision)
         }
 
         const saveWithRevision = async (revision: number) => {
@@ -932,8 +939,13 @@ export const useViewerStore = create<ViewerState>()(
           applyUploadedImages()
         }
 
-        await get().saveDraft(sceneId)
-        const result = await publishApi.publishDraft(sceneId, message)
+        const revision = await get().saveDraft(sceneId)
+        const draftSnapshot = buildSceneDraftPayload(get().annotations, sceneId, revision)
+        const result = await publishApi.publishDraft(sceneId, {
+          message,
+          draft: draftSnapshot,
+          expectedRevision: revision,
+        })
         set((state) => ({
           isAuthenticated: true,
           publishedVersionByScene: {

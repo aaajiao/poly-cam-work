@@ -7,11 +7,13 @@ import {
   writeImmutableJsonBlob,
   writeJsonBlob,
 } from '../_lib/blobStore'
-import { badRequest, jsonResponse, methodNotAllowed, notFound, unauthorized } from '../_lib/http'
+import { badRequest, conflict, jsonResponse, methodNotAllowed, notFound, unauthorized } from '../_lib/http'
 import { collectImagePathnamesFromDraft, reconcileSceneImageAssets } from '../_lib/sceneAssetCleanup'
 
 interface PublishBody {
   message?: string
+  draft?: SceneDraft
+  expectedRevision?: number
 }
 
 interface DeleteBody {
@@ -51,6 +53,28 @@ function releaseVersionFromPath(pathname: string): number | null {
 
   const version = Number.parseInt(match[1], 10)
   return Number.isFinite(version) && version > 0 ? version : null
+}
+
+function normalizePublishDraft(sceneId: string, value: unknown): SceneDraft | null {
+  if (!value || typeof value !== 'object') return null
+
+  const candidate = value as Partial<SceneDraft>
+  if (candidate.sceneId !== sceneId) return null
+  if (typeof candidate.revision !== 'number' || !Number.isFinite(candidate.revision) || candidate.revision < 0) {
+    return null
+  }
+  if (!Array.isArray(candidate.annotations)) return null
+  if (typeof candidate.updatedAt !== 'number' || !Number.isFinite(candidate.updatedAt)) return null
+
+  return {
+    sceneId,
+    revision: candidate.revision,
+    annotations: candidate.annotations as SceneDraft['annotations'],
+    updatedAt: candidate.updatedAt,
+    publishedAt: typeof candidate.publishedAt === 'number' ? candidate.publishedAt : undefined,
+    publishedBy: typeof candidate.publishedBy === 'string' ? candidate.publishedBy : undefined,
+    message: typeof candidate.message === 'string' ? candidate.message : undefined,
+  }
 }
 
 async function listReleaseVersions(sceneId: string): Promise<number[]> {
@@ -130,12 +154,32 @@ export default async function handler(request: Request) {
     })
   }
 
-  const draft = await readJsonBlob<SceneDraft>(draftPath(sceneId))
+  const body = (await request.json().catch(() => null)) as PublishBody | null
+  const draftFromBody = normalizePublishDraft(sceneId, body?.draft)
+  const draft = draftFromBody ?? (await readJsonBlob<SceneDraft>(draftPath(sceneId)))
   if (!draft) {
     return badRequest('Draft not found')
   }
 
-  const body = (await request.json().catch(() => null)) as PublishBody | null
+  if (typeof body?.expectedRevision === 'number' && draft.revision !== body.expectedRevision) {
+    return conflict('Revision mismatch')
+  }
+
+  if (draftFromBody && typeof body?.expectedRevision === 'number') {
+    const persistedDraft = await readJsonBlob<SceneDraft>(draftPath(sceneId))
+    if (
+      typeof persistedDraft?.revision === 'number' &&
+      Number.isFinite(persistedDraft.revision) &&
+      persistedDraft.revision > body.expectedRevision
+    ) {
+      return conflict('Revision mismatch')
+    }
+  }
+
+  if (draftFromBody) {
+    await writeJsonBlob(draftPath(sceneId), draft)
+  }
+
   const live = await readJsonBlob<LivePointer>(livePath(sceneId))
   const nextVersion = (live?.version ?? 0) + 1
 
@@ -150,7 +194,7 @@ export default async function handler(request: Request) {
   await writeJsonBlob(livePath(sceneId), { version: nextVersion })
 
   try {
-    await reconcileSceneImageAssets(sceneId)
+    await reconcileSceneImageAssets(sceneId, [], collectImagePathnamesFromDraft(release))
   } catch (error) {
     console.error('Failed to reconcile scene images after publish', error)
   }
