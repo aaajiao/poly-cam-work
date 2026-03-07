@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# Local environment
+.env
+.env.local
+.env.*
+!.env.example
+
 # Build output
 dist/
 *.tsbuildinfo

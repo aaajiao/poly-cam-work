@@ -19,6 +19,23 @@ interface ApiErrorPayload {
   error?: string
 }
 
+function isApiRequest(input: RequestInfo): boolean {
+  if (typeof input === 'string') {
+    return input.startsWith('/api/')
+  }
+
+  if (input instanceof URL) {
+    return input.pathname.startsWith('/api/')
+  }
+
+  try {
+    const pathname = new URL(input.url).pathname
+    return pathname.startsWith('/api/')
+  } catch {
+    return false
+  }
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     credentials: 'include',
@@ -30,6 +47,8 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null
     if (payload && typeof payload.error === 'string' && payload.error.length > 0) {
       message = payload.error
+    } else if (response.status >= 500 && isApiRequest(input)) {
+      message = 'API server unavailable. Start `bun run dev:api` or `vercel dev`.'
     }
 
     const error = new Error(message)

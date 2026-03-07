@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { Upload, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
+import { useViewerStore } from '@/store/viewerStore'
 import type { AnnotationImage } from '@/types'
 
 interface ImageUploadProps {
@@ -49,15 +50,22 @@ export function ImageUpload({
   onImagesChange,
   maxImages = 10,
 }: ImageUploadProps) {
+  const isAuthenticated = useViewerStore((state) => state.isAuthenticated)
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const atLimit = images.length >= maxImages
+  const uploadBlocked = !isAuthenticated
 
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
+      if (uploadBlocked) {
+        setError('Please login first to upload images')
+        return
+      }
+
       const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'))
       if (fileArray.length === 0) return
 
@@ -102,7 +110,7 @@ export function ImageUpload({
         onImagesChange([...images, ...newImages])
       }
     },
-    [annotationId, images, maxImages, onImagesChange]
+    [annotationId, images, maxImages, onImagesChange, uploadBlocked]
   )
 
   const handleDrop = useCallback(
@@ -110,19 +118,19 @@ export function ImageUpload({
       e.preventDefault()
       e.stopPropagation()
       setIsDragging(false)
-      if (atLimit) return
+      if (atLimit || uploadBlocked) return
       processFiles(e.dataTransfer.files)
     },
-    [atLimit, processFiles]
+    [atLimit, processFiles, uploadBlocked]
   )
 
   const handleDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault()
       e.stopPropagation()
-      if (!atLimit) setIsDragging(true)
+      if (!atLimit && !uploadBlocked) setIsDragging(true)
     },
-    [atLimit]
+    [atLimit, uploadBlocked]
   )
 
   const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -133,8 +141,8 @@ export function ImageUpload({
   }, [])
 
   const handleClick = useCallback(() => {
-    if (!atLimit) fileInputRef.current?.click()
-  }, [atLimit])
+    if (!atLimit && !uploadBlocked) fileInputRef.current?.click()
+  }, [atLimit, uploadBlocked])
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -159,8 +167,8 @@ export function ImageUpload({
       <div
         data-testid="image-upload-zone"
         role="button"
-        tabIndex={atLimit ? -1 : 0}
-        aria-disabled={atLimit}
+        tabIndex={atLimit || uploadBlocked ? -1 : 0}
+        aria-disabled={atLimit || uploadBlocked}
         onClick={handleClick}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -172,6 +180,7 @@ export function ImageUpload({
           'border-2 border-dashed border-zinc-600 rounded-lg p-4 text-center cursor-pointer transition-colors',
           isDragging && 'border-blue-500 bg-blue-500/10',
           atLimit && 'opacity-50 cursor-not-allowed',
+          uploadBlocked && 'opacity-50 cursor-not-allowed',
           !atLimit && !isDragging && 'hover:border-zinc-400',
           isUploading && 'opacity-70 pointer-events-none'
         )}
@@ -194,11 +203,13 @@ export function ImageUpload({
           <div className="flex flex-col items-center gap-1">
             <Upload size={16} className="text-zinc-500" />
             <p className="text-xs text-zinc-400">
-              {atLimit
+              {uploadBlocked
+                ? 'Login required before image upload'
+                : atLimit
                 ? `Maximum ${maxImages} images reached`
                 : 'Drop images here or click to browse'}
             </p>
-            {!atLimit && (
+            {!atLimit && !uploadBlocked && (
               <p className="text-[11px] text-zinc-600">
                 {images.length}/{maxImages} · max 10MB each
               </p>

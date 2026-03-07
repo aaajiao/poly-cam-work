@@ -7,6 +7,6 @@ export default async function handler(request: Request) {
   }
 
   return jsonResponse({ ok: true }, 200, {
-    'Set-Cookie': clearSessionCookieHeader(),
+    'Set-Cookie': clearSessionCookieHeader(request),
   })
 }

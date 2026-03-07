@@ -61,10 +61,17 @@ To run API routes locally, run Vercel Functions runtime in another terminal:
 vercel dev
 ```
 
+If you want full local API testing without Vercel CLI login, use:
+
+```bash
+bun run dev:api
+```
+
 ## Scripts
 
 ```bash
 bun run lint
+bun run dev:api
 bun run test:vitest
 bun run test:e2e
 bun run test:all

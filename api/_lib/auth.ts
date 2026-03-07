@@ -42,7 +42,17 @@ function parseCookies(request: Request) {
   return cookies
 }
 
-export function createSessionCookieHeader() {
+function secureCookieFlag(request: Request) {
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  if (forwardedProto === 'https') {
+    return '; Secure'
+  }
+
+  const protocol = new URL(request.url).protocol
+  return protocol === 'https:' ? '; Secure' : ''
+}
+
+export function createSessionCookieHeader(request: Request) {
   const secret = getSecret()
   const payload: SessionPayload = {
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
@@ -51,11 +61,11 @@ export function createSessionCookieHeader() {
   const signature = signValue(payloadBase64, secret)
   const token = `${payloadBase64}.${signature}`
 
-  return `${COOKIE_NAME}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_MAX_AGE_SECONDS}`
+  return `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Strict${secureCookieFlag(request)}; Max-Age=${SESSION_MAX_AGE_SECONDS}`
 }
 
-export function clearSessionCookieHeader() {
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`
+export function clearSessionCookieHeader(request: Request) {
+  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict${secureCookieFlag(request)}; Max-Age=0`
 }
 
 export function requireAuth(request: Request) {
