@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useViewerStore } from '@/store/viewerStore'
+import * as publishApi from '@/lib/publishApi'
+import { imageStorage } from '@/storage/imageStorage'
+import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
+import type { SceneDraft } from '@/types'
 
 describe('viewerStore', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
+
     // Reset store to initial state
     useViewerStore.setState({
       activeSceneId: 'scan-a',
@@ -18,6 +24,9 @@ describe('viewerStore', () => {
       isLoading: false,
       loadingProgress: 0,
       loadingMessage: '',
+      sceneMutationVersion: {},
+      draftRevisionByScene: {},
+      loadRequestVersionByScene: {},
     })
   })
 
@@ -166,5 +175,143 @@ describe('viewerStore', () => {
     expect(state.activeSceneId).toBe('scan-upload-1')
     expect(state.selectedAnnotationId).toBeNull()
     expect(state.openAnnotationPanelIds).toEqual([])
+  })
+
+  it('saveDraft sends only remote images to API', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-remote-only',
+          position: [0, 0, 0],
+          title: 'With mixed media',
+          description: '',
+          images: [
+            { filename: 'local.jpg', localId: 'local-img-1' },
+            { filename: 'remote.jpg', url: 'https://blob.example/remote.jpg' },
+          ],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 4 },
+    })
+
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 5,
+    })
+
+    const { saveDraft } = useViewerStore.getState()
+    await saveDraft('scan-a')
+
+    const draftPayload = saveDraftSpy.mock.calls[0]?.[1]
+    expect(draftPayload).toBeTruthy()
+    expect(draftPayload.annotations).toHaveLength(1)
+    expect(draftPayload.annotations[0].images).toEqual([
+      { filename: 'remote.jpg', url: 'https://blob.example/remote.jpg' },
+    ])
+  })
+
+  it('publishDraft uploads local images before publish', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-upload-1',
+          position: [0, 0, 0],
+          title: 'Upload on publish',
+          description: '',
+          images: [{ filename: 'pending.jpg', localId: 'local-img-2' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 0 },
+    })
+
+    vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }))
+    const deleteSpy = vi.spyOn(imageStorage, 'delete').mockResolvedValue()
+    const uploadSpy = vi.spyOn(vercelBlobImageStorage, 'upload').mockResolvedValue({
+      filename: 'pending.jpg',
+      url: 'https://blob.example/pending.jpg',
+    })
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 1,
+    })
+    const publishSpy = vi.spyOn(publishApi, 'publishDraft').mockResolvedValue({
+      ok: true,
+      version: 2,
+    })
+
+    const { publishDraft } = useViewerStore.getState()
+    await publishDraft('scan-a')
+
+    expect(uploadSpy).toHaveBeenCalledTimes(1)
+    expect(uploadSpy).toHaveBeenCalledWith(expect.any(Blob), {
+      annotationId: 'ann-upload-1',
+      filename: 'pending.jpg',
+    })
+
+    const savedDraft = saveDraftSpy.mock.calls[0]?.[1]
+    expect(savedDraft.annotations[0].images).toEqual([
+      { filename: 'pending.jpg', url: 'https://blob.example/pending.jpg' },
+    ])
+
+    expect(deleteSpy).toHaveBeenCalledWith('local-img-2')
+    expect(publishSpy).toHaveBeenCalledWith('scan-a', undefined)
+  })
+
+  it('loadDraft keeps local annotation created while request is in flight', async () => {
+    const resolver: { current: ((value: SceneDraft) => void) | null } = { current: null }
+    const draftPromise = new Promise<SceneDraft>((resolve) => {
+      resolver.current = (value: SceneDraft) => {
+        resolve(value)
+      }
+    })
+
+    vi.spyOn(publishApi, 'getDraft').mockReturnValue(draftPromise)
+    vi.spyOn(publishApi, 'getRelease').mockResolvedValue({
+      sceneId: 'scan-a',
+      revision: 0,
+      annotations: [],
+      updatedAt: Date.now(),
+    })
+
+    const { loadDraft, addAnnotation } = useViewerStore.getState()
+    const loadPromise = loadDraft('scan-a')
+
+    addAnnotation({
+      id: 'local-1',
+      position: [1, 1, 1],
+      title: 'Local annotation',
+      description: '',
+      images: [],
+      videoUrl: null,
+      links: [],
+      sceneId: 'scan-a',
+      createdAt: Date.now(),
+    })
+
+    if (!resolver.current) {
+      throw new Error('draft resolver was not initialized')
+    }
+
+    resolver.current({
+      sceneId: 'scan-a',
+      revision: 2,
+      annotations: [],
+      updatedAt: Date.now(),
+    })
+
+    await loadPromise
+
+    const state = useViewerStore.getState()
+    expect(state.annotations).toHaveLength(1)
+    expect(state.annotations[0].id).toBe('local-1')
+    expect(state.draftRevisionByScene['scan-a']).toBe(2)
   })
 })

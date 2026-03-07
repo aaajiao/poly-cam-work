@@ -4,6 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Html, QuadraticBezierLine } from '@react-three/drei'
 import { ExternalLink, GripVertical } from 'lucide-react'
 import { useViewerStore } from '@/store/viewerStore'
+import { imageStorage } from '@/storage/imageStorage'
 import { extractVimeoId } from '@/utils/vimeo'
 import { VimeoEmbed } from '@/components/ui/VimeoEmbed'
 import { cn } from '@/lib/utils'
@@ -428,51 +429,103 @@ interface ImageThumbnailsProps {
   onPrimaryAspectRatioChange: (aspectRatio: number) => void
 }
 
+interface LoadedThumb {
+  sourceUrl: string
+  aspectRatio: number
+}
+
+function isRemoteImage(image: AnnotationImage): image is Extract<AnnotationImage, { url: string }> {
+  return 'url' in image && typeof image.url === 'string' && image.url.length > 0
+}
+
+function isLocalImage(image: AnnotationImage): image is Extract<AnnotationImage, { localId: string }> {
+  return 'localId' in image && typeof image.localId === 'string' && image.localId.length > 0
+}
+
+function imageKey(image: AnnotationImage): string {
+  return isRemoteImage(image) ? `remote:${image.url}` : `local:${image.localId}`
+}
+
 function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnailsProps) {
-  const [aspectByUrl, setAspectByUrl] = useState<Record<string, number>>({})
+  const [thumbs, setThumbs] = useState<Record<string, LoadedThumb>>({})
 
   useEffect(() => {
     let active = true
+    const objectUrls: string[] = []
 
     const load = async () => {
-      const nextAspectByUrl: Record<string, number> = {}
+      const nextThumbs: Record<string, LoadedThumb> = {}
       for (const img of images) {
-        const aspectRatio = await readImageAspectRatio(img.url)
-        nextAspectByUrl[img.url] = THREE.MathUtils.clamp(aspectRatio, 0.55, 2.4)
+        const key = imageKey(img)
+
+        if (isRemoteImage(img)) {
+          const aspectRatio = await readImageAspectRatio(img.url)
+          nextThumbs[key] = {
+            sourceUrl: img.url,
+            aspectRatio: THREE.MathUtils.clamp(aspectRatio, 0.55, 2.4),
+          }
+          continue
+        }
+
+        if (!isLocalImage(img)) continue
+        const thumbnailBlob = await imageStorage.getThumbnail(img.localId)
+        const sourceBlob = thumbnailBlob ?? (await imageStorage.get(img.localId))
+        if (!sourceBlob) continue
+
+        const objectUrl = URL.createObjectURL(sourceBlob)
+        objectUrls.push(objectUrl)
+        const aspectRatio = await readImageAspectRatio(objectUrl)
+        nextThumbs[key] = {
+          sourceUrl: objectUrl,
+          aspectRatio: THREE.MathUtils.clamp(aspectRatio, 0.55, 2.4),
+        }
       }
 
-      if (!active) return
-      setAspectByUrl(nextAspectByUrl)
+      if (!active) {
+        for (const objectUrl of objectUrls) {
+          URL.revokeObjectURL(objectUrl)
+        }
+        return
+      }
+
+      setThumbs(nextThumbs)
     }
 
     void load()
 
     return () => {
       active = false
+      for (const objectUrl of objectUrls) {
+        URL.revokeObjectURL(objectUrl)
+      }
     }
   }, [images])
 
   useEffect(() => {
     const first = images[0]
     if (!first) return
-    const firstAspectRatio = aspectByUrl[first.url]
-    if (!firstAspectRatio) return
-    onPrimaryAspectRatioChange(firstAspectRatio)
-  }, [images, aspectByUrl, onPrimaryAspectRatioChange])
+    const firstThumb = thumbs[imageKey(first)]
+    if (!firstThumb) return
+    onPrimaryAspectRatioChange(firstThumb.aspectRatio)
+  }, [images, thumbs, onPrimaryAspectRatioChange])
 
   if (images.length === 1) {
     const single = images[0]
-    const singleAspect = aspectByUrl[single.url] ?? 4 / 3
+    const singleThumb = thumbs[imageKey(single)]
     return (
       <div
         className="overflow-hidden rounded bg-zinc-800"
-        style={{ aspectRatio: singleAspect }}
+        style={{ aspectRatio: singleThumb?.aspectRatio ?? 4 / 3 }}
       >
-        <img
-          src={single.url}
-          alt={single.filename}
-          className="h-full w-full object-contain"
-        />
+        {singleThumb ? (
+          <img
+            src={singleThumb.sourceUrl}
+            alt={single.filename}
+            className="h-full w-full object-contain"
+          />
+        ) : (
+          <div className="h-full w-full animate-pulse bg-zinc-800" />
+        )}
       </div>
     )
   }
@@ -481,15 +534,22 @@ function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnails
 
   return (
     <div className={cn('grid gap-1', gridCols)}>
-      {images.map((img) => (
-        <div key={img.url} className="overflow-hidden rounded bg-zinc-800">
-          <img
-            src={img.url}
-            alt={img.filename}
-            className="block h-auto w-full object-contain"
-          />
-        </div>
-      ))}
+      {images.map((img) => {
+        const thumb = thumbs[imageKey(img)]
+        return (
+          <div key={imageKey(img)} className="overflow-hidden rounded bg-zinc-800">
+            {thumb ? (
+              <img
+                src={thumb.sourceUrl}
+                alt={img.filename}
+                className="block h-auto w-full object-contain"
+              />
+            ) : (
+              <div className="h-full w-full animate-pulse bg-zinc-800" />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

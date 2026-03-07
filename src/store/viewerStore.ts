@@ -21,8 +21,11 @@ const PERSIST_KEY = 'polycam-viewer-state'
 
 type DraftStatus = 'idle' | 'loading' | 'saving' | 'error' | 'conflict'
 
-type LegacyAnnotationImage = AnnotationImage & {
+type LegacyAnnotationImage = {
+  filename?: string
+  url?: string
   id?: string
+  localId?: string
 }
 
 function sceneAnnotations(annotations: Annotation[], sceneId: string) {
@@ -48,6 +51,37 @@ function normalizeDraft(sceneId: string, draft: SceneDraft): SceneDraft {
     publishedBy: draft.publishedBy,
     message: draft.message,
   }
+}
+
+function bumpSceneMutationVersion(
+  versions: Record<string, number>,
+  sceneId: string
+): Record<string, number> {
+  return {
+    ...versions,
+    [sceneId]: (versions[sceneId] ?? 0) + 1,
+  }
+}
+
+function isLocalImage(image: AnnotationImage): image is Extract<AnnotationImage, { localId: string }> {
+  return 'localId' in image && typeof image.localId === 'string' && image.localId.length > 0
+}
+
+function isRemoteImage(image: AnnotationImage): image is Extract<AnnotationImage, { url: string }> {
+  return 'url' in image && typeof image.url === 'string' && image.url.length > 0
+}
+
+function collectLocalImageIds(images: AnnotationImage[]): string[] {
+  return images.filter(isLocalImage).map((image) => image.localId)
+}
+
+function toRemoteImages(images: AnnotationImage[]): AnnotationImage[] {
+  return images
+    .filter(isRemoteImage)
+    .map((image) => ({
+      filename: image.filename,
+      url: image.url,
+    }))
 }
 
 interface ViewerState {
@@ -84,6 +118,8 @@ interface ViewerState {
   isAuthenticated: boolean
   draftRevisionByScene: Record<string, number>
   publishedVersionByScene: Record<string, number>
+  sceneMutationVersion: Record<string, number>
+  loadRequestVersionByScene: Record<string, number>
 
   setPendingAnnotationInput: (input: PendingAnnotationInput | null) => void
   setActiveScene: (id: string) => void
@@ -162,6 +198,8 @@ export const useViewerStore = create<ViewerState>()(
       isAuthenticated: false,
       draftRevisionByScene: {},
       publishedVersionByScene: {},
+      sceneMutationVersion: {},
+      loadRequestVersionByScene: {},
 
       setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
       setActiveScene: (id) => set({
@@ -190,13 +228,29 @@ export const useViewerStore = create<ViewerState>()(
       clearMeasurements: () => set({ measurements: [] }),
 
       addAnnotation: (a) =>
-        set((state) => ({ annotations: [...state.annotations, a], annotationsVisible: true })),
+        set((state) => ({
+          annotations: [...state.annotations, a],
+          annotationsVisible: true,
+          sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, a.sceneId),
+        })),
       removeAnnotation: (id) => {
+        const annotation = get().annotations.find((item) => item.id === id)
+        if (annotation) {
+          for (const localId of collectLocalImageIds(annotation.images)) {
+            imageStorage.delete(localId).catch(console.error)
+          }
+        }
+
         set((state) => ({
           annotations: state.annotations.filter((a) => a.id !== id),
           selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
           openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => panelId !== id),
           hoveredAnnotationId: state.hoveredAnnotationId === id ? null : state.hoveredAnnotationId,
+          sceneMutationVersion: (() => {
+            const annotation = state.annotations.find((item) => item.id === id)
+            if (!annotation) return state.sceneMutationVersion
+            return bumpSceneMutationVersion(state.sceneMutationVersion, annotation.sceneId)
+          })(),
         }))
       },
       updateAnnotation: (id, text) =>
@@ -204,12 +258,22 @@ export const useViewerStore = create<ViewerState>()(
           annotations: state.annotations.map((a) =>
             a.id === id ? { ...a, title: text } : a
           ),
+          sceneMutationVersion: (() => {
+            const annotation = state.annotations.find((item) => item.id === id)
+            if (!annotation) return state.sceneMutationVersion
+            return bumpSceneMutationVersion(state.sceneMutationVersion, annotation.sceneId)
+          })(),
         })),
       updateAnnotationContent: (id, content) =>
         set((state) => ({
           annotations: state.annotations.map((a) =>
             a.id === id ? { ...a, ...content } : a
           ),
+          sceneMutationVersion: (() => {
+            const annotation = state.annotations.find((item) => item.id === id)
+            if (!annotation) return state.sceneMutationVersion
+            return bumpSceneMutationVersion(state.sceneMutationVersion, annotation.sceneId)
+          })(),
         })),
 
       selectAnnotation: (id) => set({ selectedAnnotationId: id }),
@@ -266,6 +330,11 @@ export const useViewerStore = create<ViewerState>()(
       removeUploadedScene: (id) =>
         set((state) => {
           const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
+          for (const annotation of removedAnnotations) {
+            for (const localId of collectLocalImageIds(annotation.images)) {
+              imageStorage.delete(localId).catch(console.error)
+            }
+          }
           const removedIds = new Set(removedAnnotations.map((a) => a.id))
           return {
             uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
@@ -282,9 +351,37 @@ export const useViewerStore = create<ViewerState>()(
           }
         }),
       loadDraft: async (sceneId) => {
-        set({ draftStatus: 'loading', draftError: null })
+        const mutationVersionAtStart = get().sceneMutationVersion[sceneId] ?? 0
+        const requestVersion = (get().loadRequestVersionByScene[sceneId] ?? 0) + 1
+
+        set((state) => ({
+          draftStatus: 'loading',
+          draftError: null,
+          loadRequestVersionByScene: {
+            ...state.loadRequestVersionByScene,
+            [sceneId]: requestVersion,
+          },
+        }))
         try {
           const draft = normalizeDraft(sceneId, await publishApi.getDraft(sceneId))
+
+          if ((get().loadRequestVersionByScene[sceneId] ?? 0) !== requestVersion) {
+            return
+          }
+
+          if ((get().sceneMutationVersion[sceneId] ?? 0) !== mutationVersionAtStart) {
+            set((state) => ({
+              draftStatus: 'idle',
+              draftError: null,
+              isAuthenticated: true,
+              draftRevisionByScene: {
+                ...state.draftRevisionByScene,
+                [sceneId]: draft.revision,
+              },
+            }))
+            return
+          }
+
           set((state) => ({
             annotations: replaceSceneAnnotations(state.annotations, sceneId, draft.annotations),
             draftStatus: 'idle',
@@ -297,6 +394,10 @@ export const useViewerStore = create<ViewerState>()(
           }))
           return
         } catch (error) {
+          if ((get().loadRequestVersionByScene[sceneId] ?? 0) !== requestVersion) {
+            return
+          }
+
           const status = (error as Error & { status?: number }).status
           if (status !== 401) {
             set({
@@ -309,6 +410,24 @@ export const useViewerStore = create<ViewerState>()(
 
         try {
           const release = normalizeDraft(sceneId, await publishApi.getRelease(sceneId))
+
+          if ((get().loadRequestVersionByScene[sceneId] ?? 0) !== requestVersion) {
+            return
+          }
+
+          if ((get().sceneMutationVersion[sceneId] ?? 0) !== mutationVersionAtStart) {
+            set((state) => ({
+              draftStatus: 'idle',
+              draftError: null,
+              isAuthenticated: false,
+              draftRevisionByScene: {
+                ...state.draftRevisionByScene,
+                [sceneId]: release.revision,
+              },
+            }))
+            return
+          }
+
           set((state) => ({
             annotations: replaceSceneAnnotations(state.annotations, sceneId, release.annotations),
             draftStatus: 'idle',
@@ -320,6 +439,10 @@ export const useViewerStore = create<ViewerState>()(
             },
           }))
         } catch (error) {
+          if ((get().loadRequestVersionByScene[sceneId] ?? 0) !== requestVersion) {
+            return
+          }
+
           set({
             draftStatus: 'error',
             draftError: error instanceof Error ? error.message : 'Failed to load release',
@@ -327,19 +450,40 @@ export const useViewerStore = create<ViewerState>()(
         }
       },
       saveDraft: async (sceneId) => {
-        const state = get()
-        const expectedRevision = state.draftRevisionByScene[sceneId] ?? 0
+        let state = get()
+        let expectedRevision = state.draftRevisionByScene[sceneId]
+
+        if (typeof expectedRevision !== 'number') {
+          try {
+            const remoteDraft = await publishApi.getDraft(sceneId)
+            expectedRevision = remoteDraft.revision
+            set((nextState) => ({
+              draftRevisionByScene: {
+                ...nextState.draftRevisionByScene,
+                [sceneId]: remoteDraft.revision,
+              },
+            }))
+            state = get()
+          } catch {
+            expectedRevision = 0
+          }
+        }
+
+        const revision = expectedRevision ?? 0
         const draft: SceneDraft = {
           sceneId,
-          revision: expectedRevision,
-          annotations: sceneAnnotations(state.annotations, sceneId),
+          revision,
+          annotations: sceneAnnotations(state.annotations, sceneId).map((annotation) => ({
+            ...annotation,
+            images: toRemoteImages(annotation.images),
+          })),
           updatedAt: Date.now(),
         }
 
         set({ draftStatus: 'saving', draftError: null })
 
         try {
-          const result = await publishApi.saveDraft(sceneId, draft, expectedRevision)
+          const result = await publishApi.saveDraft(sceneId, draft, revision)
           set((nextState) => ({
             draftStatus: 'idle',
             draftError: null,
@@ -373,6 +517,68 @@ export const useViewerStore = create<ViewerState>()(
         }
       },
       publishDraft: async (sceneId, message) => {
+        const localImagesToUpload = sceneAnnotations(get().annotations, sceneId)
+          .flatMap((annotation) =>
+            annotation.images
+              .filter(isLocalImage)
+              .map((image) => ({
+                annotationId: annotation.id,
+                localId: image.localId,
+                filename: image.filename,
+              }))
+          )
+
+        if (localImagesToUpload.length > 0) {
+          const uploadedByLocalId = new Map<string, AnnotationImage>()
+          const applyUploadedImages = () => {
+            if (uploadedByLocalId.size === 0) return
+
+            set((state) => ({
+              annotations: state.annotations.map((annotation) => {
+                if (annotation.sceneId !== sceneId) return annotation
+                return {
+                  ...annotation,
+                  images: annotation.images.map((image) => {
+                    if (!isLocalImage(image)) return image
+                    const uploaded = uploadedByLocalId.get(image.localId)
+                    return uploaded ?? image
+                  }),
+                }
+              }),
+              sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, sceneId),
+            }))
+
+            for (const localId of uploadedByLocalId.keys()) {
+              imageStorage.delete(localId).catch(console.error)
+            }
+          }
+
+          try {
+            for (const localImage of localImagesToUpload) {
+              const blob = await imageStorage.get(localImage.localId)
+              if (!blob) {
+                throw new Error(`Local image missing: ${localImage.filename}. Please re-add the image.`)
+              }
+
+              const uploaded = await vercelBlobImageStorage.upload(blob, {
+                annotationId: localImage.annotationId,
+                filename: localImage.filename,
+              })
+
+              uploadedByLocalId.set(localImage.localId, uploaded)
+            }
+          } catch (error) {
+            applyUploadedImages()
+            set({
+              draftStatus: 'error',
+              draftError: error instanceof Error ? error.message : 'Failed to upload local images',
+            })
+            throw error
+          }
+
+          applyUploadedImages()
+        }
+
         await get().saveDraft(sceneId)
         const result = await publishApi.publishDraft(sceneId, message)
         set((state) => ({
@@ -418,22 +624,35 @@ export const useViewerStore = create<ViewerState>()(
         if (sceneSource.length === 0) return
 
         const migratedAnnotations: Annotation[] = []
+        const migratedLocalIds: string[] = []
         for (const annotation of sceneSource) {
           const migratedImages: AnnotationImage[] = []
           for (const image of annotation.images as LegacyAnnotationImage[]) {
+            const filename = typeof image.filename === 'string' && image.filename.length > 0
+              ? image.filename
+              : 'image'
+
             if (typeof image.url === 'string' && image.url.length > 0) {
-              migratedImages.push({ url: image.url, filename: image.filename })
+              migratedImages.push({ url: image.url, filename })
               continue
             }
 
-            if (!image.id) continue
-            const blob = await imageStorage.get(image.id)
+            const localId =
+              typeof image.localId === 'string'
+                ? image.localId
+                : typeof image.id === 'string'
+                  ? image.id
+                  : null
+
+            if (!localId) continue
+            const blob = await imageStorage.get(localId)
             if (!blob) continue
             const uploaded = await vercelBlobImageStorage.upload(blob, {
               annotationId: annotation.id,
-              filename: image.filename,
+              filename,
             })
             migratedImages.push(uploaded)
+            migratedLocalIds.push(localId)
           }
 
           migratedAnnotations.push({
@@ -444,16 +663,19 @@ export const useViewerStore = create<ViewerState>()(
 
         set((state) => ({
           annotations: replaceSceneAnnotations(state.annotations, sceneId, migratedAnnotations),
+          sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, sceneId),
         }))
 
         await get().saveDraft(sceneId)
-        await imageStorage.clearAll()
-        localStorage.removeItem(PERSIST_KEY)
+
+        for (const localId of migratedLocalIds) {
+          imageStorage.delete(localId).catch(console.error)
+        }
       },
     }),
     {
       name: 'polycam-viewer-state',
-      version: 2,
+      version: 5,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>
         if (version === 0) {
@@ -474,7 +696,7 @@ export const useViewerStore = create<ViewerState>()(
           }
         }
 
-        if (version <= 1 && Array.isArray(state.annotations)) {
+        if (version <= 4 && Array.isArray(state.annotations)) {
           state.annotations = (state.annotations as Record<string, unknown>[]).map((annotation) => {
             const imagesRaw = Array.isArray(annotation.images) ? annotation.images : []
             const images = imagesRaw
@@ -488,9 +710,24 @@ export const useViewerStore = create<ViewerState>()(
                     filename,
                   }
                 }
+
+                const localId =
+                  typeof candidate.localId === 'string'
+                    ? candidate.localId
+                    : typeof candidate.id === 'string'
+                      ? candidate.id
+                      : null
+
+                if (localId) {
+                  return {
+                    localId,
+                    filename,
+                  }
+                }
+
                 return null
               })
-              .filter((image): image is { url: string; filename: string } => image !== null)
+              .filter((image): image is AnnotationImage => image !== null)
 
             return {
               ...annotation,
@@ -499,9 +736,16 @@ export const useViewerStore = create<ViewerState>()(
           })
         }
 
+        if (typeof state.sceneMutationVersion !== 'object' || state.sceneMutationVersion === null) {
+          state.sceneMutationVersion = {}
+        }
+
         return persistedState
       },
       partialize: (state) => ({
+        annotations: state.annotations,
+        draftRevisionByScene: state.draftRevisionByScene,
+        sceneMutationVersion: state.sceneMutationVersion,
         colorMapMode: state.colorMapMode,
         pointSize: state.pointSize,
         viewMode: state.viewMode,

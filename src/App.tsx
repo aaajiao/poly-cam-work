@@ -1,5 +1,5 @@
 import './index.css'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Layout } from '@/components/Layout'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { Toolbar } from '@/components/toolbar/Toolbar'
@@ -12,12 +12,21 @@ import { useViewerStore } from '@/store/viewerStore'
 export default function App() {
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
   const activeSceneId = useViewerStore((state) => state.activeSceneId)
+  const annotations = useViewerStore((state) => state.annotations)
   const loadDraft = useViewerStore((state) => state.loadDraft)
+  const attemptedSceneLoadsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!activeSceneId) return
+
+    const hasLocalSceneAnnotations = annotations.some((annotation) => annotation.sceneId === activeSceneId)
+    if (hasLocalSceneAnnotations) return
+
+    if (attemptedSceneLoadsRef.current.has(activeSceneId)) return
+    attemptedSceneLoadsRef.current.add(activeSceneId)
+
     void loadDraft(activeSceneId)
-  }, [activeSceneId, loadDraft])
+  }, [activeSceneId, annotations, loadDraft])
 
   return (
     <>

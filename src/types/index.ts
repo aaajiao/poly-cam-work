@@ -36,10 +36,17 @@ export interface Measurement {
 }
 
 // Rich media types for annotations
-export interface AnnotationImage {
-  url: string
-  filename: string
-}
+export type AnnotationImage =
+  | {
+      filename: string
+      url: string
+      localId?: never
+    }
+  | {
+      filename: string
+      localId: string
+      url?: never
+    }
 
 export interface AnnotationLink {
   url: string
