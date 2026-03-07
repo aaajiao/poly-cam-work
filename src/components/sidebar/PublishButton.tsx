@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { CloudUpload, Upload, RotateCcw } from 'lucide-react'
+import { CloudDownload, CloudUpload, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useViewerStore } from '@/store/viewerStore'
 
@@ -38,7 +38,7 @@ export function PublishButton() {
         }}
       >
         <CloudUpload size={14} />
-        <span className="hidden xl:inline">Import Local</span>
+        <span className="hidden xl:inline">Import</span>
       </Button>
 
       <Button
@@ -51,8 +51,8 @@ export function PublishButton() {
           void downloadLocalDraft(activeSceneId).finally(() => setIsSaving(false))
         }}
       >
-        <CloudUpload size={14} />
-        <span className="hidden lg:inline">Save Draft</span>
+        <CloudDownload size={14} />
+        <span className="hidden lg:inline">Export</span>
       </Button>
 
       <Button
