@@ -733,29 +733,36 @@ export const useViewerStore = create<ViewerState>()(
 
         set({ draftStatus: 'saving', draftError: null })
 
-        const revision = expectedRevision ?? 0
+        let revision = expectedRevision ?? 0
 
-        try {
-          const result = await saveWithRevision(revision)
-          applySuccess(result.revision)
-          return result.revision
-        } catch (error) {
-          const status = (error as Error & { status?: number }).status
-          if (status !== 409) {
-            applyFailure(error)
-            throw error
-          }
-
+        for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            const remoteDraft = await publishApi.getDraft(sceneId)
-            const retryResult = await saveWithRevision(remoteDraft.revision)
-            applySuccess(retryResult.revision)
-            return retryResult.revision
-          } catch (retryError) {
-            applyFailure(retryError)
-            throw retryError
+            const result = await saveWithRevision(revision)
+            applySuccess(result.revision)
+            return result.revision
+          } catch (error) {
+            const status = (error as Error & { status?: number }).status
+            if (status !== 409) {
+              applyFailure(error)
+              throw error
+            }
+
+            try {
+              const remoteDraft = await publishApi.getDraft(sceneId)
+              revision = remoteDraft.revision
+            } catch (refreshError) {
+              applyFailure(refreshError)
+              throw refreshError
+            }
           }
         }
+
+        const conflictError = Object.assign(
+          new Error('Draft changed while saving. Please try Publish again.'),
+          { status: 409 }
+        )
+        applyFailure(conflictError)
+        throw conflictError
       },
       publishDraft: async (sceneId, message) => {
         const localImagesToUpload = sceneAnnotations(get().annotations, sceneId)

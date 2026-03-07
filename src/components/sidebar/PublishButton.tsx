@@ -151,6 +151,14 @@ export function PublishButton() {
                         data-testid={`delete-version-${version}`}
                         onClick={(event) => {
                           event.stopPropagation()
+
+                          const confirmed = window.confirm(
+                            liveVersion === version
+                              ? `Delete live version v${version}? The app will fall back to the newest remaining release.`
+                              : `Delete version v${version}?`
+                          )
+                          if (!confirmed) return
+
                           setDeletingVersion(version)
                           void deletePublishedVersion(activeSceneId, version).finally(() =>
                             setDeletingVersion(null)

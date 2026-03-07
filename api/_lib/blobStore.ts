@@ -51,7 +51,14 @@ async function getBlobUrlByPath(pathname: string) {
 export async function readJsonBlob<T>(pathname: string): Promise<T | null> {
   const url = await getBlobUrlByPath(pathname)
   if (!url) return null
-  const response = await fetch(url)
+
+  const cacheBypassUrl = `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`
+  const response = await fetch(cacheBypassUrl, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, max-age=0',
+    },
+  })
   if (!response.ok) return null
   return (await response.json()) as T
 }
