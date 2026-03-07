@@ -26,6 +26,7 @@ describe('viewerStore', () => {
       loadingMessage: '',
       sceneMutationVersion: {},
       draftRevisionByScene: {},
+      draftRevisionSourceByScene: {},
       loadRequestVersionByScene: {},
     })
   })
@@ -196,6 +197,7 @@ describe('viewerStore', () => {
         },
       ],
       draftRevisionByScene: { 'scan-a': 4 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
     })
 
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
@@ -230,6 +232,7 @@ describe('viewerStore', () => {
         },
       ],
       draftRevisionByScene: { 'scan-a': 0 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
     })
 
     vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }))
@@ -263,6 +266,44 @@ describe('viewerStore', () => {
 
     expect(deleteSpy).toHaveBeenCalledWith('local-img-2')
     expect(publishSpy).toHaveBeenCalledWith('scan-a', undefined)
+  })
+
+  it('saveDraft refreshes revision when local source is release', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-stale-revision',
+          position: [0, 0, 0],
+          title: 'Revision sync',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 1 },
+      draftRevisionSourceByScene: { 'scan-a': 'release' },
+    })
+
+    vi.spyOn(publishApi, 'getDraft').mockResolvedValue({
+      sceneId: 'scan-a',
+      revision: 7,
+      annotations: [],
+      updatedAt: Date.now(),
+    })
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 8,
+    })
+
+    const { saveDraft } = useViewerStore.getState()
+    await saveDraft('scan-a')
+
+    expect(saveDraftSpy).toHaveBeenCalledWith('scan-a', expect.any(Object), 7)
+    expect(useViewerStore.getState().draftRevisionByScene['scan-a']).toBe(8)
+    expect(useViewerStore.getState().draftRevisionSourceByScene['scan-a']).toBe('draft')
   })
 
   it('loadDraft keeps local annotation created while request is in flight', async () => {

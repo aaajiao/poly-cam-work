@@ -20,12 +20,40 @@ import * as publishApi from '@/lib/publishApi'
 const PERSIST_KEY = 'polycam-viewer-state'
 
 type DraftStatus = 'idle' | 'loading' | 'saving' | 'error' | 'conflict'
+type DraftRevisionSource = 'draft' | 'release'
 
 type LegacyAnnotationImage = {
   filename?: string
   url?: string
   id?: string
   localId?: string
+}
+
+interface LocalDraftImageFileRecord {
+  filename: string
+  kind: 'remote' | 'embedded'
+  url?: string
+  dataUrl?: string
+}
+
+interface LocalDraftAnnotationFileRecord {
+  id: string
+  position: [number, number, number]
+  normal?: [number, number, number]
+  title: string
+  description: string
+  images: LocalDraftImageFileRecord[]
+  videoUrl: string | null
+  links: { url: string; label: string }[]
+  createdAt: number
+  color?: string
+}
+
+interface LocalDraftFileRecord {
+  version: 1
+  sceneId: string
+  exportedAt: number
+  annotations: LocalDraftAnnotationFileRecord[]
 }
 
 function sceneAnnotations(annotations: Annotation[], sceneId: string) {
@@ -84,6 +112,65 @@ function toRemoteImages(images: AnnotationImage[]): AnnotationImage[] {
     }))
 }
 
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Unsupported file content'))
+    }
+    reader.readAsText(file)
+  })
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to serialize image'))
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Unsupported image format'))
+    }
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl)
+  if (!response.ok) {
+    throw new Error('Invalid embedded image data')
+  }
+  return response.blob()
+}
+
+function asVec3(value: unknown, fallback: [number, number, number]): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) return fallback
+  const [x, y, z] = value
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') return fallback
+  return [x, y, z]
+}
+
+function sanitizeLinks(value: unknown): { url: string; label: string }[] {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const candidate = entry as Record<string, unknown>
+      const url = typeof candidate.url === 'string' ? candidate.url : ''
+      const label = typeof candidate.label === 'string' ? candidate.label : ''
+      return { url, label }
+    })
+    .filter((entry): entry is { url: string; label: string } => entry !== null)
+}
+
 interface ViewerState {
   scenes: ScanScene[]
   uploadedScenes: ScanScene[]
@@ -117,6 +204,7 @@ interface ViewerState {
   draftError: string | null
   isAuthenticated: boolean
   draftRevisionByScene: Record<string, number>
+  draftRevisionSourceByScene: Record<string, DraftRevisionSource>
   publishedVersionByScene: Record<string, number>
   sceneMutationVersion: Record<string, number>
   loadRequestVersionByScene: Record<string, number>
@@ -154,6 +242,8 @@ interface ViewerState {
   rollbackToVersion: (sceneId: string, version: number) => Promise<number>
   login: (password: string) => Promise<void>
   logout: () => Promise<void>
+  downloadLocalDraft: (sceneId: string) => Promise<void>
+  importLocalDraftFile: (sceneId: string, file: File) => Promise<void>
   importLocalData: (sceneId: string) => Promise<void>
 }
 
@@ -197,6 +287,7 @@ export const useViewerStore = create<ViewerState>()(
       draftError: null,
       isAuthenticated: false,
       draftRevisionByScene: {},
+      draftRevisionSourceByScene: {},
       publishedVersionByScene: {},
       sceneMutationVersion: {},
       loadRequestVersionByScene: {},
@@ -378,6 +469,10 @@ export const useViewerStore = create<ViewerState>()(
                 ...state.draftRevisionByScene,
                 [sceneId]: draft.revision,
               },
+              draftRevisionSourceByScene: {
+                ...state.draftRevisionSourceByScene,
+                [sceneId]: 'draft',
+              },
             }))
             return
           }
@@ -390,6 +485,10 @@ export const useViewerStore = create<ViewerState>()(
             draftRevisionByScene: {
               ...state.draftRevisionByScene,
               [sceneId]: draft.revision,
+            },
+            draftRevisionSourceByScene: {
+              ...state.draftRevisionSourceByScene,
+              [sceneId]: 'draft',
             },
           }))
           return
@@ -424,6 +523,10 @@ export const useViewerStore = create<ViewerState>()(
                 ...state.draftRevisionByScene,
                 [sceneId]: release.revision,
               },
+              draftRevisionSourceByScene: {
+                ...state.draftRevisionSourceByScene,
+                [sceneId]: 'release',
+              },
             }))
             return
           }
@@ -436,6 +539,10 @@ export const useViewerStore = create<ViewerState>()(
             draftRevisionByScene: {
               ...state.draftRevisionByScene,
               [sceneId]: release.revision,
+            },
+            draftRevisionSourceByScene: {
+              ...state.draftRevisionSourceByScene,
+              [sceneId]: 'release',
             },
           }))
         } catch (error) {
@@ -452,8 +559,9 @@ export const useViewerStore = create<ViewerState>()(
       saveDraft: async (sceneId) => {
         let state = get()
         let expectedRevision = state.draftRevisionByScene[sceneId]
+        const revisionSource = state.draftRevisionSourceByScene[sceneId]
 
-        if (typeof expectedRevision !== 'number') {
+        if (typeof expectedRevision !== 'number' || revisionSource !== 'draft') {
           try {
             const remoteDraft = await publishApi.getDraft(sceneId)
             expectedRevision = remoteDraft.revision
@@ -461,6 +569,10 @@ export const useViewerStore = create<ViewerState>()(
               draftRevisionByScene: {
                 ...nextState.draftRevisionByScene,
                 [sceneId]: remoteDraft.revision,
+              },
+              draftRevisionSourceByScene: {
+                ...nextState.draftRevisionSourceByScene,
+                [sceneId]: 'draft',
               },
             }))
             state = get()
@@ -491,6 +603,10 @@ export const useViewerStore = create<ViewerState>()(
             draftRevisionByScene: {
               ...nextState.draftRevisionByScene,
               [sceneId]: result.revision,
+            },
+            draftRevisionSourceByScene: {
+              ...nextState.draftRevisionSourceByScene,
+              [sceneId]: 'draft',
             },
           }))
           return result.revision
@@ -609,6 +725,157 @@ export const useViewerStore = create<ViewerState>()(
         await publishApi.logout()
         set({ isAuthenticated: false })
       },
+      downloadLocalDraft: async (sceneId) => {
+        const sceneDraftAnnotations = sceneAnnotations(get().annotations, sceneId)
+        const exportAnnotations: LocalDraftAnnotationFileRecord[] = []
+
+        for (const annotation of sceneDraftAnnotations) {
+          const exportImages: LocalDraftImageFileRecord[] = []
+
+          for (const image of annotation.images) {
+            if (isRemoteImage(image)) {
+              exportImages.push({
+                filename: image.filename,
+                kind: 'remote',
+                url: image.url,
+              })
+              continue
+            }
+
+            if (!isLocalImage(image)) continue
+            const blob = await imageStorage.get(image.localId)
+            if (!blob) {
+              throw new Error(`Local image missing: ${image.filename}. Please re-add it before export.`)
+            }
+
+            exportImages.push({
+              filename: image.filename,
+              kind: 'embedded',
+              dataUrl: await blobToDataUrl(blob),
+            })
+          }
+
+          exportAnnotations.push({
+            id: annotation.id,
+            position: annotation.position,
+            normal: annotation.normal,
+            title: annotation.title,
+            description: annotation.description,
+            images: exportImages,
+            videoUrl: annotation.videoUrl,
+            links: annotation.links,
+            createdAt: annotation.createdAt,
+            color: annotation.color,
+          })
+        }
+
+        const payload: LocalDraftFileRecord = {
+          version: 1,
+          sceneId,
+          exportedAt: Date.now(),
+          annotations: exportAnnotations,
+        }
+
+        const jsonBlob = new Blob([JSON.stringify(payload, null, 2)], {
+          type: 'application/json',
+        })
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const filename = `${sceneId}-draft-${timestamp}.json`
+        const url = URL.createObjectURL(jsonBlob)
+
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = filename
+        document.body.appendChild(anchor)
+        anchor.click()
+        document.body.removeChild(anchor)
+        URL.revokeObjectURL(url)
+      },
+      importLocalDraftFile: async (sceneId, file) => {
+        const fileText = await readFileAsText(file)
+        const parsed = JSON.parse(fileText) as Partial<LocalDraftFileRecord>
+        if (parsed.version !== 1 || !Array.isArray(parsed.annotations)) {
+          throw new Error('Invalid draft file format')
+        }
+
+        const currentSceneAnnotations = sceneAnnotations(get().annotations, sceneId)
+        for (const annotation of currentSceneAnnotations) {
+          for (const localId of collectLocalImageIds(annotation.images)) {
+            imageStorage.delete(localId).catch(console.error)
+          }
+        }
+
+        const importedAnnotations: Annotation[] = []
+
+        for (const sourceAnnotation of parsed.annotations) {
+          if (!sourceAnnotation || typeof sourceAnnotation !== 'object') continue
+
+          const images: AnnotationImage[] = []
+          for (const sourceImage of Array.isArray(sourceAnnotation.images)
+            ? sourceAnnotation.images
+            : []) {
+            if (!sourceImage || typeof sourceImage !== 'object') continue
+
+            const filename =
+              typeof sourceImage.filename === 'string' && sourceImage.filename.length > 0
+                ? sourceImage.filename
+                : 'image'
+
+            if (sourceImage.kind === 'remote' && typeof sourceImage.url === 'string') {
+              images.push({
+                filename,
+                url: sourceImage.url,
+              })
+              continue
+            }
+
+            if (sourceImage.kind === 'embedded' && typeof sourceImage.dataUrl === 'string') {
+              const blob = await dataUrlToBlob(sourceImage.dataUrl)
+              const localId = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`
+              await imageStorage.save(localId, blob, {
+                annotationId:
+                  typeof sourceAnnotation.id === 'string' ? sourceAnnotation.id : `ann-${Date.now()}`,
+                filename,
+              })
+              images.push({
+                filename,
+                localId,
+              })
+            }
+          }
+
+          importedAnnotations.push({
+            id:
+              typeof sourceAnnotation.id === 'string' && sourceAnnotation.id.length > 0
+                ? sourceAnnotation.id
+                : `ann-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            position: asVec3(sourceAnnotation.position, [0, 0, 0]),
+            normal: sourceAnnotation.normal ? asVec3(sourceAnnotation.normal, [0, 0, 1]) : undefined,
+            title: typeof sourceAnnotation.title === 'string' ? sourceAnnotation.title : '',
+            description:
+              typeof sourceAnnotation.description === 'string' ? sourceAnnotation.description : '',
+            images,
+            videoUrl:
+              typeof sourceAnnotation.videoUrl === 'string' ? sourceAnnotation.videoUrl : null,
+            links: sanitizeLinks(sourceAnnotation.links),
+            color: typeof sourceAnnotation.color === 'string' ? sourceAnnotation.color : undefined,
+            sceneId,
+            createdAt:
+              typeof sourceAnnotation.createdAt === 'number'
+                ? sourceAnnotation.createdAt
+                : Date.now(),
+          })
+        }
+
+        set((state) => ({
+          annotations: replaceSceneAnnotations(state.annotations, sceneId, importedAnnotations),
+          selectedAnnotationId: null,
+          openAnnotationPanelIds: [],
+          hoveredAnnotationId: null,
+          sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, sceneId),
+        }))
+      },
       importLocalData: async (sceneId) => {
         const raw = localStorage.getItem(PERSIST_KEY)
         if (!raw) return
@@ -675,7 +942,7 @@ export const useViewerStore = create<ViewerState>()(
     }),
     {
       name: 'polycam-viewer-state',
-      version: 5,
+      version: 6,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>
         if (version === 0) {
@@ -740,11 +1007,19 @@ export const useViewerStore = create<ViewerState>()(
           state.sceneMutationVersion = {}
         }
 
+        if (
+          typeof state.draftRevisionSourceByScene !== 'object' ||
+          state.draftRevisionSourceByScene === null
+        ) {
+          state.draftRevisionSourceByScene = {}
+        }
+
         return persistedState
       },
       partialize: (state) => ({
         annotations: state.annotations,
         draftRevisionByScene: state.draftRevisionByScene,
+        draftRevisionSourceByScene: state.draftRevisionSourceByScene,
         sceneMutationVersion: state.sceneMutationVersion,
         colorMapMode: state.colorMapMode,
         pointSize: state.pointSize,

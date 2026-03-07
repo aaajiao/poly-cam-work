@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CloudUpload, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useViewerStore } from '@/store/viewerStore'
@@ -9,15 +9,16 @@ export function PublishButton() {
   const draftStatus = useViewerStore((state) => state.draftStatus)
   const draftError = useViewerStore((state) => state.draftError)
   const publishedVersionByScene = useViewerStore((state) => state.publishedVersionByScene)
-  const saveDraft = useViewerStore((state) => state.saveDraft)
+  const downloadLocalDraft = useViewerStore((state) => state.downloadLocalDraft)
+  const importLocalDraftFile = useViewerStore((state) => state.importLocalDraftFile)
   const publishDraft = useViewerStore((state) => state.publishDraft)
   const rollbackToVersion = useViewerStore((state) => state.rollbackToVersion)
-  const importLocalData = useViewerStore((state) => state.importLocalData)
 
   const [isSaving, setIsSaving] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [rollbackValue, setRollbackValue] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   if (!activeSceneId || !isAuthenticated) {
     return null
@@ -33,8 +34,7 @@ export function PublishButton() {
         disabled={isImporting}
         className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
         onClick={() => {
-          setIsImporting(true)
-          void importLocalData(activeSceneId).finally(() => setIsImporting(false))
+          fileInputRef.current?.click()
         }}
       >
         <CloudUpload size={14} />
@@ -48,7 +48,7 @@ export function PublishButton() {
         className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
         onClick={() => {
           setIsSaving(true)
-          void saveDraft(activeSceneId).finally(() => setIsSaving(false))
+          void downloadLocalDraft(activeSceneId).finally(() => setIsSaving(false))
         }}
       >
         <CloudUpload size={14} />
@@ -98,10 +98,25 @@ export function PublishButton() {
       </div>
 
       {draftError && (
-        <div className="hidden text-xs text-red-400 2xl:block" data-testid="publish-error-label">
+        <div className="text-xs text-red-400" data-testid="publish-error-label">
           {draftError}
         </div>
       )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.currentTarget.value = ''
+          if (!file) return
+
+          setIsImporting(true)
+          void importLocalDraftFile(activeSceneId, file).finally(() => setIsImporting(false))
+        }}
+      />
     </div>
   )
 }
