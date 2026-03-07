@@ -33,7 +33,7 @@ class VercelBlobModelStorage {
   async upload(file: File, params: { sceneKey: string; kind: ModelFileKind }): Promise<string> {
     const sceneKey = sanitizeSegment(params.sceneKey) || `scene-${Date.now()}`
     const ext = extensionFromFilename(file.name, params.kind)
-    const pathname = `models/${sceneKey}/${params.kind}-${Date.now()}.${ext}`
+    const pathname = `scenes/${sceneKey}/models/${params.kind}-${Date.now()}.${ext}`
     const normalizedFile = new File([file], file.name, {
       type: contentTypeForKind(params.kind),
     })

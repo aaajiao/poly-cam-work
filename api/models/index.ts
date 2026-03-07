@@ -90,13 +90,18 @@ function blobPathnameFromUrl(value: string): string | null {
   }
 }
 
+function isManagedModelPathname(pathname: string) {
+  if (pathname.startsWith('models/')) return true
+  return /^scenes\/[^/]+\/models\//.test(pathname)
+}
+
 async function cleanupStaleModelAssets(previousModels: ScanScene[], nextModels: ScanScene[]) {
   const keepUrls = new Set(nextModels.flatMap((model) => [model.glbUrl, model.plyUrl]))
   const stalePathnames = previousModels
     .flatMap((model) => [model.glbUrl, model.plyUrl])
     .filter((url) => !keepUrls.has(url))
     .map((url) => blobPathnameFromUrl(url))
-    .filter((pathname): pathname is string => pathname !== null)
+    .filter((pathname): pathname is string => pathname !== null && isManagedModelPathname(pathname))
 
   await Promise.allSettled(stalePathnames.map((pathname) => deleteBlobByPathname(pathname)))
 }
@@ -263,6 +268,7 @@ async function upsertModelByIdWithRetry(input: {
 
       const models = [merged, ...registry.models.filter((model) => model.id !== input.id)]
       await writeModelRegistry(models)
+      await cleanupStaleModelAssets(registry.models, models)
       return merged
     } catch (error) {
       lastError = error
@@ -299,7 +305,7 @@ async function replaceModelsWithRetry(inputModels: ReplaceModelInput[]) {
       })
 
       await writeModelRegistry(nextModels)
-      void cleanupStaleModelAssets(registry.models, nextModels)
+      await cleanupStaleModelAssets(registry.models, nextModels)
       return nextModels
     } catch (error) {
       lastError = error

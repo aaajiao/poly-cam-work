@@ -899,6 +899,7 @@ export const useViewerStore = create<ViewerState>()(
               }
 
               const uploaded = await vercelBlobImageStorage.upload(blob, {
+                sceneId,
                 annotationId: localImage.annotationId,
                 filename: localImage.filename,
               })
@@ -1189,6 +1190,7 @@ export const useViewerStore = create<ViewerState>()(
             const blob = await imageStorage.get(localId)
             if (!blob) continue
             const uploaded = await vercelBlobImageStorage.upload(blob, {
+              sceneId,
               annotationId: annotation.id,
               filename,
             })

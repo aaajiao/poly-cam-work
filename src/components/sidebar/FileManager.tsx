@@ -108,6 +108,7 @@ export function FileManager() {
         name: displayName,
         glbUrl,
         plyUrl,
+        mergeById: true,
       })
 
       addCloudScene({

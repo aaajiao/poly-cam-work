@@ -482,6 +482,7 @@ describe('viewerStore', () => {
 
     expect(uploadSpy).toHaveBeenCalledTimes(1)
     expect(uploadSpy).toHaveBeenCalledWith(expect.any(Blob), {
+      sceneId: 'scan-a',
       annotationId: 'ann-upload-1',
       filename: 'pending.jpg',
     })

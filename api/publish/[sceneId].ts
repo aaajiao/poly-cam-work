@@ -8,6 +8,7 @@ import {
   writeJsonBlob,
 } from '../_lib/blobStore'
 import { badRequest, jsonResponse, methodNotAllowed, notFound, unauthorized } from '../_lib/http'
+import { collectImagePathnamesFromDraft, reconcileSceneImageAssets } from '../_lib/sceneAssetCleanup'
 
 interface PublishBody {
   message?: string
@@ -93,7 +94,14 @@ export default async function handler(request: Request) {
       return badRequest('version must be a positive number')
     }
 
-    const deleted = await deleteBlobByPathname(releasePath(sceneId, version))
+    const targetReleasePath = releasePath(sceneId, version)
+    const releaseToDelete = await readJsonBlob<SceneDraft>(targetReleasePath)
+    if (!releaseToDelete) {
+      return notFound('Release not found')
+    }
+    const candidateImagePathnames = collectImagePathnamesFromDraft(releaseToDelete)
+
+    const deleted = await deleteBlobByPathname(targetReleasePath)
     if (!deleted) {
       return notFound('Release not found')
     }
@@ -108,6 +116,12 @@ export default async function handler(request: Request) {
     }
 
     await writeJsonBlob(livePath(sceneId), { version: liveVersion ?? 0 })
+
+    try {
+      await reconcileSceneImageAssets(sceneId, candidateImagePathnames)
+    } catch (error) {
+      console.error('Failed to reconcile scene images after release delete', error)
+    }
 
     return jsonResponse({
       ok: true,
@@ -134,6 +148,12 @@ export default async function handler(request: Request) {
 
   await writeImmutableJsonBlob(releasePath(sceneId, nextVersion), release)
   await writeJsonBlob(livePath(sceneId), { version: nextVersion })
+
+  try {
+    await reconcileSceneImageAssets(sceneId)
+  } catch (error) {
+    console.error('Failed to reconcile scene images after publish', error)
+  }
 
   return jsonResponse({ ok: true, version: nextVersion })
 }

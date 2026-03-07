@@ -1,6 +1,7 @@
 import { upload } from '@vercel/blob/client'
 
 interface UploadMetadata {
+  sceneId: string
   annotationId: string
   filename: string
 }
@@ -27,14 +28,30 @@ function sanitizeFilename(filename: string) {
   return `${normalizedBase}.${safeExt}`
 }
 
+function sanitizeSegment(value: string, fallback: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return normalized.length > 0 ? normalized : fallback
+}
+
 class VercelBlobImageStorage {
   async upload(blob: Blob, metadata: UploadMetadata): Promise<UploadedImage> {
-    const pathname = `${Date.now()}-${sanitizeFilename(metadata.filename)}`
+    const sceneId = sanitizeSegment(metadata.sceneId, `scene-${Date.now()}`)
+    const annotationId = sanitizeSegment(metadata.annotationId, `annotation-${Date.now()}`)
+    const pathname = `scenes/${sceneId}/images/${annotationId}/${Date.now()}-${sanitizeFilename(metadata.filename)}`
 
     const result = await upload(pathname, blob, {
       access: 'public',
       handleUploadUrl: '/api/media/upload',
-      clientPayload: JSON.stringify({ annotationId: metadata.annotationId }),
+      clientPayload: JSON.stringify({
+        sceneId,
+        annotationId,
+      }),
     })
 
     return {

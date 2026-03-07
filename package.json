@@ -16,7 +16,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test e2e/smoke.test.ts",
     "test:e2e:ui": "playwright test --ui",
-    "test:all": "bun run test:vitest && bun run test:e2e"
+    "test:all": "bun run test:vitest && bun run test:e2e",
+    "cleanup:orphans": "bun run scripts/cleanup-orphan-assets.ts",
+    "cleanup:orphans:dry": "bun run scripts/cleanup-orphan-assets.ts --dry-run"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",

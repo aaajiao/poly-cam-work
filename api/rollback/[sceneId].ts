@@ -1,6 +1,7 @@
 import type { SceneDraft } from '../../src/types'
 import { requireAuth } from '../_lib/auth'
 import { readJsonBlob, writeJsonBlob } from '../_lib/blobStore'
+import { collectImagePathnamesFromDraft, reconcileSceneImageAssets } from '../_lib/sceneAssetCleanup'
 import {
   badRequest,
   jsonResponse,
@@ -58,6 +59,7 @@ export default async function handler(request: Request) {
   }
 
   const currentDraft = await readJsonBlob<SceneDraft>(draftPath(sceneId))
+  const previousImagePathnames = currentDraft ? collectImagePathnamesFromDraft(currentDraft) : []
   const nextDraft: SceneDraft = {
     ...release,
     revision: (currentDraft?.revision ?? release.revision) + 1,
@@ -66,6 +68,12 @@ export default async function handler(request: Request) {
 
   await writeJsonBlob(livePath(sceneId), { version })
   await writeJsonBlob(draftPath(sceneId), nextDraft)
+
+  try {
+    await reconcileSceneImageAssets(sceneId, previousImagePathnames)
+  } catch (error) {
+    console.error('Failed to reconcile scene images after rollback', error)
+  }
 
   return jsonResponse({ ok: true, version })
 }

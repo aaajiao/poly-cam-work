@@ -1,6 +1,7 @@
 import type { SceneDraft } from '../../src/types'
 import { requireAuth } from '../_lib/auth'
 import { readJsonBlob, writeJsonBlob } from '../_lib/blobStore'
+import { collectImagePathnamesFromDraft, reconcileSceneImageAssets } from '../_lib/sceneAssetCleanup'
 import {
   badRequest,
   conflict,
@@ -63,6 +64,8 @@ export default async function handler(request: Request) {
     return conflict('Revision mismatch')
   }
 
+  const previousImagePathnames = collectImagePathnamesFromDraft(currentDraft)
+
   const nextRevision = currentDraft.revision + 1
   const nextDraft: SceneDraft = {
     ...body.draft,
@@ -72,6 +75,12 @@ export default async function handler(request: Request) {
   }
 
   await writeJsonBlob(draftPath(sceneId), nextDraft)
+
+  try {
+    await reconcileSceneImageAssets(sceneId, previousImagePathnames)
+  } catch (error) {
+    console.error('Failed to reconcile scene images after draft save', error)
+  }
 
   return jsonResponse({ ok: true, revision: nextRevision })
 }
