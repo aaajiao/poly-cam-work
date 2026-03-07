@@ -15,6 +15,7 @@ zustand (persist) + shadcn/ui + Tailwind v4
 
 ```text
 src/
+├── __tests__/       # unit + browser integration tests (Vitest)
 ├── components/
 │   ├── viewer/      # R3F Canvas + GLB/PLY renderers (see viewer/AGENTS.md)
 │   ├── tools/       # 3D interaction tools (see tools/AGENTS.md)
@@ -132,11 +133,13 @@ Use a 3-layer test model and keep responsibilities strict.
 ### Commands
 
 ```bash
+bun run lint                # eslint checks
 bun run test                # alias to test:vitest
 bun run test:vitest         # unit + browser projects
 bun run test:vitest:unit    # unit only
 bun run test:vitest:browser # browser integration only
 bun run test:e2e            # Playwright smoke only (e2e/smoke.test.ts)
+bun run test:e2e:ui         # Playwright UI mode
 bun run test:all            # vitest + smoke e2e
 bun run build               # typecheck + production build
 ```

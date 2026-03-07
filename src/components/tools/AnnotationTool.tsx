@@ -32,19 +32,16 @@ export function AnnotationTool() {
     const hit = intersects[0]
     const hitPoint = hit.point.clone()
 
-    let normal: THREE.Vector3 | null = null
-    if (hit.face?.normal) {
-      normal = hit.face.normal.clone()
-    } else {
-      normal = camera.position.clone()
-        .sub(new THREE.Vector3(hitPoint.x, hitPoint.y, hitPoint.z))
-        .normalize()
-    }
+    const normal = hit.face?.normal
+      ? hit.face.normal.clone()
+      : camera.position.clone()
+          .sub(new THREE.Vector3(hitPoint.x, hitPoint.y, hitPoint.z))
+          .normalize()
 
     setPendingAnnotationInput({
       screenPos: { x: e.clientX, y: e.clientY },
       worldPos: [hitPoint.x, hitPoint.y, hitPoint.z],
-      normal: normal ? [normal.x, normal.y, normal.z] : undefined,
+      normal: [normal.x, normal.y, normal.z],
     })
   }, [isActive, pendingAnnotationInput, camera, scene, gl, setPendingAnnotationInput])
 

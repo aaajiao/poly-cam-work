@@ -13,7 +13,6 @@ export function formatDistance(meters: number): string {
 export function calculatePolygonArea(points: THREE.Vector3[]): number {
   if (points.length < 3) return 0
   // Newell's method for 3D polygon area
-  let area = 0
   const n = points.length
   const normal = new THREE.Vector3()
 
@@ -25,8 +24,7 @@ export function calculatePolygonArea(points: THREE.Vector3[]): number {
     normal.z += (curr.x - next.x) * (curr.y + next.y)
   }
 
-  area = normal.length() / 2
-  return area
+  return normal.length() / 2
 }
 
 export function getMidpoint(p1: THREE.Vector3, p2: THREE.Vector3): THREE.Vector3 {

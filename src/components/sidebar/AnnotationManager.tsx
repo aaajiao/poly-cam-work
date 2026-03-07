@@ -23,7 +23,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
     setLocalDesc(annotation.description)
     setVideoInput(annotation.videoUrl ?? '')
     setLocalLinks(annotation.links)
-  }, [annotation.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [annotation.id])
 
   const videoError = videoInput !== '' && !isValidVimeoUrl(videoInput)
 
