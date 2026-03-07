@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "deploy-to-vercel": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "d2b5bcc7c09fdb649129ffc7dd7b647ec1b155736974b974292675afd588cb39"
+    },
     "playwright-visual-testing": {
       "source": "manutej/luxor-claude-marketplace",
       "sourceType": "github",
@@ -15,6 +20,16 @@
       "source": "jezweb/claude-skills",
       "sourceType": "github",
       "computedHash": "c9871cb4685898b3d5ac3dd54924a6818ca4817de5ca40d546eba06d0ada53a8"
+    },
+    "vercel-blob": {
+      "source": "jackspace/claudeskillz",
+      "sourceType": "github",
+      "computedHash": "6ff3e01baddeb7206f928d9d76e6d18600c4446861dc1210aa895211ae2f7eac"
+    },
+    "vercel-functions-runtime": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "github",
+      "computedHash": "1a37ae0b3b4f7da11957328b171d9bc6db6f6f18c5be14b3b7e5b8bb0bf3cc78"
     }
   }
 }
