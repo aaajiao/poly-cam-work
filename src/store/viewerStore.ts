@@ -546,10 +546,6 @@ export const useViewerStore = create<ViewerState>()(
                 ...state.draftRevisionSourceByScene,
                 [sceneId]: 'draft',
               },
-              draftDirtyByScene: {
-                ...state.draftDirtyByScene,
-                [sceneId]: false,
-              },
             }))
             return
           }
@@ -607,10 +603,6 @@ export const useViewerStore = create<ViewerState>()(
               draftRevisionSourceByScene: {
                 ...state.draftRevisionSourceByScene,
                 [sceneId]: 'release',
-              },
-              draftDirtyByScene: {
-                ...state.draftDirtyByScene,
-                [sceneId]: false,
               },
             }))
             return

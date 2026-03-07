@@ -441,5 +441,75 @@ describe('viewerStore', () => {
     expect(state.annotations).toHaveLength(1)
     expect(state.annotations[0].id).toBe('local-1')
     expect(state.draftRevisionByScene['scan-a']).toBe(2)
+    expect(state.draftDirtyByScene['scan-a']).toBe(true)
+  })
+
+  it('loadDraft keeps dirty state when user deletes last local annotation during in-flight request', async () => {
+    const resolver: { current: ((value: SceneDraft) => void) | null } = { current: null }
+    const draftPromise = new Promise<SceneDraft>((resolve) => {
+      resolver.current = (value: SceneDraft) => {
+        resolve(value)
+      }
+    })
+
+    vi.spyOn(publishApi, 'getDraft').mockReturnValue(draftPromise)
+    vi.spyOn(publishApi, 'getRelease').mockResolvedValue({
+      sceneId: 'scan-a',
+      revision: 0,
+      annotations: [],
+      updatedAt: Date.now(),
+    })
+
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'local-delete-1',
+          position: [0, 0, 0],
+          title: 'To delete',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftDirtyByScene: { 'scan-a': false },
+      sceneMutationVersion: { 'scan-a': 1 },
+    })
+
+    const { loadDraft, removeAnnotation } = useViewerStore.getState()
+    const loadPromise = loadDraft('scan-a')
+
+    removeAnnotation('local-delete-1')
+
+    if (!resolver.current) {
+      throw new Error('draft resolver was not initialized')
+    }
+
+    resolver.current({
+      sceneId: 'scan-a',
+      revision: 3,
+      annotations: [
+        {
+          id: 'server-annotation',
+          position: [1, 1, 1],
+          title: 'Server version',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      updatedAt: Date.now(),
+    })
+
+    await loadPromise
+
+    const state = useViewerStore.getState()
+    expect(state.annotations).toHaveLength(0)
+    expect(state.draftDirtyByScene['scan-a']).toBe(true)
   })
 })

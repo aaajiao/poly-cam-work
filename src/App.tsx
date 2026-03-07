@@ -13,6 +13,7 @@ export default function App() {
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
   const activeSceneId = useViewerStore((state) => state.activeSceneId)
   const annotations = useViewerStore((state) => state.annotations)
+  const draftDirtyByScene = useViewerStore((state) => state.draftDirtyByScene)
   const loadDraft = useViewerStore((state) => state.loadDraft)
   const refreshAuthSession = useViewerStore((state) => state.refreshAuthSession)
   const attemptedSceneLoadsRef = useRef<Set<string>>(new Set())
@@ -24,6 +25,9 @@ export default function App() {
   useEffect(() => {
     if (!activeSceneId) return
 
+    const isSceneDirty = draftDirtyByScene[activeSceneId] ?? false
+    if (isSceneDirty) return
+
     const hasLocalSceneAnnotations = annotations.some((annotation) => annotation.sceneId === activeSceneId)
     if (hasLocalSceneAnnotations) return
 
@@ -31,7 +35,7 @@ export default function App() {
     attemptedSceneLoadsRef.current.add(activeSceneId)
 
     void loadDraft(activeSceneId)
-  }, [activeSceneId, annotations, loadDraft])
+  }, [activeSceneId, annotations, draftDirtyByScene, loadDraft])
 
   return (
     <>
