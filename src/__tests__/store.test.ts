@@ -207,6 +207,40 @@ describe('viewerStore', () => {
     expect(state.openAnnotationPanelIds).toEqual([])
   })
 
+  it('loadPublishedVersions stores sorted versions and live version mapping', async () => {
+    vi.spyOn(publishApi, 'getPublishedVersions').mockResolvedValue({
+      versions: [7, 6, 4],
+      liveVersion: 6,
+    })
+
+    const { loadPublishedVersions } = useViewerStore.getState()
+    await loadPublishedVersions('scan-a')
+
+    const state = useViewerStore.getState()
+    expect(state.publishedVersionsByScene['scan-a']).toEqual([7, 6, 4])
+    expect(state.publishedVersionByScene['scan-a']).toBe(6)
+  })
+
+  it('deletePublishedVersion removes live mapping when API reports no live version', async () => {
+    useViewerStore.setState({
+      publishedVersionByScene: { 'scan-a': 5 },
+      publishedVersionsByScene: { 'scan-a': [5, 4, 3] },
+    })
+
+    vi.spyOn(publishApi, 'deletePublishedVersion').mockResolvedValue({
+      ok: true,
+      versions: [4, 3],
+      liveVersion: null,
+    })
+
+    const { deletePublishedVersion } = useViewerStore.getState()
+    await deletePublishedVersion('scan-a', 5)
+
+    const state = useViewerStore.getState()
+    expect(state.publishedVersionsByScene['scan-a']).toEqual([4, 3])
+    expect(state.publishedVersionByScene['scan-a']).toBeUndefined()
+  })
+
   it('saveDraft sends only remote images to API', async () => {
     useViewerStore.setState({
       annotations: [
@@ -380,6 +414,63 @@ describe('viewerStore', () => {
     expect(saveDraftSpy.mock.calls[1]?.[2]).toBe(9)
     expect(revision).toBe(10)
     expect(useViewerStore.getState().draftStatus).toBe('idle')
+  })
+
+  it('saveDraft fails after three revision conflicts', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-retry-fail',
+          position: [0, 0, 0],
+          title: 'Retry conflict fail',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 2 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+    })
+
+    const conflictError = Object.assign(new Error('Revision mismatch'), { status: 409 })
+
+    const getDraftSpy = vi
+      .spyOn(publishApi, 'getDraft')
+      .mockResolvedValueOnce({
+        sceneId: 'scan-a',
+        revision: 8,
+        annotations: [],
+        updatedAt: Date.now(),
+      })
+      .mockResolvedValueOnce({
+        sceneId: 'scan-a',
+        revision: 9,
+        annotations: [],
+        updatedAt: Date.now(),
+      })
+      .mockResolvedValueOnce({
+        sceneId: 'scan-a',
+        revision: 10,
+        annotations: [],
+        updatedAt: Date.now(),
+      })
+
+    const saveDraftSpy = vi
+      .spyOn(publishApi, 'saveDraft')
+      .mockRejectedValueOnce(conflictError)
+      .mockRejectedValueOnce(conflictError)
+      .mockRejectedValueOnce(conflictError)
+
+    const { saveDraft } = useViewerStore.getState()
+
+    await expect(saveDraft('scan-a')).rejects.toThrow('Draft changed while saving. Please try Publish again.')
+
+    expect(saveDraftSpy).toHaveBeenCalledTimes(3)
+    expect(getDraftSpy).toHaveBeenCalledTimes(3)
+    expect(useViewerStore.getState().draftStatus).toBe('conflict')
   })
 
   it('refreshAuthSession syncs authentication flag from API', async () => {
