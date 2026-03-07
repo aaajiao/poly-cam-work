@@ -123,9 +123,13 @@
     }
 }
 
-.stats-panel {
-  left: auto !important;
-  right: 0 !important;
+.stats-panel-inline {
+  left: 0 !important;
+  top: 0 !important;
+  position: relative !important;
+  transform: scale(0.66);
+  transform-origin: top left;
+  z-index: 1 !important;
 }
 
 @keyframes marker-breathe {

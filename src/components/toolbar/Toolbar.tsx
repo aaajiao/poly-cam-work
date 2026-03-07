@@ -54,6 +54,15 @@ export function Toolbar() {
 
       <div className="flex-1" />
 
+      {import.meta.env.DEV && (
+        <div className="hidden md:flex items-center" data-testid="fps-toolbar-slot-wrapper">
+          <div
+            id="fps-toolbar-slot"
+            className="h-8 w-14 overflow-hidden rounded border border-zinc-700 bg-zinc-950/80"
+          />
+        </div>
+      )}
+
       <LoginDialog />
       <PublishButton />
 

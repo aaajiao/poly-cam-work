@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, GizmoHelper, GizmoViewport, Environment, Stats } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
@@ -141,6 +141,15 @@ export function SceneCanvas() {
   const cameraControlsEnabled = useViewerStore((s) => s.cameraControlsEnabled)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
+  const [statsHost, setStatsHost] = useState<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const host = document.getElementById('fps-toolbar-slot')
+    if (host instanceof HTMLElement) {
+      setStatsHost(host)
+    }
+  }, [])
 
   const handlePointerMissed = useCallback(() => {
     if (toolMode !== 'annotate' && selectedAnnotationId) {
@@ -205,7 +214,13 @@ export function SceneCanvas() {
           />
         </GizmoHelper>
 
-        {import.meta.env.DEV && <Stats className="stats-panel" />}
+        {import.meta.env.DEV && statsHost && (
+          <Stats
+            className="stats-panel-inline"
+            parent={{ current: statsHost } as RefObject<HTMLElement>}
+            showPanel={0}
+          />
+        )}
 
         <ScreenshotCapture />
       </Canvas>
