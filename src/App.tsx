@@ -1,5 +1,5 @@
 import './index.css'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Layout } from '@/components/Layout'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { Toolbar } from '@/components/toolbar/Toolbar'
@@ -7,9 +7,17 @@ import { SceneCanvas } from '@/components/viewer/SceneCanvas'
 import { DropZone } from '@/components/upload/DropZone'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { StatusBar } from '@/components/ui/StatusBar'
+import { useViewerStore } from '@/store/viewerStore'
 
 export default function App() {
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
+  const activeSceneId = useViewerStore((state) => state.activeSceneId)
+  const loadDraft = useViewerStore((state) => state.loadDraft)
+
+  useEffect(() => {
+    if (!activeSceneId) return
+    void loadDraft(activeSceneId)
+  }, [activeSceneId, loadDraft])
 
   return (
     <>

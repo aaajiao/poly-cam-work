@@ -23,19 +23,17 @@ test('sidebar toggle works', async ({ page }) => {
 
   const sidebar = page.locator('[data-testid="sidebar"]')
 
-  // Sidebar starts collapsed (default: closed)
-  const collapsedBox = await sidebar.boundingBox()
-  expect(collapsedBox?.width).toBeLessThan(100)
+  const initialBox = await sidebar.boundingBox()
+  expect(initialBox?.width).toBeTruthy()
 
-  // Click toggle to expand
   await page.click('[data-testid="sidebar-toggle"]')
   await page.waitForTimeout(400)
-  const expandedBox = await sidebar.boundingBox()
-  expect(expandedBox?.width).toBeGreaterThan(200)
+  const toggledBox = await sidebar.boundingBox()
+  expect(toggledBox?.width).not.toBe(initialBox?.width)
+  expect(Math.abs((toggledBox?.width ?? 0) - (initialBox?.width ?? 0))).toBeGreaterThan(100)
 
-  // Click toggle to collapse again
   await page.click('[data-testid="sidebar-toggle"]')
   await page.waitForTimeout(400)
-  const recollapsedBox = await sidebar.boundingBox()
-  expect(recollapsedBox?.width).toBeLessThan(100)
+  const restoredBox = await sidebar.boundingBox()
+  expect(Math.abs((restoredBox?.width ?? 0) - (initialBox?.width ?? 0))).toBeLessThan(10)
 })

@@ -32,6 +32,7 @@ src/
 └── workers/         # ply-parser.worker.ts (off-thread PLY parsing)
 
 e2e/                 # Playwright smoke E2E tests only
+api/                 # Vercel Functions for auth/draft/media/publish/release/rollback
 ```
 
 ---
@@ -83,6 +84,7 @@ Main interaction:
 | Change clipping behavior | `src/components/tools/ClippingPlane.tsx` |
 | Change screenshot behavior | `src/components/viewer/ScreenshotButton.tsx`, `src/hooks/useScreenshot.ts` |
 | Change Vimeo URL handling | `src/utils/vimeo.ts`, `src/components/ui/VimeoEmbed.tsx` |
+| Change publish workflow APIs | `api/*`, `api/_lib/*`, `src/lib/publishApi.ts` |
 | Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx` |
 | Add/adjust E2E smoke test | `e2e/smoke.test.ts` |
 
@@ -142,6 +144,9 @@ bun run test:e2e            # Playwright smoke only (e2e/smoke.test.ts)
 bun run test:e2e:ui         # Playwright UI mode
 bun run test:all            # vitest + smoke e2e
 bun run build               # typecheck + production build
+
+# Vercel Functions local runtime (for /api endpoints)
+vercel dev
 ```
 
 ### E2E policy (important)
@@ -179,3 +184,4 @@ bun run build               # typecheck + production build
 - Linux side (agent runtime) owns dependency install and command execution.
 - macOS side accesses dev server through forwarded localhost port.
 - Standard local URL: `http://localhost:5173`.
+- Publish workflow env vars: `BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET`.

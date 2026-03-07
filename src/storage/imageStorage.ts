@@ -22,6 +22,7 @@ export interface ImageStorage {
   delete(id: string): Promise<void>
   deleteByAnnotation(annotationId: string): Promise<void>
   list(annotationId: string): Promise<ImageStorageItem[]>
+  clearAll(): Promise<void>
 }
 
 /**
@@ -175,6 +176,17 @@ class IndexedDBImageStorage implements ImageStorage {
       const req = index.getAll(annotationId)
       req.onsuccess = () => resolve(req.result as ImageStorageItem[])
       req.onerror = () => reject(req.error)
+    })
+  }
+
+  async clearAll(): Promise<void> {
+    const db = await this.getDB()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
+      tx.objectStore(STORE_NAME).clear()
+      tx.objectStore(THUMB_STORE_NAME).clear()
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
     })
   }
 }

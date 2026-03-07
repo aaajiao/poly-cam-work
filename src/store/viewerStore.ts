@@ -6,12 +6,49 @@ import type {
   ToolMode,
   Measurement,
   Annotation,
+  AnnotationImage,
   ClipPlaneState,
   ColorMapMode,
   PendingAnnotationInput,
+  SceneDraft,
 } from '@/types'
 import { PRESET_SCENES } from './presetScenes'
 import { imageStorage } from '@/storage/imageStorage'
+import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
+import * as publishApi from '@/lib/publishApi'
+
+const PERSIST_KEY = 'polycam-viewer-state'
+
+type DraftStatus = 'idle' | 'loading' | 'saving' | 'error' | 'conflict'
+
+type LegacyAnnotationImage = AnnotationImage & {
+  id?: string
+}
+
+function sceneAnnotations(annotations: Annotation[], sceneId: string) {
+  return annotations.filter((annotation) => annotation.sceneId === sceneId)
+}
+
+function replaceSceneAnnotations(
+  currentAnnotations: Annotation[],
+  sceneId: string,
+  nextSceneAnnotations: Annotation[]
+) {
+  const nonScene = currentAnnotations.filter((annotation) => annotation.sceneId !== sceneId)
+  return [...nonScene, ...nextSceneAnnotations]
+}
+
+function normalizeDraft(sceneId: string, draft: SceneDraft): SceneDraft {
+  return {
+    sceneId,
+    revision: draft.revision,
+    annotations: draft.annotations,
+    updatedAt: draft.updatedAt,
+    publishedAt: draft.publishedAt,
+    publishedBy: draft.publishedBy,
+    message: draft.message,
+  }
+}
 
 interface ViewerState {
   scenes: ScanScene[]
@@ -42,6 +79,12 @@ interface ViewerState {
   loadingProgress: number
   loadingMessage: string
 
+  draftStatus: DraftStatus
+  draftError: string | null
+  isAuthenticated: boolean
+  draftRevisionByScene: Record<string, number>
+  publishedVersionByScene: Record<string, number>
+
   setPendingAnnotationInput: (input: PendingAnnotationInput | null) => void
   setActiveScene: (id: string) => void
   setViewMode: (mode: ViewMode) => void
@@ -69,11 +112,18 @@ interface ViewerState {
   setLoading: (loading: boolean, progress?: number, message?: string) => void
   addUploadedScene: (scene: ScanScene) => void
   removeUploadedScene: (id: string) => void
+  loadDraft: (sceneId: string) => Promise<void>
+  saveDraft: (sceneId: string) => Promise<number>
+  publishDraft: (sceneId: string, message?: string) => Promise<number>
+  rollbackToVersion: (sceneId: string, version: number) => Promise<number>
+  login: (password: string) => Promise<void>
+  logout: () => Promise<void>
+  importLocalData: (sceneId: string) => Promise<void>
 }
 
 export const useViewerStore = create<ViewerState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       scenes: PRESET_SCENES,
       uploadedScenes: [],
       activeSceneId: PRESET_SCENES[0].id,
@@ -107,6 +157,12 @@ export const useViewerStore = create<ViewerState>()(
       loadingProgress: 0,
       loadingMessage: '',
 
+      draftStatus: 'idle',
+      draftError: null,
+      isAuthenticated: false,
+      draftRevisionByScene: {},
+      publishedVersionByScene: {},
+
       setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
       setActiveScene: (id) => set({
         activeSceneId: id,
@@ -136,7 +192,6 @@ export const useViewerStore = create<ViewerState>()(
       addAnnotation: (a) =>
         set((state) => ({ annotations: [...state.annotations, a], annotationsVisible: true })),
       removeAnnotation: (id) => {
-        imageStorage.deleteByAnnotation(id).catch(console.error)
         set((state) => ({
           annotations: state.annotations.filter((a) => a.id !== id),
           selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
@@ -212,9 +267,6 @@ export const useViewerStore = create<ViewerState>()(
         set((state) => {
           const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
           const removedIds = new Set(removedAnnotations.map((a) => a.id))
-          for (const a of removedAnnotations) {
-            imageStorage.deleteByAnnotation(a.id).catch(console.error)
-          }
           return {
             uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
             annotations: state.annotations.filter((a) => a.sceneId !== id),
@@ -229,14 +281,183 @@ export const useViewerStore = create<ViewerState>()(
                 : state.hoveredAnnotationId,
           }
         }),
+      loadDraft: async (sceneId) => {
+        set({ draftStatus: 'loading', draftError: null })
+        try {
+          const draft = normalizeDraft(sceneId, await publishApi.getDraft(sceneId))
+          set((state) => ({
+            annotations: replaceSceneAnnotations(state.annotations, sceneId, draft.annotations),
+            draftStatus: 'idle',
+            draftError: null,
+            isAuthenticated: true,
+            draftRevisionByScene: {
+              ...state.draftRevisionByScene,
+              [sceneId]: draft.revision,
+            },
+          }))
+          return
+        } catch (error) {
+          const status = (error as Error & { status?: number }).status
+          if (status !== 401) {
+            set({
+              draftStatus: 'error',
+              draftError: error instanceof Error ? error.message : 'Failed to load draft',
+            })
+            return
+          }
+        }
+
+        try {
+          const release = normalizeDraft(sceneId, await publishApi.getRelease(sceneId))
+          set((state) => ({
+            annotations: replaceSceneAnnotations(state.annotations, sceneId, release.annotations),
+            draftStatus: 'idle',
+            draftError: null,
+            isAuthenticated: false,
+            draftRevisionByScene: {
+              ...state.draftRevisionByScene,
+              [sceneId]: release.revision,
+            },
+          }))
+        } catch (error) {
+          set({
+            draftStatus: 'error',
+            draftError: error instanceof Error ? error.message : 'Failed to load release',
+          })
+        }
+      },
+      saveDraft: async (sceneId) => {
+        const state = get()
+        const expectedRevision = state.draftRevisionByScene[sceneId] ?? 0
+        const draft: SceneDraft = {
+          sceneId,
+          revision: expectedRevision,
+          annotations: sceneAnnotations(state.annotations, sceneId),
+          updatedAt: Date.now(),
+        }
+
+        set({ draftStatus: 'saving', draftError: null })
+
+        try {
+          const result = await publishApi.saveDraft(sceneId, draft, expectedRevision)
+          set((nextState) => ({
+            draftStatus: 'idle',
+            draftError: null,
+            isAuthenticated: true,
+            draftRevisionByScene: {
+              ...nextState.draftRevisionByScene,
+              [sceneId]: result.revision,
+            },
+          }))
+          return result.revision
+        } catch (error) {
+          const status = (error as Error & { status?: number }).status
+          if (status === 401) {
+            set({
+              draftStatus: 'error',
+              draftError: 'Authentication required',
+              isAuthenticated: false,
+            })
+          } else if (status === 409) {
+            set({
+              draftStatus: 'conflict',
+              draftError: 'Draft has changed in another window. Reload before saving.',
+            })
+          } else {
+            set({
+              draftStatus: 'error',
+              draftError: error instanceof Error ? error.message : 'Failed to save draft',
+            })
+          }
+          throw error
+        }
+      },
+      publishDraft: async (sceneId, message) => {
+        await get().saveDraft(sceneId)
+        const result = await publishApi.publishDraft(sceneId, message)
+        set((state) => ({
+          isAuthenticated: true,
+          publishedVersionByScene: {
+            ...state.publishedVersionByScene,
+            [sceneId]: result.version,
+          },
+        }))
+        return result.version
+      },
+      rollbackToVersion: async (sceneId, version) => {
+        const result = await publishApi.rollbackRelease(sceneId, version)
+        await get().loadDraft(sceneId)
+        set((state) => ({
+          publishedVersionByScene: {
+            ...state.publishedVersionByScene,
+            [sceneId]: result.version,
+          },
+        }))
+        return result.version
+      },
+      login: async (password) => {
+        await publishApi.login(password)
+        set({ isAuthenticated: true, draftError: null })
+      },
+      logout: async () => {
+        await publishApi.logout()
+        set({ isAuthenticated: false })
+      },
+      importLocalData: async (sceneId) => {
+        const raw = localStorage.getItem(PERSIST_KEY)
+        if (!raw) return
+
+        const parsed = JSON.parse(raw) as {
+          state?: {
+            annotations?: Annotation[]
+          }
+        }
+
+        const sourceAnnotations = parsed.state?.annotations ?? []
+        const sceneSource = sourceAnnotations.filter((annotation) => annotation.sceneId === sceneId)
+        if (sceneSource.length === 0) return
+
+        const migratedAnnotations: Annotation[] = []
+        for (const annotation of sceneSource) {
+          const migratedImages: AnnotationImage[] = []
+          for (const image of annotation.images as LegacyAnnotationImage[]) {
+            if (typeof image.url === 'string' && image.url.length > 0) {
+              migratedImages.push({ url: image.url, filename: image.filename })
+              continue
+            }
+
+            if (!image.id) continue
+            const blob = await imageStorage.get(image.id)
+            if (!blob) continue
+            const uploaded = await vercelBlobImageStorage.upload(blob, {
+              annotationId: annotation.id,
+              filename: image.filename,
+            })
+            migratedImages.push(uploaded)
+          }
+
+          migratedAnnotations.push({
+            ...annotation,
+            images: migratedImages,
+          })
+        }
+
+        set((state) => ({
+          annotations: replaceSceneAnnotations(state.annotations, sceneId, migratedAnnotations),
+        }))
+
+        await get().saveDraft(sceneId)
+        await imageStorage.clearAll()
+        localStorage.removeItem(PERSIST_KEY)
+      },
     }),
     {
       name: 'polycam-viewer-state',
-      version: 1,
+      version: 2,
       migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as Record<string, unknown>
         if (version === 0) {
           // v0 format: { text } — v1 renames text→title, adds description/images/videoUrl/links/createdAt
-          const state = persistedState as Record<string, unknown>
           if (Array.isArray(state.annotations)) {
             state.annotations = (state.annotations as Record<string, unknown>[]).map((a) => {
               const { text: _text, ...rest } = a
@@ -252,14 +473,38 @@ export const useViewerStore = create<ViewerState>()(
             })
           }
         }
+
+        if (version <= 1 && Array.isArray(state.annotations)) {
+          state.annotations = (state.annotations as Record<string, unknown>[]).map((annotation) => {
+            const imagesRaw = Array.isArray(annotation.images) ? annotation.images : []
+            const images = imagesRaw
+              .map((image) => {
+                if (!image || typeof image !== 'object') return null
+                const candidate = image as Record<string, unknown>
+                const filename = typeof candidate.filename === 'string' ? candidate.filename : 'image'
+                if (typeof candidate.url === 'string' && candidate.url.length > 0) {
+                  return {
+                    url: candidate.url,
+                    filename,
+                  }
+                }
+                return null
+              })
+              .filter((image): image is { url: string; filename: string } => image !== null)
+
+            return {
+              ...annotation,
+              images,
+            }
+          })
+        }
+
         return persistedState
       },
       partialize: (state) => ({
-        annotations: state.annotations,
         colorMapMode: state.colorMapMode,
         pointSize: state.pointSize,
         viewMode: state.viewMode,
-        selectedAnnotationId: state.selectedAnnotationId,
         annotationsVisible: state.annotationsVisible,
       }),
     }

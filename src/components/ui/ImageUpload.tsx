@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Upload, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { imageStorage } from '@/storage/imageStorage'
+import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
 import type { AnnotationImage } from '@/types'
 
 interface ImageUploadProps {
@@ -9,11 +9,6 @@ interface ImageUploadProps {
   images: AnnotationImage[]
   onImagesChange: (images: AnnotationImage[]) => void
   maxImages?: number
-}
-
-interface ThumbnailEntry {
-  imageId: string
-  url: string
 }
 
 async function compressImage(file: File, maxBytes: number): Promise<Blob> {
@@ -57,43 +52,9 @@ export function ImageUpload({
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [thumbnails, setThumbnails] = useState<ThumbnailEntry[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const atLimit = images.length >= maxImages
-
-  useEffect(() => {
-    let cancelled = false
-    const createdUrls: string[] = []
-
-    const loadThumbs = async () => {
-      const entries: ThumbnailEntry[] = []
-      for (const img of images) {
-        if (cancelled) break
-        const blob = await imageStorage.getThumbnail(img.id)
-        // Check again after await — cleanup may have run while we were waiting
-        if (!cancelled && blob) {
-          const url = URL.createObjectURL(blob)
-          createdUrls.push(url)
-          entries.push({ imageId: img.id, url })
-        }
-      }
-      if (!cancelled) {
-        setThumbnails(entries)
-      } else {
-        // Async was cancelled after creating some URLs — revoke them
-        for (const url of createdUrls) URL.revokeObjectURL(url)
-      }
-    }
-
-    loadThumbs().catch(console.error)
-
-    return () => {
-      cancelled = true
-      // Revoke any URLs created before cancellation
-      for (const url of createdUrls) URL.revokeObjectURL(url)
-    }
-  }, [images])
 
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -116,12 +77,14 @@ export function ImageUpload({
         }
         try {
           const compressed = await compressImage(file, 1 * 1024 * 1024)
-          const id = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`
-          await imageStorage.save(id, compressed, { annotationId, filename: file.name })
-          newImages.push({ id, filename: file.name, thumbnailId: `thumb-${id}` })
+          const uploaded = await vercelBlobImageStorage.upload(compressed, {
+            annotationId,
+            filename: file.name,
+          })
+          newImages.push(uploaded)
         } catch (err) {
-          if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-            errors.push(`${file.name}: storage full — delete some images to free space`)
+          if (err instanceof Error) {
+            errors.push(`${file.name}: ${err.message}`)
           } else {
             errors.push(`${file.name}: upload failed`)
           }
@@ -186,12 +149,7 @@ export function ImageUpload({
 
   const handleDelete = useCallback(
     async (imageId: string) => {
-      try {
-        await imageStorage.delete(imageId)
-        onImagesChange(images.filter((img) => img.id !== imageId))
-      } catch (err) {
-        console.error(err)
-      }
+      onImagesChange(images.filter((img) => img.url !== imageId))
     },
     [images, onImagesChange]
   )
@@ -255,26 +213,25 @@ export function ImageUpload({
         </p>
       )}
 
-      {thumbnails.length > 0 && (
+      {images.length > 0 && (
         <div className="grid grid-cols-3 gap-2 mt-2" data-testid="image-thumbnail-grid">
-          {thumbnails.map(({ imageId, url }) => {
-            const imageData = images.find((img) => img.id === imageId)
+          {images.map((image) => {
             return (
               <div
-                key={imageId}
+                key={image.url}
                 className="relative aspect-square rounded overflow-hidden bg-zinc-800"
               >
                 <img
-                  src={url}
-                  alt={imageData?.filename ?? 'Uploaded image'}
+                  src={image.url}
+                  alt={image.filename}
                   className="w-full h-full object-cover"
                 />
                 <button
-                  data-testid={`delete-image-${imageId}`}
-                  aria-label={`Delete ${imageData?.filename ?? 'image'}`}
+                  data-testid={`delete-image-${image.url}`}
+                  aria-label={`Delete ${image.filename}`}
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleDelete(imageId)
+                    handleDelete(image.url)
                   }}
                   className="absolute top-1 right-1 bg-zinc-900/80 rounded p-0.5 text-zinc-400 hover:text-red-400 transition-colors"
                 >

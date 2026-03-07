@@ -5,6 +5,8 @@ import { ViewModeToggle } from './ViewModeToggle'
 import { ToolButtons } from './ToolButtons'
 import { useViewerStore } from '@/store/viewerStore'
 import { cn } from '@/lib/utils'
+import { LoginDialog } from '@/components/sidebar/LoginDialog'
+import { PublishButton } from '@/components/sidebar/PublishButton'
 
 export function Toolbar() {
   const clipEnabled = useViewerStore((s) => s.clipPlane.enabled)
@@ -51,6 +53,9 @@ export function Toolbar() {
       </TooltipProvider>
 
       <div className="flex-1" />
+
+      <LoginDialog />
+      <PublishButton />
 
       <Button
         variant="ghost"

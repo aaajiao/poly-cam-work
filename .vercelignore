@@ -1,0 +1,9 @@
+node_modules
+dist
+test-results
+coverage
+.agents
+.sisyphus
+.opencode
+glb
+ply

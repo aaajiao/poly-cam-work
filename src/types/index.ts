@@ -37,9 +37,8 @@ export interface Measurement {
 
 // Rich media types for annotations
 export interface AnnotationImage {
-  id: string           // matches IndexedDB key
-  filename: string     // original filename
-  thumbnailId: string  // thumbnail key in IndexedDB
+  url: string
+  filename: string
 }
 
 export interface AnnotationLink {
@@ -64,12 +63,26 @@ export interface Annotation {
   normal?: [number, number, number]    // surface normal at placement point
   title: string                        // was "text" — renamed
   description: string                  // longer text (default "")
-  images: AnnotationImage[]            // image references into IndexedDB
+  images: AnnotationImage[]
   videoUrl: string | null              // Vimeo URL, null = no video
   links: AnnotationLink[]              // clickable URLs
   color?: string
   sceneId: string
   createdAt: number                    // timestamp ms
+}
+
+export interface SceneDraft {
+  sceneId: string
+  revision: number
+  annotations: Annotation[]
+  updatedAt: number
+  publishedAt?: number
+  publishedBy?: string
+  message?: string
+}
+
+export interface LivePointer {
+  version: number
 }
 
 // Clipping plane state
