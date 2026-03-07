@@ -13,6 +13,11 @@ interface CreateModelResponse {
   model: ScanScene
 }
 
+interface SyncModelsResponse {
+  ok: true
+  models: ScanScene[]
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     credentials: 'include',
@@ -53,4 +58,14 @@ export async function createModel(input: {
   })
 
   return result.model
+}
+
+export async function syncModels(models: Array<{ id: string; name: string; glbUrl: string; plyUrl: string }>): Promise<ScanScene[]> {
+  const result = await requestJson<SyncModelsResponse>('/api/models', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ replace: true, models }),
+  })
+
+  return result.models
 }

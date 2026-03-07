@@ -217,15 +217,15 @@ describe('viewerStore', () => {
       {
         id: 'cloud-1',
         name: 'Cloud One',
-        glbUrl: 'https://blob.example/cloud-1.glb',
-        plyUrl: 'https://blob.example/cloud-1.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-1.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-1.ply',
         source: 'cloud',
       },
       {
         id: 'cloud-2',
         name: 'Cloud Two',
-        glbUrl: 'https://blob.example/cloud-2.glb',
-        plyUrl: 'https://blob.example/cloud-2.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-2.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-2.ply',
         source: 'cloud',
       },
     ])
@@ -245,8 +245,8 @@ describe('viewerStore', () => {
       {
         id: 'cloud-first',
         name: 'Cloud First',
-        glbUrl: 'https://blob.example/cloud-first.glb',
-        plyUrl: 'https://blob.example/cloud-first.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-first.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-first.ply',
         source: 'cloud',
       },
     ])
@@ -265,8 +265,8 @@ describe('viewerStore', () => {
         {
           id: 'cloud-existing',
           name: 'Cloud Existing',
-          glbUrl: 'https://blob.example/cloud-existing.glb',
-          plyUrl: 'https://blob.example/cloud-existing.ply',
+          glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-existing.glb',
+          plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-existing.ply',
           source: 'cloud',
         },
       ],
@@ -287,8 +287,8 @@ describe('viewerStore', () => {
         {
           id: 'cloud-old',
           name: 'Cloud Old',
-          glbUrl: 'https://blob.example/cloud-old.glb',
-          plyUrl: 'https://blob.example/cloud-old.ply',
+          glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-old.glb',
+          plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-old.ply',
           source: 'cloud',
         },
       ],
@@ -298,8 +298,8 @@ describe('viewerStore', () => {
     addCloudScene({
       id: 'cloud-new',
       name: 'Cloud New',
-      glbUrl: 'https://blob.example/cloud-new.glb',
-      plyUrl: 'https://blob.example/cloud-new.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-new.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-new.ply',
       source: 'cloud',
     })
 
@@ -310,41 +310,35 @@ describe('viewerStore', () => {
 
   it('syncPresetScenesToCloud uploads all preset pairs and merges by preset ids', async () => {
     useViewerStore.setState({ isAuthenticated: true })
+    vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
 
     const uploadSpy = vi
       .spyOn(vercelBlobModelStorage, 'uploadFromUrl')
-      .mockImplementation(async (url, params) => `https://blob.example/${params.sceneKey}/${params.kind}-${url.split('/').pop()}`)
+      .mockImplementation(
+        async (url, params) =>
+          `https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/${params.sceneKey}/${params.kind}-${url.split('/').pop()}`
+      )
 
-    const createModelSpy = vi
-      .spyOn(modelApi, 'createModel')
-      .mockImplementation(async (input) => ({
-        id: input.id ?? 'cloud-generated',
-        name: input.name,
-        glbUrl: input.glbUrl,
-        plyUrl: input.plyUrl,
-        source: 'cloud',
-      }))
-
-    vi.spyOn(modelApi, 'getModels').mockResolvedValue([
+    const syncModelsSpy = vi.spyOn(modelApi, 'syncModels').mockResolvedValue([
       {
         id: 'scan-a',
         name: 'Scan A (Corridor)',
-        glbUrl: 'https://blob.example/scan-a/glb-scan-a.glb',
-        plyUrl: 'https://blob.example/scan-a/ply-scan-a.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a/glb-scan-a.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a/ply-scan-a.ply',
         source: 'cloud',
       },
       {
         id: 'scan-b',
         name: 'Scan B (Large Room)',
-        glbUrl: 'https://blob.example/scan-b/glb-scan-b.glb',
-        plyUrl: 'https://blob.example/scan-b/ply-scan-b.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-b/glb-scan-b.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-b/ply-scan-b.ply',
         source: 'cloud',
       },
       {
         id: 'scan-c',
         name: 'Scan C (Multi-Room)',
-        glbUrl: 'https://blob.example/scan-c/glb-scan-c.glb',
-        plyUrl: 'https://blob.example/scan-c/ply-scan-c.ply',
+        glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-c/glb-scan-c.glb',
+        plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-c/ply-scan-c.ply',
         source: 'cloud',
       },
     ])
@@ -353,19 +347,12 @@ describe('viewerStore', () => {
     const synced = await syncPresetScenesToCloud()
 
     expect(uploadSpy).toHaveBeenCalledTimes(6)
-    expect(createModelSpy).toHaveBeenCalledTimes(3)
-    expect(createModelSpy).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ id: 'scan-a', mergeById: true })
-    )
-    expect(createModelSpy).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ id: 'scan-b', mergeById: true })
-    )
-    expect(createModelSpy).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ id: 'scan-c', mergeById: true })
-    )
+    expect(syncModelsSpy).toHaveBeenCalledTimes(1)
+    expect(syncModelsSpy).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'scan-a' }),
+      expect.objectContaining({ id: 'scan-b' }),
+      expect.objectContaining({ id: 'scan-c' }),
+    ])
     expect(synced).toHaveLength(3)
     expect(useViewerStore.getState().cloudScenes.map((scene) => scene.id)).toEqual([
       'scan-a',
@@ -376,6 +363,7 @@ describe('viewerStore', () => {
 
   it('syncPresetScenesToCloud requires login', async () => {
     useViewerStore.setState({ isAuthenticated: false })
+    vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: false })
     const { syncPresetScenesToCloud } = useViewerStore.getState()
     await expect(syncPresetScenesToCloud()).rejects.toThrow('Login required to sync preset models.')
   })

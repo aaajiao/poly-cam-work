@@ -6,6 +6,10 @@ function defaultFilename(kind: ModelFileKind) {
   return kind === 'glb' ? 'model.glb' : 'model.ply'
 }
 
+function contentTypeForKind(kind: ModelFileKind) {
+  return kind === 'glb' ? 'model/gltf-binary' : 'application/octet-stream'
+}
+
 function sanitizeSegment(value: string) {
   return value
     .trim()
@@ -30,8 +34,11 @@ class VercelBlobModelStorage {
     const sceneKey = sanitizeSegment(params.sceneKey) || `scene-${Date.now()}`
     const ext = extensionFromFilename(file.name, params.kind)
     const pathname = `models/${sceneKey}/${params.kind}-${Date.now()}.${ext}`
+    const normalizedFile = new File([file], file.name, {
+      type: contentTypeForKind(params.kind),
+    })
 
-    const result = await upload(pathname, file, {
+    const result = await upload(pathname, normalizedFile, {
       access: 'public',
       handleUploadUrl: '/api/models/upload',
       clientPayload: JSON.stringify({
@@ -57,7 +64,7 @@ class VercelBlobModelStorage {
     const pathname = new URL(url, window.location.origin).pathname
     const nameSegment = pathname.split('/').filter(Boolean).pop() ?? defaultFilename(params.kind)
     const file = new File([blob], nameSegment, {
-      type: blob.type || 'application/octet-stream',
+      type: contentTypeForKind(params.kind),
     })
 
     return this.upload(file, params)

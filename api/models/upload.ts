@@ -24,19 +24,25 @@ export default async function handler(request: Request) {
     return badRequest('Invalid upload body')
   }
 
-  const response = await handleUpload({
-    body,
-    request,
-    onBeforeGenerateToken: async () => {
-      return {
-        allowedContentTypes: ALLOWED_MODEL_CONTENT_TYPES,
-        addRandomSuffix: true,
-      }
-    },
-    onUploadCompleted: async () => {
-      return
-    },
-  })
+  let response: Awaited<ReturnType<typeof handleUpload>>
+  try {
+    response = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async () => {
+        return {
+          allowedContentTypes: ALLOWED_MODEL_CONTENT_TYPES,
+          addRandomSuffix: true,
+        }
+      },
+      onUploadCompleted: async () => {
+        return
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create upload token'
+    return badRequest(message)
+  }
 
   return new Response(JSON.stringify(response), {
     status: 200,

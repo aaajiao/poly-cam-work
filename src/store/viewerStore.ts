@@ -83,6 +83,32 @@ function normalizeDraft(sceneId: string, draft: SceneDraft): SceneDraft {
   }
 }
 
+function isPlaceholderHost(hostname: string) {
+  const normalized = hostname.trim().toLowerCase()
+  return (
+    normalized === 'example' ||
+    normalized === 'example.com' ||
+    normalized.endsWith('.example') ||
+    normalized.endsWith('.example.com')
+  )
+}
+
+function hasValidSceneAssetUrls(scene: ScanScene) {
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+    const glb = new URL(scene.glbUrl, base)
+    const ply = new URL(scene.plyUrl, base)
+
+    if ((glb.protocol !== 'https:' && glb.protocol !== 'http:') || (ply.protocol !== 'https:' && ply.protocol !== 'http:')) {
+      return false
+    }
+
+    return !isPlaceholderHost(glb.hostname) && !isPlaceholderHost(ply.hostname)
+  } catch {
+    return false
+  }
+}
+
 function bumpSceneMutationVersion(
   versions: Record<string, number>,
   sceneId: string
@@ -466,7 +492,7 @@ export const useViewerStore = create<ViewerState>()(
         })),
       loadCloudScenes: async () => {
         try {
-          const models = await modelApi.getModels()
+          const models = (await modelApi.getModels()).filter((scene) => hasValidSceneAssetUrls(scene))
           set((state) => ({
             cloudScenes: models,
             activeSceneId:
@@ -487,12 +513,13 @@ export const useViewerStore = create<ViewerState>()(
         }))
       },
       syncPresetScenesToCloud: async () => {
+        await get().refreshAuthSession()
         if (!get().isAuthenticated) {
           throw new Error('Login required to sync preset models.')
         }
 
         const presetScenes = get().scenes
-        const syncedModels: ScanScene[] = []
+        const syncedModelsInput: Array<{ id: string; name: string; glbUrl: string; plyUrl: string }> = []
         for (const scene of presetScenes) {
           const [glbUrl, plyUrl] = await Promise.all([
             vercelBlobModelStorage.uploadFromUrl(scene.glbUrl, {
@@ -505,17 +532,23 @@ export const useViewerStore = create<ViewerState>()(
             }),
           ])
 
-          const mergedModel = await modelApi.createModel({
+          syncedModelsInput.push({
             id: scene.id,
             name: scene.name,
             glbUrl,
             plyUrl,
-            mergeById: true,
           })
-          syncedModels.push(mergedModel)
         }
 
-        await get().loadCloudScenes()
+        const syncedModels = await modelApi.syncModels(syncedModelsInput)
+        set((state) => ({
+          cloudScenes: syncedModels.filter((scene) => hasValidSceneAssetUrls(scene)),
+          activeSceneId: syncedModels[0]?.id ?? state.activeSceneId,
+          selectedAnnotationId: null,
+          openAnnotationPanelIds: [],
+          hoveredAnnotationId: null,
+        }))
+
         return syncedModels
       },
       removeUploadedScene: (id) =>
@@ -1284,6 +1317,23 @@ if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__store 
 
 export const useActiveScene = () =>
   useViewerStore((state) => {
-    const allScenes = [...state.cloudScenes, ...state.scenes, ...state.uploadedScenes]
-    return allScenes.find((s) => s.id === state.activeSceneId) ?? null
+    if (!state.activeSceneId) {
+      return null
+    }
+
+    const presetScene = state.scenes.find((scene) => scene.id === state.activeSceneId)
+    if (import.meta.env.DEV && presetScene) {
+      return presetScene
+    }
+
+    const cloudScene = state.cloudScenes.find((scene) => scene.id === state.activeSceneId)
+    if (cloudScene && hasValidSceneAssetUrls(cloudScene)) {
+      return cloudScene
+    }
+
+    if (presetScene) {
+      return presetScene
+    }
+
+    return state.uploadedScenes.find((scene) => scene.id === state.activeSceneId) ?? null
   })
