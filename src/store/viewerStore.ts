@@ -557,60 +557,23 @@ export const useViewerStore = create<ViewerState>()(
         }
       },
       saveDraft: async (sceneId) => {
-        let state = get()
-        let expectedRevision = state.draftRevisionByScene[sceneId]
-        const revisionSource = state.draftRevisionSourceByScene[sceneId]
-
-        if (typeof expectedRevision !== 'number' || revisionSource !== 'draft') {
-          try {
-            const remoteDraft = await publishApi.getDraft(sceneId)
-            expectedRevision = remoteDraft.revision
-            set((nextState) => ({
-              draftRevisionByScene: {
-                ...nextState.draftRevisionByScene,
-                [sceneId]: remoteDraft.revision,
-              },
-              draftRevisionSourceByScene: {
-                ...nextState.draftRevisionSourceByScene,
-                [sceneId]: 'draft',
-              },
-            }))
-            state = get()
-          } catch {
-            expectedRevision = 0
-          }
-        }
-
-        const revision = expectedRevision ?? 0
-        const draft: SceneDraft = {
-          sceneId,
-          revision,
-          annotations: sceneAnnotations(state.annotations, sceneId).map((annotation) => ({
-            ...annotation,
-            images: toRemoteImages(annotation.images),
-          })),
-          updatedAt: Date.now(),
-        }
-
-        set({ draftStatus: 'saving', draftError: null })
-
-        try {
-          const result = await publishApi.saveDraft(sceneId, draft, revision)
+        const applySuccess = (revision: number) => {
           set((nextState) => ({
             draftStatus: 'idle',
             draftError: null,
             isAuthenticated: true,
             draftRevisionByScene: {
               ...nextState.draftRevisionByScene,
-              [sceneId]: result.revision,
+              [sceneId]: revision,
             },
             draftRevisionSourceByScene: {
               ...nextState.draftRevisionSourceByScene,
               [sceneId]: 'draft',
             },
           }))
-          return result.revision
-        } catch (error) {
+        }
+
+        const applyFailure = (error: unknown) => {
           const status = (error as Error & { status?: number }).status
           if (status === 401) {
             set({
@@ -618,18 +581,87 @@ export const useViewerStore = create<ViewerState>()(
               draftError: 'Authentication required',
               isAuthenticated: false,
             })
-          } else if (status === 409) {
+            return
+          }
+
+          if (status === 409) {
             set({
               draftStatus: 'conflict',
-              draftError: 'Draft has changed in another window. Reload before saving.',
+              draftError: 'Draft changed while saving. Please try Publish again.',
             })
-          } else {
-            set({
-              draftStatus: 'error',
-              draftError: error instanceof Error ? error.message : 'Failed to save draft',
-            })
+            return
           }
-          throw error
+
+          set({
+            draftStatus: 'error',
+            draftError: error instanceof Error ? error.message : 'Failed to save draft',
+          })
+        }
+
+        const buildDraft = (revision: number): SceneDraft => {
+          const state = get()
+          return {
+            sceneId,
+            revision,
+            annotations: sceneAnnotations(state.annotations, sceneId).map((annotation) => ({
+              ...annotation,
+              images: toRemoteImages(annotation.images),
+            })),
+            updatedAt: Date.now(),
+          }
+        }
+
+        const saveWithRevision = async (revision: number) => {
+          const draft = buildDraft(revision)
+          return publishApi.saveDraft(sceneId, draft, revision)
+        }
+
+        let expectedRevision = get().draftRevisionByScene[sceneId]
+        const revisionSource = get().draftRevisionSourceByScene[sceneId]
+
+        if (typeof expectedRevision !== 'number' || revisionSource !== 'draft') {
+          try {
+            const remoteDraft = await publishApi.getDraft(sceneId)
+            expectedRevision = remoteDraft.revision
+            set((state) => ({
+              draftRevisionByScene: {
+                ...state.draftRevisionByScene,
+                [sceneId]: remoteDraft.revision,
+              },
+              draftRevisionSourceByScene: {
+                ...state.draftRevisionSourceByScene,
+                [sceneId]: 'draft',
+              },
+            }))
+          } catch {
+            expectedRevision = 0
+          }
+        }
+
+        set({ draftStatus: 'saving', draftError: null })
+
+        const revision = expectedRevision ?? 0
+
+        try {
+          const result = await saveWithRevision(revision)
+          applySuccess(result.revision)
+          return result.revision
+        } catch (error) {
+          const status = (error as Error & { status?: number }).status
+          if (status !== 409) {
+            applyFailure(error)
+            throw error
+          }
+
+          try {
+            const remoteDraft = await publishApi.getDraft(sceneId)
+            const retryResult = await saveWithRevision(remoteDraft.revision)
+            applySuccess(retryResult.revision)
+            return retryResult.revision
+          } catch (retryError) {
+            applyFailure(retryError)
+            throw retryError
+          }
         }
       },
       publishDraft: async (sceneId, message) => {

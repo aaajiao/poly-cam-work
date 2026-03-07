@@ -306,6 +306,49 @@ describe('viewerStore', () => {
     expect(useViewerStore.getState().draftRevisionSourceByScene['scan-a']).toBe('draft')
   })
 
+  it('saveDraft retries once on revision conflict', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-retry',
+          position: [0, 0, 0],
+          title: 'Retry conflict',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 2 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+    })
+
+    const conflictError = Object.assign(new Error('Revision mismatch'), { status: 409 })
+
+    vi.spyOn(publishApi, 'getDraft').mockResolvedValue({
+      sceneId: 'scan-a',
+      revision: 9,
+      annotations: [],
+      updatedAt: Date.now(),
+    })
+
+    const saveDraftSpy = vi
+      .spyOn(publishApi, 'saveDraft')
+      .mockRejectedValueOnce(conflictError)
+      .mockResolvedValueOnce({ ok: true, revision: 10 })
+
+    const { saveDraft } = useViewerStore.getState()
+    const revision = await saveDraft('scan-a')
+
+    expect(saveDraftSpy).toHaveBeenCalledTimes(2)
+    expect(saveDraftSpy.mock.calls[0]?.[2]).toBe(2)
+    expect(saveDraftSpy.mock.calls[1]?.[2]).toBe(9)
+    expect(revision).toBe(10)
+    expect(useViewerStore.getState().draftStatus).toBe('idle')
+  })
+
   it('loadDraft keeps local annotation created while request is in flight', async () => {
     const resolver: { current: ((value: SceneDraft) => void) | null } = { current: null }
     const draftPromise = new Promise<SceneDraft>((resolve) => {
