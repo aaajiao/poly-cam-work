@@ -519,8 +519,22 @@ export const useViewerStore = create<ViewerState>()(
         }
 
         const presetScenes = get().scenes
+        const currentCloudScenes = get().cloudScenes
+        const cloudById = new Map(currentCloudScenes.map((scene) => [scene.id, scene]))
         const syncedModelsInput: Array<{ id: string; name: string; glbUrl: string; plyUrl: string }> = []
+
         for (const scene of presetScenes) {
+          const existingCloudScene = cloudById.get(scene.id)
+          if (existingCloudScene && hasValidSceneAssetUrls(existingCloudScene)) {
+            syncedModelsInput.push({
+              id: scene.id,
+              name: scene.name,
+              glbUrl: existingCloudScene.glbUrl,
+              plyUrl: existingCloudScene.plyUrl,
+            })
+            continue
+          }
+
           const [glbUrl, plyUrl] = await Promise.all([
             vercelBlobModelStorage.uploadFromUrl(scene.glbUrl, {
               sceneKey: scene.id,

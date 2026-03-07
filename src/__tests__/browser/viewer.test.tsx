@@ -9,6 +9,8 @@ function resetStore() {
   localStorage.removeItem('polycam-viewer-state')
   useViewerStore.setState({
     activeSceneId: 'scan-a',
+    cloudScenes: [],
+    isAuthenticated: false,
     viewMode: 'mesh',
     toolMode: 'orbit',
     uploadedScenes: [],
@@ -53,6 +55,41 @@ describe('browser viewer sidebar controls', () => {
     await screen.getByTestId('scene-item-scan-b').click()
     await expect.element(screen.getByTestId('scene-item-scan-b')).toHaveClass('bg-blue-600/20')
     expect(useViewerStore.getState().activeSceneId).toBe('scan-b')
+  })
+
+  test('file manager shows synced state when all presets already cloud-backed', async () => {
+    useViewerStore.setState({
+      isAuthenticated: true,
+      cloudScenes: [
+        {
+          id: 'scan-a',
+          name: 'Scan A (Corridor)',
+          glbUrl: 'https://assets.poly.cam/scenes/scan-a/models/glb.glb',
+          plyUrl: 'https://assets.poly.cam/scenes/scan-a/models/ply.ply',
+          source: 'cloud',
+        },
+        {
+          id: 'scan-b',
+          name: 'Scan B (Large Room)',
+          glbUrl: 'https://assets.poly.cam/scenes/scan-b/models/glb.glb',
+          plyUrl: 'https://assets.poly.cam/scenes/scan-b/models/ply.ply',
+          source: 'cloud',
+        },
+        {
+          id: 'scan-c',
+          name: 'Scan C (Multi-Room)',
+          glbUrl: 'https://assets.poly.cam/scenes/scan-c/models/glb.glb',
+          plyUrl: 'https://assets.poly.cam/scenes/scan-c/models/ply.ply',
+          source: 'cloud',
+        },
+      ],
+    })
+
+    const screen = await render(<FileManager />)
+    await expect.element(screen.getByTestId('sync-preset-models-button')).toHaveTextContent('Synced')
+    await expect.element(screen.getByTestId('sync-preset-models-button')).toBeDisabled()
+    await expect.element(screen.getByTestId('scene-sync-state-scan-a')).toBeVisible()
+    await expect.element(screen.getByTestId('scene-sync-state-scan-a')).not.toHaveTextContent('Cloud')
   })
 
   test('property panel reflects active scene and selected view mode', async () => {

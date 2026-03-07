@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Layers, Upload, Cloud, Loader2 } from 'lucide-react'
+import { Layers, Upload, Cloud, CloudCheck, HardDrive, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { useViewerStore } from '@/store/viewerStore'
@@ -7,11 +7,17 @@ import type { ScanScene } from '@/types'
 import { vercelBlobModelStorage } from '@/storage/vercelBlobModelStorage'
 import * as modelApi from '@/lib/modelApi'
 
-function SceneItem({ scene, isActive, onClick }: {
+type SceneSyncState = 'cloud' | 'local' | 'session'
+
+function SceneItem({ scene, syncState, isActive, onClick }: {
   scene: ScanScene
+  syncState: SceneSyncState
   isActive: boolean
   onClick: () => void
 }) {
+  const syncLabel = syncState === 'session' ? 'Session' : 'Local'
+  const SyncIcon = syncState === 'cloud' ? CloudCheck : syncState === 'session' ? Upload : HardDrive
+
   return (
     <button
       data-testid={`scene-item-${scene.id}`}
@@ -26,6 +32,20 @@ function SceneItem({ scene, isActive, onClick }: {
     >
       <Layers size={14} className="flex-shrink-0" />
       <span className="flex-1 truncate">{scene.name}</span>
+      <span
+        data-testid={`scene-sync-state-${scene.id}`}
+        className={cn(
+          'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]',
+          syncState === 'cloud'
+            ? 'border-emerald-500/40 bg-emerald-600/20 text-emerald-300'
+            : syncState === 'session'
+              ? 'border-sky-500/40 bg-sky-600/20 text-sky-300'
+              : 'border-zinc-600 bg-zinc-800 text-zinc-400'
+        )}
+      >
+        <SyncIcon size={10} className="flex-shrink-0" />
+        {syncState === 'cloud' ? null : <span>{syncLabel}</span>}
+      </span>
       {isActive && (
         <Badge variant="secondary" className="text-xs px-1 py-0 h-4 bg-blue-600/30 text-blue-300 border-0">
           Active
@@ -71,6 +91,52 @@ export function FileManager() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadNotice, setUploadNotice] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const cloudScenesById = new Map(cloudScenes.map((scene) => [scene.id, scene]))
+  const uploadedScenesById = new Map(uploadedScenes.map((scene) => [scene.id, scene]))
+  const presetSceneIds = new Set(scenes.map((scene) => scene.id))
+
+  const presetEntries = scenes.map((presetScene) => {
+    const cloudScene = cloudScenesById.get(presetScene.id)
+    const sessionScene = uploadedScenesById.get(presetScene.id)
+    if (cloudScene) {
+      return {
+        scene: cloudScene,
+        syncState: 'cloud' as const,
+      }
+    }
+
+    if (sessionScene) {
+      return {
+        scene: sessionScene,
+        syncState: 'session' as const,
+      }
+    }
+
+    return {
+      scene: presetScene,
+      syncState: 'local' as const,
+    }
+  })
+
+  const cloudOnlyEntries = cloudScenes
+    .filter((scene) => !presetSceneIds.has(scene.id))
+    .map((scene) => ({
+      scene,
+      syncState: 'cloud' as const,
+    }))
+
+  const sessionOnlyEntries = uploadedScenes
+    .filter((scene) => !presetSceneIds.has(scene.id) && !cloudScenesById.has(scene.id))
+    .map((scene) => ({
+      scene,
+      syncState: 'session' as const,
+    }))
+
+  const sceneEntries = [...presetEntries, ...cloudOnlyEntries, ...sessionOnlyEntries]
+  const unsyncedPresetCount = presetEntries.filter((entry) => entry.syncState !== 'cloud').length
+  const canSyncPresets =
+    isAuthenticated && unsyncedPresetCount > 0 && !isSyncingPresets && !isUploadingModel
 
   const onModelFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : []
@@ -129,6 +195,12 @@ export function FileManager() {
       return
     }
 
+    if (unsyncedPresetCount === 0) {
+      setUploadError(null)
+      setUploadNotice('All preset scenes are already synced.')
+      return
+    }
+
     setUploadError(null)
     setUploadNotice(null)
     setIsSyncingPresets(true)
@@ -147,24 +219,36 @@ export function FileManager() {
     <div className="space-y-4">
       <div>
         <div className="mb-2 flex items-center justify-between px-1">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider">Cloud Models</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wider">Scenes</p>
           <div className="flex items-center gap-1">
             <button
               type="button"
               data-testid="sync-preset-models-button"
-              disabled={!isAuthenticated || isSyncingPresets || isUploadingModel}
+              disabled={!canSyncPresets}
               onClick={() => {
                 void onSyncPresets()
               }}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
-                !isAuthenticated || isSyncingPresets || isUploadingModel
+                !canSyncPresets
                   ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                   : 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30'
               )}
             >
-              {isSyncingPresets ? <Loader2 size={12} className="animate-spin" /> : <Cloud size={12} />}
-              <span>{isSyncingPresets ? 'Syncing...' : 'Sync Presets'}</span>
+              {isSyncingPresets ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : unsyncedPresetCount > 0 ? (
+                <Cloud size={12} />
+              ) : (
+                <CloudCheck size={12} />
+              )}
+              <span>
+                {isSyncingPresets
+                  ? 'Syncing...'
+                  : unsyncedPresetCount > 0
+                    ? `Sync ${unsyncedPresetCount}`
+                    : 'Synced'}
+              </span>
             </button>
             <button
               type="button"
@@ -211,54 +295,22 @@ export function FileManager() {
           <p className="mb-2 px-1 text-[11px] text-zinc-500">Login to upload model pairs (GLB + PLY).</p>
         )}
 
-        <div className="space-y-1" data-testid="cloud-scan-list">
-          {cloudScenes.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-zinc-600">No cloud models yet.</p>
+        <div className="space-y-1" data-testid="scan-list">
+          {sceneEntries.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-600">No scenes available.</p>
           ) : (
-            cloudScenes.map((scene) => (
+            sceneEntries.map((entry) => (
               <SceneItem
-                key={scene.id}
-                scene={scene}
-                isActive={scene.id === activeSceneId}
-                onClick={() => setActiveScene(scene.id)}
+                key={entry.scene.id}
+                scene={entry.scene}
+                syncState={entry.syncState}
+                isActive={entry.scene.id === activeSceneId}
+                onClick={() => setActiveScene(entry.scene.id)}
               />
             ))
           )}
         </div>
       </div>
-
-      <div>
-        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 px-1">Preset Scans</p>
-        <div className="space-y-1" data-testid="scan-list">
-          {scenes.map((scene) => (
-            <SceneItem
-              key={scene.id}
-              scene={scene}
-              isActive={scene.id === activeSceneId}
-              onClick={() => setActiveScene(scene.id)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {uploadedScenes.length > 0 && (
-        <div>
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 px-1 flex items-center gap-1">
-            <Cloud size={10} />
-            Uploaded (Session)
-          </p>
-          <div className="space-y-1" data-testid="uploaded-scan-list">
-            {uploadedScenes.map((scene) => (
-              <SceneItem
-                key={scene.id}
-                scene={scene}
-                isActive={scene.id === activeSceneId}
-                onClick={() => setActiveScene(scene.id)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
