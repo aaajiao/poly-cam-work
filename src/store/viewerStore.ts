@@ -103,6 +103,10 @@ function collectLocalImageIds(images: AnnotationImage[]): string[] {
   return images.filter(isLocalImage).map((image) => image.localId)
 }
 
+function hasPendingLocalImages(annotations: Annotation[]): boolean {
+  return annotations.some((annotation) => annotation.images.some((image) => isLocalImage(image)))
+}
+
 function toRemoteImages(images: AnnotationImage[]): AnnotationImage[] {
   return images
     .filter(isRemoteImage)
@@ -205,6 +209,7 @@ interface ViewerState {
   isAuthenticated: boolean
   draftRevisionByScene: Record<string, number>
   draftRevisionSourceByScene: Record<string, DraftRevisionSource>
+  draftDirtyByScene: Record<string, boolean>
   publishedVersionByScene: Record<string, number>
   publishedVersionsByScene: Record<string, number[]>
   sceneMutationVersion: Record<string, number>
@@ -292,6 +297,7 @@ export const useViewerStore = create<ViewerState>()(
       isAuthenticated: false,
       draftRevisionByScene: {},
       draftRevisionSourceByScene: {},
+      draftDirtyByScene: {},
       publishedVersionByScene: {},
       publishedVersionsByScene: {},
       sceneMutationVersion: {},
@@ -327,6 +333,10 @@ export const useViewerStore = create<ViewerState>()(
         set((state) => ({
           annotations: [...state.annotations, a],
           annotationsVisible: true,
+          draftDirtyByScene: {
+            ...state.draftDirtyByScene,
+            [a.sceneId]: true,
+          },
           sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, a.sceneId),
         })),
       removeAnnotation: (id) => {
@@ -342,6 +352,14 @@ export const useViewerStore = create<ViewerState>()(
           selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
           openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => panelId !== id),
           hoveredAnnotationId: state.hoveredAnnotationId === id ? null : state.hoveredAnnotationId,
+          draftDirtyByScene: (() => {
+            const annotation = state.annotations.find((item) => item.id === id)
+            if (!annotation) return state.draftDirtyByScene
+            return {
+              ...state.draftDirtyByScene,
+              [annotation.sceneId]: true,
+            }
+          })(),
           sceneMutationVersion: (() => {
             const annotation = state.annotations.find((item) => item.id === id)
             if (!annotation) return state.sceneMutationVersion
@@ -354,6 +372,14 @@ export const useViewerStore = create<ViewerState>()(
           annotations: state.annotations.map((a) =>
             a.id === id ? { ...a, title: text } : a
           ),
+          draftDirtyByScene: (() => {
+            const annotation = state.annotations.find((item) => item.id === id)
+            if (!annotation) return state.draftDirtyByScene
+            return {
+              ...state.draftDirtyByScene,
+              [annotation.sceneId]: true,
+            }
+          })(),
           sceneMutationVersion: (() => {
             const annotation = state.annotations.find((item) => item.id === id)
             if (!annotation) return state.sceneMutationVersion
@@ -365,6 +391,14 @@ export const useViewerStore = create<ViewerState>()(
           annotations: state.annotations.map((a) =>
             a.id === id ? { ...a, ...content } : a
           ),
+          draftDirtyByScene: (() => {
+            const annotation = state.annotations.find((item) => item.id === id)
+            if (!annotation) return state.draftDirtyByScene
+            return {
+              ...state.draftDirtyByScene,
+              [annotation.sceneId]: true,
+            }
+          })(),
           sceneMutationVersion: (() => {
             const annotation = state.annotations.find((item) => item.id === id)
             if (!annotation) return state.sceneMutationVersion
@@ -435,6 +469,11 @@ export const useViewerStore = create<ViewerState>()(
           return {
             uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
             annotations: state.annotations.filter((a) => a.sceneId !== id),
+            draftDirtyByScene: (() => {
+              const next = { ...state.draftDirtyByScene }
+              delete next[id]
+              return next
+            })(),
             selectedAnnotationId:
               state.selectedAnnotationId && removedIds.has(state.selectedAnnotationId)
                 ? null
@@ -507,6 +546,10 @@ export const useViewerStore = create<ViewerState>()(
                 ...state.draftRevisionSourceByScene,
                 [sceneId]: 'draft',
               },
+              draftDirtyByScene: {
+                ...state.draftDirtyByScene,
+                [sceneId]: false,
+              },
             }))
             return
           }
@@ -523,6 +566,10 @@ export const useViewerStore = create<ViewerState>()(
             draftRevisionSourceByScene: {
               ...state.draftRevisionSourceByScene,
               [sceneId]: 'draft',
+            },
+            draftDirtyByScene: {
+              ...state.draftDirtyByScene,
+              [sceneId]: false,
             },
           }))
           return
@@ -561,6 +608,10 @@ export const useViewerStore = create<ViewerState>()(
                 ...state.draftRevisionSourceByScene,
                 [sceneId]: 'release',
               },
+              draftDirtyByScene: {
+                ...state.draftDirtyByScene,
+                [sceneId]: false,
+              },
             }))
             return
           }
@@ -577,6 +628,10 @@ export const useViewerStore = create<ViewerState>()(
             draftRevisionSourceByScene: {
               ...state.draftRevisionSourceByScene,
               [sceneId]: 'release',
+            },
+            draftDirtyByScene: {
+              ...state.draftDirtyByScene,
+              [sceneId]: false,
             },
           }))
         } catch (error) {
@@ -603,6 +658,10 @@ export const useViewerStore = create<ViewerState>()(
             draftRevisionSourceByScene: {
               ...nextState.draftRevisionSourceByScene,
               [sceneId]: 'draft',
+            },
+            draftDirtyByScene: {
+              ...nextState.draftDirtyByScene,
+              [sceneId]: hasPendingLocalImages(sceneAnnotations(nextState.annotations, sceneId)),
             },
           }))
         }
@@ -727,6 +786,10 @@ export const useViewerStore = create<ViewerState>()(
                   }),
                 }
               }),
+              draftDirtyByScene: {
+                ...state.draftDirtyByScene,
+                [sceneId]: true,
+              },
               sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, sceneId),
             }))
 
@@ -775,6 +838,10 @@ export const useViewerStore = create<ViewerState>()(
               new Set([result.version, ...(state.publishedVersionsByScene[sceneId] ?? [])])
             ).sort((a, b) => b - a),
           },
+          draftDirtyByScene: {
+            ...state.draftDirtyByScene,
+            [sceneId]: false,
+          },
         }))
         return result.version
       },
@@ -791,6 +858,10 @@ export const useViewerStore = create<ViewerState>()(
             [sceneId]: Array.from(
               new Set([result.version, ...(state.publishedVersionsByScene[sceneId] ?? [])])
             ).sort((a, b) => b - a),
+          },
+          draftDirtyByScene: {
+            ...state.draftDirtyByScene,
+            [sceneId]: false,
           },
         }))
         return result.version
@@ -979,6 +1050,10 @@ export const useViewerStore = create<ViewerState>()(
           selectedAnnotationId: null,
           openAnnotationPanelIds: [],
           hoveredAnnotationId: null,
+          draftDirtyByScene: {
+            ...state.draftDirtyByScene,
+            [sceneId]: true,
+          },
           sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, sceneId),
         }))
       },
@@ -1036,6 +1111,10 @@ export const useViewerStore = create<ViewerState>()(
 
         set((state) => ({
           annotations: replaceSceneAnnotations(state.annotations, sceneId, migratedAnnotations),
+          draftDirtyByScene: {
+            ...state.draftDirtyByScene,
+            [sceneId]: true,
+          },
           sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, sceneId),
         }))
 
@@ -1048,7 +1127,7 @@ export const useViewerStore = create<ViewerState>()(
     }),
     {
       name: 'polycam-viewer-state',
-      version: 6,
+      version: 7,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>
         if (version === 0) {
@@ -1120,12 +1199,17 @@ export const useViewerStore = create<ViewerState>()(
           state.draftRevisionSourceByScene = {}
         }
 
+        if (typeof state.draftDirtyByScene !== 'object' || state.draftDirtyByScene === null) {
+          state.draftDirtyByScene = {}
+        }
+
         return persistedState
       },
       partialize: (state) => ({
         annotations: state.annotations,
         draftRevisionByScene: state.draftRevisionByScene,
         draftRevisionSourceByScene: state.draftRevisionSourceByScene,
+        draftDirtyByScene: state.draftDirtyByScene,
         sceneMutationVersion: state.sceneMutationVersion,
         colorMapMode: state.colorMapMode,
         pointSize: state.pointSize,

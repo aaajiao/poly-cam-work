@@ -8,6 +8,7 @@ export function PublishButton() {
   const isAuthenticated = useViewerStore((state) => state.isAuthenticated)
   const draftStatus = useViewerStore((state) => state.draftStatus)
   const draftError = useViewerStore((state) => state.draftError)
+  const draftDirtyByScene = useViewerStore((state) => state.draftDirtyByScene)
   const publishedVersionByScene = useViewerStore((state) => state.publishedVersionByScene)
   const publishedVersionsByScene = useViewerStore((state) => state.publishedVersionsByScene)
   const downloadLocalDraft = useViewerStore((state) => state.downloadLocalDraft)
@@ -36,6 +37,7 @@ export function PublishButton() {
 
   const liveVersion = publishedVersionByScene[activeSceneId]
   const versions = publishedVersionsByScene[activeSceneId] ?? []
+  const isDraftDirty = draftDirtyByScene[activeSceneId] ?? false
 
   return (
     <div className="flex items-center gap-2">
@@ -68,7 +70,7 @@ export function PublishButton() {
 
       <Button
         data-testid="publish-button"
-        disabled={isPublishing}
+        disabled={isPublishing || (!isDraftDirty && versions.length > 0)}
         className="h-8 gap-1 bg-emerald-600 text-white hover:bg-emerald-500"
         onClick={() => {
           setIsPublishing(true)
@@ -78,6 +80,14 @@ export function PublishButton() {
         <Upload size={14} />
         <span className="hidden md:inline">Publish</span>
       </Button>
+
+      <div className="hidden text-xs xl:block" data-testid="draft-dirty-indicator">
+        {isDraftDirty ? (
+          <span className="text-amber-400">unsaved</span>
+        ) : (
+          <span className="text-zinc-500">saved</span>
+        )}
+      </div>
 
       <div className="relative hidden xl:block" data-testid="published-version-menu">
         <Button
@@ -98,13 +108,11 @@ export function PublishButton() {
             className="absolute right-0 top-10 z-50 w-56 rounded border border-zinc-700 bg-zinc-900/95 p-2 shadow-2xl"
             data-testid="published-version-menu-content"
           >
-            <div className="mb-1 px-1 text-[10px] uppercase tracking-wide text-zinc-500">
-              Published Versions
-            </div>
+            <div className="mb-1 px-1 text-[10px] uppercase tracking-wide text-zinc-500">Releases</div>
 
             <div className="max-h-56 space-y-1 overflow-y-auto" data-testid="published-version-list">
               {versions.length === 0 ? (
-                <div className="rounded px-2 py-2 text-xs text-zinc-500">No versions</div>
+                <div className="rounded px-2 py-2 text-xs text-zinc-500">None</div>
               ) : (
                 versions.map((version) => {
                   const isLive = liveVersion === version
@@ -161,7 +169,7 @@ export function PublishButton() {
       </div>
 
       <div className="hidden text-xs text-zinc-500 xl:block" data-testid="publish-version-label">
-        {typeof liveVersion === 'number' ? `v${liveVersion}` : 'unpublished'}
+        {typeof liveVersion === 'number' ? `v${liveVersion}` : 'none'}
       </div>
 
       {draftError && (

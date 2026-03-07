@@ -27,6 +27,7 @@ describe('viewerStore', () => {
       sceneMutationVersion: {},
       draftRevisionByScene: {},
       draftRevisionSourceByScene: {},
+      draftDirtyByScene: {},
       loadRequestVersionByScene: {},
     })
   })
@@ -141,6 +142,34 @@ describe('viewerStore', () => {
     const { addAnnotation } = useViewerStore.getState()
     addAnnotation({ id: 'ann-1', position: [1, 2, 3], title: 'Test', description: '', images: [], videoUrl: null, links: [], sceneId: 'scan-a', createdAt: Date.now() })
     expect(useViewerStore.getState().annotations).toHaveLength(1)
+    expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(true)
+  })
+
+  it('updateAnnotationContent marks scene draft as dirty', () => {
+    const now = Date.now()
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-dirty',
+          position: [0, 0, 0],
+          title: 'Base',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: now,
+        },
+      ],
+      draftDirtyByScene: { 'scan-a': false },
+    })
+
+    const { updateAnnotationContent } = useViewerStore.getState()
+    updateAnnotationContent('ann-dirty', {
+      links: [{ url: 'https://example.com', label: 'Example' }],
+    })
+
+    expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(true)
   })
 
   it('setClipPlane updates clip plane state', () => {
@@ -198,6 +227,7 @@ describe('viewerStore', () => {
       ],
       draftRevisionByScene: { 'scan-a': 4 },
       draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
     })
 
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
@@ -214,6 +244,7 @@ describe('viewerStore', () => {
     expect(draftPayload.annotations[0].images).toEqual([
       { filename: 'remote.jpg', url: 'https://blob.example/remote.jpg' },
     ])
+    expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(true)
   })
 
   it('publishDraft uploads local images before publish', async () => {
@@ -233,6 +264,7 @@ describe('viewerStore', () => {
       ],
       draftRevisionByScene: { 'scan-a': 0 },
       draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
     })
 
     vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }))
@@ -266,6 +298,7 @@ describe('viewerStore', () => {
 
     expect(deleteSpy).toHaveBeenCalledWith('local-img-2')
     expect(publishSpy).toHaveBeenCalledWith('scan-a', undefined)
+    expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(false)
   })
 
   it('saveDraft refreshes revision when local source is release', async () => {
