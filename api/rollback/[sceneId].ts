@@ -65,12 +65,13 @@ export default async function handler(request: Request) {
     revision: (currentDraft?.revision ?? release.revision) + 1,
     updatedAt: Date.now(),
   }
+  const nextImagePathnames = collectImagePathnamesFromDraft(nextDraft)
 
   await writeJsonBlob(livePath(sceneId), { version })
   await writeJsonBlob(draftPath(sceneId), nextDraft)
 
   try {
-    await reconcileSceneImageAssets(sceneId, previousImagePathnames)
+    await reconcileSceneImageAssets(sceneId, previousImagePathnames, nextImagePathnames)
   } catch (error) {
     console.error('Failed to reconcile scene images after rollback', error)
   }

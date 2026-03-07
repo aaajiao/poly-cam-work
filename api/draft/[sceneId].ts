@@ -73,11 +73,12 @@ export default async function handler(request: Request) {
     revision: nextRevision,
     updatedAt: Date.now(),
   }
+  const nextImagePathnames = collectImagePathnamesFromDraft(nextDraft)
 
   await writeJsonBlob(draftPath(sceneId), nextDraft)
 
   try {
-    await reconcileSceneImageAssets(sceneId, previousImagePathnames)
+    await reconcileSceneImageAssets(sceneId, previousImagePathnames, nextImagePathnames)
   } catch (error) {
     console.error('Failed to reconcile scene images after draft save', error)
   }
