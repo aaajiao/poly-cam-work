@@ -17,7 +17,7 @@ export function ColorMapControls() {
 
   return (
     <div className="space-y-2" data-testid="color-map-controls">
-      <p className="text-zinc-500 text-xs uppercase tracking-wider">Color Mapping</p>
+      <p className="text-faint text-xs uppercase tracking-wider">Color Mapping</p>
       <div className="flex gap-1">
         {MODES.map((mode) => (
           <button
@@ -25,10 +25,10 @@ export function ColorMapControls() {
             data-testid={`color-map-${mode.value}`}
             onClick={() => setColorMapMode(mode.value)}
             className={cn(
-              'flex-1 py-1 text-xs rounded transition-colors',
+              'ui-hover-emphasis flex-1 py-1 text-xs rounded transition-colors',
               colorMapMode === mode.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-field text-dim hover:bg-field-hover'
             )}
           >
             {mode.label}
