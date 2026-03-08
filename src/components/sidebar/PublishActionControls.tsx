@@ -35,7 +35,7 @@ export function PublishActionControls({
         data-testid="import-local-data"
         variant="outline"
         disabled={isImporting}
-        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
+        className="h-8 gap-1 border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"
         onClick={onImportClick}
       >
         <CloudUpload size={14} />
@@ -46,7 +46,7 @@ export function PublishActionControls({
         data-testid="save-draft-button"
         variant="outline"
         disabled={isSaving || draftStatus === 'saving'}
-        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
+        className="h-8 gap-1 border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"
         onClick={onExportClick}
       >
         <CloudDownload size={14} />

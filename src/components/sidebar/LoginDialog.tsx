@@ -43,7 +43,7 @@ export function LoginDialog() {
       <Button
         data-testid="logout-button"
         variant="outline"
-        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
+        className="h-8 gap-1 border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"
         onClick={() => {
           void logout()
         }}
@@ -60,7 +60,7 @@ export function LoginDialog() {
         <Button
           data-testid="login-button"
           variant="outline"
-          className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
+          className="h-8 gap-1 border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"
         >
           <LogIn size={14} />
           <span className="hidden md:inline">Login</span>
@@ -86,7 +86,7 @@ export function LoginDialog() {
                 void onSubmit()
               }
             }}
-            className="w-full rounded border border-subtle bg-field px-3 py-2 text-sm text-soft outline-none focus:border-primary"
+            className="w-full rounded border border-subtle bg-field px-3 py-2 text-sm text-soft outline-none focus:border-[color:var(--accent-border)]"
             placeholder="Password"
           />
 

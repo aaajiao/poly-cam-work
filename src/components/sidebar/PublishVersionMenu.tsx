@@ -27,7 +27,7 @@ export function PublishVersionMenu({
       <Button
         type="button"
         variant="outline"
-        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
+        className="h-8 gap-1 border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"
         data-testid="published-version-menu-trigger"
         onClick={onToggle}
       >
@@ -60,7 +60,7 @@ export function PublishVersionMenu({
                     <button
                       type="button"
                       disabled={isRollingBack || isDeleting}
-                      className="flex items-center gap-1 text-xs text-soft hover:text-strong disabled:opacity-50"
+                      className="flex items-center gap-1 text-xs text-dim hover:text-soft disabled:opacity-50"
                       data-testid={`rollback-version-${version}`}
                       onClick={() => onRollback(version)}
                     >
