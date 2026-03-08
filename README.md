@@ -1,6 +1,19 @@
-# Polycam 3D Scan Viewer (v0.1.0)
+# poly.cam.work (v0.1.0)
 
-Web-based viewer for Polycam LiDAR exports. It renders textured GLB meshes and PLY point clouds, and supports annotations, clipping, measurements, and rich-media publish workflow.
+A visualization platform for the ongoing work of aaajiao. This repository serves as the technical foundation for the *Symbiosis* project, providing a space where 3D scans, point clouds, and rich-media annotations converge to document the intersection of labor, material production, and global trade.
+
+[**中文文档 (Chinese Documentation)**](docs/README.md)
+
+## Positioning
+
+`poly.cam.work` is more than a 3D viewer. It is a digital archive and research platform designed to bridge the gap between physical labor and digital representation. By integrating high-fidelity LiDAR scans with contextual media, it allows for a multi-layered exploration of the *Symbiosis* project—a decade-long engagement with industrial production, youth precarity, and the shifting landscapes of global trade.
+
+The platform serves as:
+- **A Research Hub**: Centralizing data visualizations, field recordings, and 3D documentation.
+- **An Artistic Interface**: Providing a spatial narrative for the *Symbiosis* project's core concepts of *Absorption* and *Trance*.
+- **A Technical Foundation**: Offering a robust workflow for publishing and managing 3D scenes with rich-media annotations.
+
+For deeper context on the artwork and its evolving research, see the [Symbiosis Project Background](docs/aaajiao_symbiosis_project.md) or read the [Project Manifesto](docs/manifesto.md).
 
 ## Highlights
 

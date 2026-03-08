@@ -1,7 +1,7 @@
-# Polycam 3D Scan Viewer
+# poly.cam.work
 
-Web-based visualization tool for Polycam LiDAR exports.
-It renders GLB textured meshes + PLY point clouds and provides measurement, clipping, annotation, and rich-media workflows.
+Visualization platform and digital archive for the work of aaajiao.
+It renders GLB textured meshes + PLY point clouds and provides measurement, clipping, annotation, and rich-media workflows for documenting the intersection of labor, material production, and global trade.
 
 ## Stack
 
