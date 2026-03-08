@@ -1,12 +1,14 @@
 import type { ScanScene } from '../../src/types'
 import { requireAuth } from '../_lib/auth'
-import { deleteBlobByPathname, readJsonBlob, writeJsonBlob } from '../_lib/blobStore'
 import { badRequest, conflict, jsonResponse, methodNotAllowed, unauthorized } from '../_lib/http'
-
-interface ModelRegistryDocument {
-  version: number
-  models: ScanScene[]
-}
+import {
+  createModelCreateOnlyWithRetry,
+  createModelWithRetry,
+  readModelRegistry,
+  replaceModelsWithRetry,
+  upsertModelByIdWithRetry,
+} from '../_lib/modelRegistry'
+import { isValidAssetUrl, sanitizeSceneId } from '../_lib/modelValidation'
 
 interface CreateModelBody {
   id?: string
@@ -29,339 +31,11 @@ interface ReplaceModelsBody {
   models: ReplaceModelInput[]
 }
 
-const MODEL_REGISTRY_PATH = 'models/index.json'
-
-function sanitizeSceneId(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-function isPlaceholderHost(hostname: string) {
-  const normalized = hostname.trim().toLowerCase()
-  return (
-    normalized === 'example' ||
-    normalized === 'example.com' ||
-    normalized.endsWith('.example') ||
-    normalized.endsWith('.example.com')
-  )
-}
-
-function isValidAssetUrl(value: string) {
-  try {
-    const parsed = new URL(value)
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-      return false
-    }
-    return !isPlaceholderHost(parsed.hostname)
-  } catch {
-    return false
-  }
-}
-
-function dedupeModelsById(models: ScanScene[]) {
-  const byId = new Map<string, ScanScene>()
-
-  for (const model of models) {
-    const existing = byId.get(model.id)
-    if (!existing) {
-      byId.set(model.id, model)
-      continue
-    }
-
-    const existingUpdatedAt = typeof existing.updatedAt === 'number' ? existing.updatedAt : 0
-    const nextUpdatedAt = typeof model.updatedAt === 'number' ? model.updatedAt : 0
-    if (nextUpdatedAt >= existingUpdatedAt) {
-      byId.set(model.id, model)
-    }
-  }
-
-  return Array.from(byId.values()).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-}
-
-function blobPathnameFromUrl(value: string): string | null {
-  try {
-    const parsed = new URL(value)
-    return decodeURIComponent(parsed.pathname).replace(/^\/+/g, '')
-  } catch {
-    return null
-  }
-}
-
-function isManagedModelPathname(pathname: string) {
-  if (pathname.startsWith('models/')) return true
-  return /^scenes\/[^/]+\/models\//.test(pathname)
-}
-
-async function cleanupStaleModelAssets(previousModels: ScanScene[], nextModels: ScanScene[]) {
-  const keepUrls = new Set(nextModels.flatMap((model) => [model.glbUrl, model.plyUrl]))
-  const stalePathnames = previousModels
-    .flatMap((model) => [model.glbUrl, model.plyUrl])
-    .filter((url) => !keepUrls.has(url))
-    .map((url) => blobPathnameFromUrl(url))
-    .filter((pathname): pathname is string => pathname !== null && isManagedModelPathname(pathname))
-
-  await Promise.allSettled(stalePathnames.map((pathname) => deleteBlobByPathname(pathname)))
-}
-
 function isReplaceModelsBody(value: unknown): value is ReplaceModelsBody {
   if (!value || typeof value !== 'object') return false
 
   const candidate = value as { replace?: unknown; models?: unknown }
   return candidate.replace === true && Array.isArray(candidate.models)
-}
-
-function toCloudIdBase(value: string) {
-  const normalized = sanitizeSceneId(value)
-  if (!normalized) return ''
-  return normalized.startsWith('cloud-') ? normalized : `cloud-${normalized}`
-}
-
-function generateUniqueId(base: string, existingIds: Set<string>) {
-  const normalizedBase = toCloudIdBase(base) || `cloud-model-${Date.now()}`
-  if (!existingIds.has(normalizedBase)) return normalizedBase
-
-  let attempt = 1
-  while (attempt < 1000) {
-    const candidate = `${normalizedBase}-${attempt}`
-    if (!existingIds.has(candidate)) return candidate
-    attempt += 1
-  }
-
-  return `${normalizedBase}-${Date.now()}`
-}
-
-function normalizeModel(model: ScanScene): ScanScene | null {
-  if (
-    !model ||
-    typeof model !== 'object' ||
-    typeof model.id !== 'string' ||
-    typeof model.name !== 'string' ||
-    typeof model.glbUrl !== 'string' ||
-    typeof model.plyUrl !== 'string'
-  ) {
-    return null
-  }
-
-  if (!model.id || !model.name || !model.glbUrl || !model.plyUrl) {
-    return null
-  }
-
-  if (!isValidAssetUrl(model.glbUrl) || !isValidAssetUrl(model.plyUrl)) {
-    return null
-  }
-
-  return {
-    id: model.id,
-    name: model.name,
-    glbUrl: model.glbUrl,
-    plyUrl: model.plyUrl,
-    createdAt: typeof model.createdAt === 'number' ? model.createdAt : Date.now(),
-    updatedAt: typeof model.updatedAt === 'number' ? model.updatedAt : Date.now(),
-  }
-}
-
-async function readModelRegistry() {
-  const raw = await readJsonBlob<ModelRegistryDocument | ScanScene[]>(MODEL_REGISTRY_PATH)
-  if (!raw) {
-    return { version: 1, models: [] as ScanScene[] }
-  }
-
-  if (Array.isArray(raw)) {
-    const models = dedupeModelsById(
-      raw
-      .map((model) => normalizeModel(model))
-      .filter((model): model is ScanScene => model !== null)
-    )
-
-    return {
-      version: 1,
-      models,
-    }
-  }
-
-  const models = Array.isArray(raw.models)
-    ? dedupeModelsById(
-        raw.models
-          .map((model) => normalizeModel(model))
-          .filter((model): model is ScanScene => model !== null)
-      )
-    : []
-
-  return {
-    version: 1,
-    models,
-  }
-}
-
-async function writeModelRegistry(models: ScanScene[]) {
-  await writeJsonBlob(MODEL_REGISTRY_PATH, {
-    version: 1,
-    models,
-  } satisfies ModelRegistryDocument)
-}
-
-async function createModelWithRetry(input: {
-  requestedId: string
-  name: string
-  glbUrl: string
-  plyUrl: string
-}) {
-  let lastError: unknown
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      const registry = await readModelRegistry()
-      const existingIds = new Set(registry.models.map((model) => model.id))
-      const id = generateUniqueId(input.requestedId || input.name, existingIds)
-
-      const now = Date.now()
-      const model: ScanScene = {
-        id,
-        name: input.name,
-        glbUrl: input.glbUrl,
-        plyUrl: input.plyUrl,
-        createdAt: now,
-        updatedAt: now,
-      }
-
-      const models = [model, ...registry.models]
-      await writeModelRegistry(models)
-      return model
-    } catch (error) {
-      lastError = error
-    }
-  }
-
-  throw new Error(
-    `Failed to persist model registration${
-      lastError instanceof Error && lastError.message ? `: ${lastError.message}` : ''
-    }`
-  )
-}
-
-async function createModelCreateOnlyWithRetry(input: {
-  requestedId: string
-  name: string
-  glbUrl: string
-  plyUrl: string
-}) {
-  let lastError: unknown
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      const registry = await readModelRegistry()
-      const existingIds = new Set(registry.models.map((model) => model.id))
-      
-      // Create-only semantics - fail if sceneId already exists
-      if (existingIds.has(input.requestedId)) {
-        // Collision is not retryable - fail immediately
-        throw new Error(`Scene ID "${input.requestedId}" already exists in registry`)
-      }
-
-      const now = Date.now()
-      const model: ScanScene = {
-        id: input.requestedId,
-        name: input.name,
-        glbUrl: input.glbUrl,
-        plyUrl: input.plyUrl,
-        createdAt: now,
-        updatedAt: now,
-      }
-
-      const models = [model, ...registry.models]
-      await writeModelRegistry(models)
-      return model
-    } catch (error) {
-      // Check if this is a collision error (non-retryable)
-      if (error instanceof Error && error.message.includes('already exists in registry')) {
-        throw error
-      }
-      lastError = error
-    }
-  }
-
-  throw new Error(
-    `Failed to persist model registration${
-      lastError instanceof Error && lastError.message ? `: ${lastError.message}` : ''
-    }`
-  )
-}
-
-async function upsertModelByIdWithRetry(input: {
-  id: string
-  name: string
-  glbUrl: string
-  plyUrl: string
-}) {
-  let lastError: unknown
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      const registry = await readModelRegistry()
-      const now = Date.now()
-      const existing = registry.models.find((model) => model.id === input.id)
-
-      const merged: ScanScene = {
-        id: input.id,
-        name: input.name,
-        glbUrl: input.glbUrl,
-        plyUrl: input.plyUrl,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      }
-
-      const models = [merged, ...registry.models.filter((model) => model.id !== input.id)]
-      await writeModelRegistry(models)
-      await cleanupStaleModelAssets(registry.models, models)
-      return merged
-    } catch (error) {
-      lastError = error
-    }
-  }
-
-  throw new Error(
-    `Failed to merge model registration${
-      lastError instanceof Error && lastError.message ? `: ${lastError.message}` : ''
-    }`
-  )
-}
-
-async function replaceModelsWithRetry(inputModels: ReplaceModelInput[]) {
-  let lastError: unknown
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      const registry = await readModelRegistry()
-      const existingById = new Map(registry.models.map((model) => [model.id, model] as const))
-      const now = Date.now()
-
-      const nextModels: ScanScene[] = inputModels.map((model) => {
-        const existing = existingById.get(model.id)
-        return {
-          id: model.id,
-          name: model.name,
-          glbUrl: model.glbUrl,
-          plyUrl: model.plyUrl,
-          source: 'cloud',
-          createdAt: existing?.createdAt ?? now,
-          updatedAt: now,
-        }
-      })
-
-      await writeModelRegistry(nextModels)
-      await cleanupStaleModelAssets(registry.models, nextModels)
-      return nextModels
-    } catch (error) {
-      lastError = error
-    }
-  }
-
-  throw new Error(
-    `Failed to replace model registry${
-      lastError instanceof Error && lastError.message ? `: ${lastError.message}` : ''
-    }`
-  )
 }
 
 export default async function handler(request: Request) {
@@ -464,7 +138,6 @@ export default async function handler(request: Request) {
   let model: ScanScene
   try {
     if (createBody.createOnly) {
-      // Create-only semantics for official scenes - fail on collision
       model = await createModelCreateOnlyWithRetry({
         requestedId,
         name,
@@ -472,7 +145,6 @@ export default async function handler(request: Request) {
         plyUrl,
       })
     } else if (createBody.mergeById) {
-      // Merge-by-id behavior
       model = await upsertModelByIdWithRetry({
         id: requestedId,
         name,
@@ -480,7 +152,6 @@ export default async function handler(request: Request) {
         plyUrl,
       })
     } else {
-      // Auto-suffix behavior
       model = await createModelWithRetry({
         requestedId,
         name,
@@ -490,10 +161,10 @@ export default async function handler(request: Request) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    // Collision errors get 409 Conflict; infrastructure errors get 500
     if (error instanceof Error && error.message.includes('already exists in registry')) {
       return conflict(message)
     }
+
     return jsonResponse({ error: message }, 500)
   }
 
