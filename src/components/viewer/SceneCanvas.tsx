@@ -54,7 +54,14 @@ function AnnotationInputDialog() {
    const openAnnotationPanel = useViewerStore((s) => s.openAnnotationPanel)
    const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
    const activeSceneId = useViewerStore((s) => s.activeSceneId)
-   const [inputText, setInputText] = useState('')
+  const [inputText, setInputText] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (pendingAnnotationInput) {
+      inputRef.current?.focus()
+    }
+  }, [pendingAnnotationInput])
 
   const handleConfirm = useCallback(() => {
     if (presentationMode || !pendingAnnotationInput || !inputText.trim() || !activeSceneId) return
@@ -101,7 +108,7 @@ function AnnotationInputDialog() {
     >
       <p className="mb-2 text-xs text-dim">Add annotation</p>
       <input
-        autoFocus
+        ref={inputRef}
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         onKeyDown={(e) => {
@@ -109,11 +116,12 @@ function AnnotationInputDialog() {
           if (e.key === 'Escape') handleCancel()
         }}
         placeholder="Enter label text..."
-        className="mb-2 w-full rounded border border-subtle bg-field px-2 py-1.5 text-sm text-strong outline-none focus:border-primary"
+        className="mb-2 w-full rounded border border-subtle bg-field px-2 py-1.5 text-sm text-strong outline-none focus:border-[color:var(--accent-border)]"
         data-testid="annotation-text-input"
       />
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={handleConfirm}
           disabled={!inputText.trim()}
           className="ui-hover-emphasis flex-1 rounded bg-primary py-1.5 text-xs text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
@@ -122,8 +130,9 @@ function AnnotationInputDialog() {
           Add
         </button>
         <button
+          type="button"
           onClick={handleCancel}
-          className="ui-hover-emphasis flex-1 rounded bg-field py-1.5 text-xs text-soft transition-colors hover:bg-field-hover"
+          className="ui-hover-emphasis flex-1 rounded bg-field py-1.5 text-xs text-dim transition-colors hover:bg-field-hover hover:text-soft"
         >
           Cancel
         </button>

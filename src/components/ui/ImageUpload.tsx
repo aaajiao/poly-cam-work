@@ -193,7 +193,7 @@ export function ImageUpload({
   )
 
   const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
+    (event: React.DragEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
       setIsDragging(false)
@@ -204,7 +204,7 @@ export function ImageUpload({
   )
 
   const handleDragOver = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
+    (event: React.DragEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
       if (!atLimit) setIsDragging(true)
@@ -212,7 +212,7 @@ export function ImageUpload({
     [atLimit]
   )
 
-  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
     event.preventDefault()
     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
       setIsDragging(false)
@@ -250,35 +250,31 @@ export function ImageUpload({
 
   return (
     <div className="space-y-2">
-      <div
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        data-testid="image-file-input"
+        onChange={handleFileChange}
+      />
+      <button
+        type="button"
         data-testid="image-upload-zone"
-        role="button"
-        tabIndex={atLimit ? -1 : 0}
-        aria-disabled={atLimit}
+        aria-label={atLimit ? `Maximum ${maxImages} images reached` : 'Upload annotation images'}
+        disabled={atLimit || isUploading}
         onClick={handleClick}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') handleClick()
-        }}
         className={cn(
-          'border-2 border-dashed border-subtle rounded-lg bg-panel p-4 text-center cursor-pointer transition-colors',
-          isDragging && 'border-primary bg-accent-soft',
-          atLimit && 'opacity-50 cursor-not-allowed',
-          !atLimit && !isDragging && 'hover:border-strong',
-          isUploading && 'opacity-70 pointer-events-none'
+          'border-2 border-dashed border-subtle rounded-lg bg-panel p-4 text-center transition-colors',
+          isDragging && 'border-accent-soft bg-accent-soft',
+          (atLimit || isUploading) && 'cursor-not-allowed opacity-50',
+          !atLimit && !isDragging && !isUploading && 'cursor-pointer hover:border-strong'
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          data-testid="image-file-input"
-          onChange={handleFileChange}
-        />
         {isUploading ? (
           <div className="flex items-center justify-center gap-2 text-dim">
             <Loader2 size={16} className="animate-spin" />
@@ -299,7 +295,7 @@ export function ImageUpload({
             )}
           </div>
         )}
-      </div>
+      </button>
 
       {error && (
         <p className="text-xs text-danger" data-testid="image-upload-error">
@@ -320,6 +316,7 @@ export function ImageUpload({
                 className="w-full h-full object-cover"
               />
               <button
+                type="button"
                 data-testid={`delete-image-${thumbnail.key}`}
                 aria-label={`Delete ${thumbnail.filename}`}
                 onClick={(event) => {
