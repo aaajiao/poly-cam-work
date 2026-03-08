@@ -70,7 +70,7 @@ export function LoginDialog() {
         <DialogHeader>
           <DialogTitle>Editor Login</DialogTitle>
           <DialogDescription>
-            Enter admin password to edit draft and publish releases.
+            Enter admin password to sync official scenes, edit drafts, and publish releases.
           </DialogDescription>
         </DialogHeader>
 
