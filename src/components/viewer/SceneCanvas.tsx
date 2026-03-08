@@ -1,10 +1,11 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, GizmoHelper, GizmoViewport, Environment, Stats } from '@react-three/drei'
+import { OrbitControls, Environment, Stats } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GLBViewer } from './GLBViewer'
 import { PointCloudViewer } from './PointCloudViewer'
+import { PresentationGizmo } from './PresentationGizmo'
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay'
 import { useActiveScene, useViewerStore } from '@/store/viewerStore'
 import { MeasurementTool } from '@/components/tools/MeasurementTool'
@@ -134,6 +135,7 @@ function AnnotationInputDialog() {
 export function SceneCanvas() {
   const activeScene = useActiveScene()
   const viewMode = useViewerStore((s) => s.viewMode)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
   const isLoading = useViewerStore((s) => s.isLoading)
   const loadingProgress = useViewerStore((s) => s.loadingProgress)
   const loadingMessage = useViewerStore((s) => s.loadingMessage)
@@ -142,6 +144,7 @@ export function SceneCanvas() {
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
   const [statsHost, setStatsHost] = useState<HTMLElement | null>(null)
+  const [gizmoInteractionActive, setGizmoInteractionActive] = useState(false)
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
@@ -156,6 +159,14 @@ export function SceneCanvas() {
       selectAnnotation(null)
     }
   }, [toolMode, selectedAnnotationId, selectAnnotation])
+
+  const handleGizmoInteractionStart = useCallback(() => {
+    setGizmoInteractionActive(true)
+  }, [])
+
+  const handleGizmoInteractionEnd = useCallback(() => {
+    setGizmoInteractionActive(false)
+  }, [])
 
   return (
     <div className="w-full h-full relative" data-testid="scene-canvas">
@@ -196,6 +207,8 @@ export function SceneCanvas() {
           dampingFactor={0.05}
           minDistance={0.5}
           maxDistance={200}
+          onStart={handleGizmoInteractionStart}
+          onEnd={handleGizmoInteractionEnd}
         />
 
         <CameraController />
@@ -206,12 +219,12 @@ export function SceneCanvas() {
         <AnnotationMarkers />
         <AnnotationPanel />
 
-        <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-          <GizmoViewport
-            axisColors={['#ef4444', '#22c55e', '#3b82f6']}
-            labelColor="white"
-          />
-        </GizmoHelper>
+        <PresentationGizmo
+          presentationMode={presentationMode}
+          interactionActive={gizmoInteractionActive}
+          onInteractionStart={handleGizmoInteractionStart}
+          onInteractionEnd={handleGizmoInteractionEnd}
+        />
 
         {import.meta.env.DEV && statsHost && (
           <Stats
