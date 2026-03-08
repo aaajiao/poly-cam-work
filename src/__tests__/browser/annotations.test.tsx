@@ -117,7 +117,7 @@ describe('browser annotation manager', () => {
     await expect.element(screen.getByText('Only Vimeo URLs supported')).toBeVisible()
 
     await videoInput.fill('https://vimeo.com/123456789')
-    await expect.element(videoInput).not.toHaveClass('border-red-500')
+    await expect.element(videoInput).not.toHaveClass('border-destructive')
 
     await screen.getByTestId('annotation-add-link-btn').click()
     await expect.element(screen.getByTestId('annotation-link-url-0')).toBeVisible()

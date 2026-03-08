@@ -65,7 +65,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
   return (
     <div className="space-y-3 pt-2">
       <div>
-        <p className="text-zinc-500 text-xs uppercase tracking-wide mb-1">Title</p>
+        <p className="text-faint text-xs uppercase tracking-wide mb-1">Title</p>
         <input
           value={localTitle}
           onChange={(e) => setLocalTitle(e.target.value.slice(0, 100))}
@@ -75,13 +75,13 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           }}
           maxLength={100}
           data-testid="annotation-title-input"
-          className="w-full bg-zinc-800 text-white text-xs px-2 py-1 rounded border border-zinc-700 outline-none focus:border-blue-500"
+          className="w-full rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
         />
-        <span className="text-zinc-600 text-xs">{localTitle.length}/100</span>
+        <span className="text-faint text-xs">{localTitle.length}/100</span>
       </div>
 
-      <div className="border-t border-zinc-800 pt-2">
-        <p className="text-zinc-500 text-xs uppercase tracking-wide mb-1">Description</p>
+      <div className="border-t border-subtle pt-2">
+        <p className="text-faint text-xs uppercase tracking-wide mb-1">Description</p>
         <textarea
           value={localDesc}
           onChange={(e) => setLocalDesc(e.target.value.slice(0, 2000))}
@@ -92,13 +92,13 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           maxLength={2000}
           rows={3}
           data-testid="annotation-description-input"
-          className="w-full bg-zinc-800 text-white text-xs px-2 py-1 rounded border border-zinc-700 outline-none focus:border-blue-500 resize-none"
+          className="w-full resize-none rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
         />
-        <span className="text-zinc-600 text-xs">{localDesc.length}/2000</span>
+        <span className="text-faint text-xs">{localDesc.length}/2000</span>
       </div>
 
-      <div className="border-t border-zinc-800 pt-2">
-        <p className="text-zinc-500 text-xs uppercase tracking-wide mb-1">Images</p>
+      <div className="border-t border-subtle pt-2">
+        <p className="text-faint text-xs uppercase tracking-wide mb-1">Images</p>
           <ImageUpload
             annotationId={annotation.id}
             images={annotation.images}
@@ -109,8 +109,8 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           />
       </div>
 
-      <div className="border-t border-zinc-800 pt-2">
-        <p className="text-zinc-500 text-xs uppercase tracking-wide mb-1">Video</p>
+      <div className="border-t border-subtle pt-2">
+        <p className="text-faint text-xs uppercase tracking-wide mb-1">Video</p>
         <input
           value={videoInput}
           onChange={(e) => setVideoInput(e.target.value)}
@@ -123,17 +123,17 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           placeholder="https://vimeo.com/…"
           data-testid="annotation-video-input"
           className={cn(
-            'w-full bg-zinc-800 text-white text-xs px-2 py-1 rounded border outline-none',
-            videoError ? 'border-red-500' : 'border-zinc-700 focus:border-blue-500'
+            'w-full rounded border bg-field px-2 py-1 text-xs text-strong outline-none',
+            videoError ? 'border-destructive' : 'border-subtle focus:border-primary'
           )}
         />
         {videoError && (
-          <p className="text-red-400 text-xs mt-0.5">Only Vimeo URLs supported</p>
+          <p className="mt-0.5 text-xs text-danger">Only Vimeo URLs supported</p>
         )}
       </div>
 
-      <div className="border-t border-zinc-800 pt-2">
-        <p className="text-zinc-500 text-xs uppercase tracking-wide mb-1">Links</p>
+      <div className="border-t border-subtle pt-2">
+        <p className="text-faint text-xs uppercase tracking-wide mb-1">Links</p>
         <div className="space-y-1">
           {localLinks.map((link, i) => (
             <div key={i} className="flex gap-1 items-center">
@@ -143,7 +143,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
                 onBlur={handleLinkBlur}
                 placeholder="URL"
                 data-testid={`annotation-link-url-${i}`}
-                className="flex-1 bg-zinc-800 text-white text-xs px-2 py-1 rounded border border-zinc-700 outline-none focus:border-blue-500 min-w-0"
+                className="min-w-0 flex-1 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
               />
               <input
                 value={link.label}
@@ -151,13 +151,13 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
                 onBlur={handleLinkBlur}
                 placeholder="Label"
                 data-testid={`annotation-link-label-${i}`}
-                className="w-20 bg-zinc-800 text-white text-xs px-2 py-1 rounded border border-zinc-700 outline-none focus:border-blue-500 shrink-0"
+                className="w-20 shrink-0 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
               />
               <button
                 onClick={() => removeLink(i)}
                 data-testid={`annotation-link-delete-${i}`}
                 aria-label="Remove link"
-                className="text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                className="shrink-0 text-faint transition-colors hover:text-danger"
               >
                 <X size={10} />
               </button>
@@ -166,7 +166,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           <button
             onClick={addLink}
             data-testid="annotation-add-link-btn"
-            className="text-blue-400 hover:text-blue-300 text-xs transition-colors"
+            className="text-xs text-accent transition-colors hover:opacity-85"
           >
             + Add link
           </button>
@@ -186,17 +186,17 @@ function MediaIndicators({ annotation }: MediaIndicatorsProps) {
       {annotation.images.length > 0 && (
         <Image
           size={10}
-          className="text-zinc-500"
+          className="text-faint"
           aria-label={`${annotation.images.length} images`}
         />
       )}
       {annotation.videoUrl && (
-        <Video size={10} className="text-zinc-500" aria-label="Has video" />
+        <Video size={10} className="text-faint" aria-label="Has video" />
       )}
       {annotation.links.length > 0 && (
         <Link
           size={10}
-          className="text-zinc-500"
+          className="text-faint"
           aria-label={`${annotation.links.length} links`}
         />
       )}
@@ -237,10 +237,10 @@ export function AnnotationManager() {
     <div data-testid="annotation-manager">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider">Annotations</p>
+          <p className="text-xs text-faint uppercase tracking-wider">Annotations</p>
           {sceneAnnotations.length > 0 && (
             <span
-              className="bg-zinc-700 text-zinc-300 text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+              className="rounded-full bg-field px-1.5 py-0.5 text-[10px] font-mono text-soft"
               data-testid="annotation-count-badge"
             >
               {sceneAnnotations.length}
@@ -251,11 +251,11 @@ export function AnnotationManager() {
           data-testid="annotations-toggle"
           onClick={() => setAnnotationsPanelOpen(!annotationsPanelOpen)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            annotationsPanelOpen ? 'bg-blue-600' : 'bg-zinc-700'
+            annotationsPanelOpen ? 'bg-primary' : 'bg-field'
           }`}
         >
           <span
-            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+            className={`inline-block h-3 w-3 transform rounded-full bg-foreground transition-transform ${
               annotationsPanelOpen ? 'translate-x-5' : 'translate-x-1'
             }`}
           />
@@ -265,10 +265,10 @@ export function AnnotationManager() {
       {annotationsPanelOpen && (
         <>
           {sceneAnnotations.length === 0 && (
-            <p className="text-zinc-600 text-xs text-center py-3">
+            <p className="text-faint text-xs text-center py-3">
               {presentationMode
                 ? 'No annotations yet.'
-                : <>No annotations yet. Press <kbd className="bg-zinc-800 px-1 rounded">A</kbd> to add markers.</>}
+                : <>No annotations yet. Press <kbd className="rounded bg-field px-1">A</kbd> to add markers.</>}
             </p>
           )}
 
@@ -296,17 +296,17 @@ export function AnnotationManager() {
                     className={cn(
                       'flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer transition-colors group',
                       isSelected
-                        ? 'bg-blue-500/10 border border-blue-500/50'
-                        : 'border border-transparent hover:bg-zinc-800'
+                        ? 'border border-accent-soft bg-accent-soft'
+                        : 'border border-transparent hover:bg-elevated'
                     )}
                   >
                     <span
                       className={cn(
                         'flex-1 text-xs truncate',
-                        isSelected ? 'text-blue-300' : 'text-zinc-300'
+                        isSelected ? 'text-accent' : 'text-soft'
                       )}
                     >
-                      {annotation.title || <span className="italic text-zinc-600">Untitled</span>}
+                      {annotation.title || <span className="italic text-faint">Untitled</span>}
                     </span>
 
                     <MediaIndicators annotation={annotation} />
@@ -319,7 +319,7 @@ export function AnnotationManager() {
                           e.stopPropagation()
                           handleDelete(annotation)
                         }}
-                        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all shrink-0"
+                         className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0"
                       >
                         <Trash2 size={11} />
                       </button>
@@ -331,7 +331,7 @@ export function AnnotationManager() {
           )}
 
           {selectedAnnotation && !presentationMode && (
-            <div className="border-t border-zinc-800 mt-3" data-testid="annotation-editor">
+             <div className="mt-3 border-t border-subtle" data-testid="annotation-editor">
               <AnnotationEditor key={selectedAnnotation.id} annotation={selectedAnnotation} />
             </div>
           )}
