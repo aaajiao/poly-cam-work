@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { CloudDownload, CloudUpload, Upload, RotateCcw, X, ChevronDown } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { useViewerStore } from '@/store/viewerStore'
+import { PublishActionControls } from './PublishActionControls'
+import { PublishVersionMenu } from './PublishVersionMenu'
 
 export function PublishButton() {
   const activeSceneId = useViewerStore((state) => state.activeSceneId)
@@ -41,140 +41,63 @@ export function PublishButton() {
 
   return (
     <div className="flex items-center gap-2">
-      <Button
-        data-testid="import-local-data"
-        variant="outline"
-        disabled={isImporting}
-        className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-        onClick={() => {
+      <PublishActionControls
+        fileInputRef={fileInputRef}
+        isImporting={isImporting}
+        isSaving={isSaving}
+        isPublishing={isPublishing}
+        draftStatus={draftStatus}
+        isDraftDirty={isDraftDirty}
+        hasPublishedVersions={versions.length > 0}
+        onImportClick={() => {
           fileInputRef.current?.click()
         }}
-      >
-        <CloudUpload size={14} />
-        <span className="hidden xl:inline">Import</span>
-      </Button>
-
-      <Button
-        data-testid="save-draft-button"
-        variant="outline"
-        disabled={isSaving || draftStatus === 'saving'}
-        className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-        onClick={() => {
+        onExportClick={() => {
           setIsSaving(true)
           void downloadLocalDraft(activeSceneId).finally(() => setIsSaving(false))
         }}
-      >
-        <CloudDownload size={14} />
-        <span className="hidden lg:inline">Export</span>
-      </Button>
-
-      <Button
-        data-testid="publish-button"
-        disabled={isPublishing || (!isDraftDirty && versions.length > 0)}
-        className="h-8 gap-1 bg-emerald-600 text-white hover:bg-emerald-500"
-        onClick={() => {
+        onPublishClick={() => {
           setIsPublishing(true)
           void publishDraft(activeSceneId).finally(() => setIsPublishing(false))
         }}
-      >
-        <Upload size={14} />
-        <span className="hidden md:inline">Publish</span>
-      </Button>
+        onFileChange={(event) => {
+          const file = event.target.files?.[0]
+          event.currentTarget.value = ''
+          if (!file) return
 
-      <div className="hidden text-xs xl:block" data-testid="draft-dirty-indicator">
-        {isDraftDirty ? (
-          <span className="text-amber-400">unsaved</span>
-        ) : (
-          <span className="text-zinc-500">saved</span>
-        )}
-      </div>
+          setIsImporting(true)
+          void importLocalDraftFile(activeSceneId, file).finally(() => setIsImporting(false))
+        }}
+      />
 
-      <div className="relative hidden xl:block" data-testid="published-version-menu">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-          data-testid="published-version-menu-trigger"
-          onClick={() => setIsVersionsOpen((open) => !open)}
-        >
-          <span className="text-xs">
-            {typeof liveVersion === 'number' ? `v${liveVersion}` : 'Versions'}
-          </span>
-          <ChevronDown size={14} className={isVersionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
-        </Button>
+      <PublishVersionMenu
+        liveVersion={liveVersion}
+        versions={versions}
+        isOpen={isVersionsOpen}
+        rollingBackVersion={rollingBackVersion}
+        deletingVersion={deletingVersion}
+        onToggle={() => setIsVersionsOpen((open) => !open)}
+        onRollback={(version) => {
+          setRollingBackVersion(version)
+          void rollbackToVersion(activeSceneId, version).finally(() => {
+            setRollingBackVersion(null)
+            setIsVersionsOpen(false)
+          })
+        }}
+        onDelete={(version, event) => {
+          event.stopPropagation()
 
-        {isVersionsOpen && (
-          <div
-            className="absolute right-0 top-10 z-50 w-56 rounded border border-zinc-700 bg-zinc-900/95 p-2 shadow-2xl"
-            data-testid="published-version-menu-content"
-          >
-            <div className="mb-1 px-1 text-[10px] uppercase tracking-wide text-zinc-500">Releases</div>
+          const confirmed = window.confirm(
+            liveVersion === version
+              ? `Delete live version v${version}? The app will fall back to the newest remaining release.`
+              : `Delete version v${version}?`
+          )
+          if (!confirmed) return
 
-            <div className="max-h-56 space-y-1 overflow-y-auto" data-testid="published-version-list">
-              {versions.length === 0 ? (
-                <div className="rounded px-2 py-2 text-xs text-zinc-500">None</div>
-              ) : (
-                versions.map((version) => {
-                  const isLive = liveVersion === version
-                  const isRollingBack = rollingBackVersion === version
-                  const isDeleting = deletingVersion === version
-
-                  return (
-                    <div
-                      key={version}
-                      className="group flex items-center justify-between gap-1 rounded border border-zinc-700 bg-zinc-900/80 px-1.5 py-1"
-                      data-testid={`published-version-item-${version}`}
-                    >
-                      <button
-                        type="button"
-                        disabled={isRollingBack || isDeleting}
-                        className="flex items-center gap-1 text-xs text-zinc-300 hover:text-zinc-100 disabled:opacity-50"
-                        data-testid={`rollback-version-${version}`}
-                        onClick={() => {
-                          setRollingBackVersion(version)
-                          void rollbackToVersion(activeSceneId, version).finally(() => {
-                            setRollingBackVersion(null)
-                            setIsVersionsOpen(false)
-                          })
-                        }}
-                      >
-                        <RotateCcw size={12} className={isLive ? 'text-emerald-400' : ''} />
-                        <span>{`v${version}`}</span>
-                        {isLive && <span className="text-[10px] text-emerald-400">live</span>}
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={isDeleting || isRollingBack}
-                        className="rounded p-0.5 text-zinc-500 transition-colors hover:text-red-400 disabled:opacity-50"
-                        aria-label={`Delete version ${version}`}
-                        data-testid={`delete-version-${version}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-
-                          const confirmed = window.confirm(
-                            liveVersion === version
-                              ? `Delete live version v${version}? The app will fall back to the newest remaining release.`
-                              : `Delete version v${version}?`
-                          )
-                          if (!confirmed) return
-
-                          setDeletingVersion(version)
-                          void deletePublishedVersion(activeSceneId, version).finally(() =>
-                            setDeletingVersion(null)
-                          )
-                        }}
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+          setDeletingVersion(version)
+          void deletePublishedVersion(activeSceneId, version).finally(() => setDeletingVersion(null))
+        }}
+      />
 
       <div className="hidden text-xs text-zinc-500 xl:block" data-testid="publish-version-label">
         {typeof liveVersion === 'number' ? `v${liveVersion}` : 'none'}
@@ -185,21 +108,6 @@ export function PublishButton() {
           {draftError}
         </div>
       )}
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          event.currentTarget.value = ''
-          if (!file) return
-
-          setIsImporting(true)
-          void importLocalDraftFile(activeSceneId, file).finally(() => setIsImporting(false))
-        }}
-      />
     </div>
   )
 }
