@@ -27,6 +27,8 @@ describe('viewerStore', () => {
       clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false },
       colorMapMode: 'original',
       pointSize: 0.02,
+      pendingAnnotationInput: null,
+      presentationMode: false,
       cameraControlsEnabled: true,
       isLoading: false,
       loadingProgress: 0,
@@ -81,6 +83,33 @@ describe('viewerStore', () => {
   it('setToolMode does not toggle orbit', () => {
     const { setToolMode } = useViewerStore.getState()
     setToolMode('orbit')
+    expect(useViewerStore.getState().toolMode).toBe('orbit')
+  })
+
+  it('setPresentationMode forces orbit and clears pending annotation input', () => {
+    useViewerStore.setState({
+      toolMode: 'annotate',
+      pendingAnnotationInput: {
+        screenPos: { x: 10, y: 20 },
+        worldPos: [1, 2, 3],
+      },
+    })
+
+    const { setPresentationMode } = useViewerStore.getState()
+    setPresentationMode(true)
+
+    const state = useViewerStore.getState()
+    expect(state.presentationMode).toBe(true)
+    expect(state.toolMode).toBe('orbit')
+    expect(state.pendingAnnotationInput).toBeNull()
+  })
+
+  it('setToolMode ignores non-orbit requests during presentation mode', () => {
+    useViewerStore.setState({ presentationMode: true, toolMode: 'orbit' })
+
+    const { setToolMode } = useViewerStore.getState()
+    setToolMode('annotate')
+
     expect(useViewerStore.getState().toolMode).toBe('orbit')
   })
 

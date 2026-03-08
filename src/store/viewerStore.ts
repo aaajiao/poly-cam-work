@@ -92,6 +92,7 @@ interface ViewerState {
   annotationsVisible: boolean
   annotationsPanelOpen: boolean
   sidebarOpen: boolean
+  presentationMode: boolean
   cameraControlsEnabled: boolean
 
   isLoading: boolean
@@ -130,6 +131,7 @@ interface ViewerState {
   toggleAnnotationsVisible: () => void
   setAnnotationsPanelOpen: (open: boolean) => void
   setSidebarOpen: (open: boolean) => void
+  setPresentationMode: (enabled: boolean) => void
   setCameraControlsEnabled: (enabled: boolean) => void
   setClipPlane: (state: Partial<ClipPlaneState>) => void
   setColorMapMode: (mode: ColorMapMode) => void
@@ -193,6 +195,7 @@ export const useViewerStore = create<ViewerState>()(
       annotationsVisible: true,
       annotationsPanelOpen: false,
       sidebarOpen: false,
+      presentationMode: false,
       cameraControlsEnabled: true,
 
       isLoading: false,
@@ -221,6 +224,10 @@ export const useViewerStore = create<ViewerState>()(
       }),
       setViewMode: (viewMode) => set({ viewMode }),
       setToolMode: (toolMode) => set((state) => {
+        if (state.presentationMode && toolMode !== 'orbit') {
+          return state
+        }
+
         const togglingOff = toolMode !== 'orbit' && toolMode === state.toolMode
         const nextMode = togglingOff ? 'orbit' : toolMode
         const panelOpen = nextMode === 'annotate' ? true : togglingOff && toolMode === 'annotate' ? false : state.annotationsPanelOpen
@@ -344,6 +351,11 @@ export const useViewerStore = create<ViewerState>()(
         set((state) => ({ annotationsVisible: !state.annotationsVisible })),
       setAnnotationsPanelOpen: (annotationsPanelOpen) => set({ annotationsPanelOpen }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+      setPresentationMode: (presentationMode) => set((state) => ({
+        presentationMode,
+        toolMode: presentationMode ? 'orbit' : state.toolMode,
+        pendingAnnotationInput: presentationMode ? null : state.pendingAnnotationInput,
+      })),
       setCameraControlsEnabled: (cameraControlsEnabled) => set({ cameraControlsEnabled }),
 
       setClipPlane: (partial) =>
