@@ -6,6 +6,7 @@ import {
   getPresentationGizmoTargetOpacity,
   PRESENTATION_GIZMO_IDLE_OPACITY,
 } from './presentationGizmoState'
+import { resolveThemeColor } from '@/utils/themeColors'
 
 const PRESENTATION_GIZMO_FADE_IN_SPEED = 8
 const PRESENTATION_GIZMO_FADE_OUT_SPEED = 15
@@ -51,6 +52,12 @@ export function PresentationGizmo({
   const gizmoRef = useRef<THREE.Group | null>(null)
   const currentOpacityRef = useRef(presentationMode ? PRESENTATION_GIZMO_IDLE_OPACITY : 1)
   const appliedOpacityRef = useRef<number | null>(null)
+  const axisColors = [
+    resolveThemeColor('--primary', '#7291c8'),
+    resolveThemeColor('--success', '#73b894'),
+    resolveThemeColor('--accent', '#8aa7d6'),
+  ]
+  const labelColor = resolveThemeColor('--foreground', '#f1f2f6')
 
   useFrame((_, delta) => {
     if (!gizmoRef.current) return
@@ -88,8 +95,8 @@ export function PresentationGizmo({
         ref={gizmoRef}
       >
         <GizmoViewport
-          axisColors={['#ef4444', '#22c55e', '#3b82f6']}
-          labelColor="white"
+          axisColors={axisColors}
+          labelColor={labelColor}
           onPointerDown={(event: ThreeEvent<PointerEvent>) => {
             onInteractionStart()
             event.stopPropagation()

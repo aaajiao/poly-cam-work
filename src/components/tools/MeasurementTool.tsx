@@ -5,6 +5,7 @@ import { Html, Line } from '@react-three/drei'
 import { useViewerStore } from '@/store/viewerStore'
 import { calculateDistance, formatDistance, getMidpoint } from '@/utils/measurement'
 import { updatePointsThreshold } from '@/utils/raycasting'
+import { resolveThemeColor } from '@/utils/themeColors'
 
 interface MeasurementPoint {
   position: THREE.Vector3
@@ -28,6 +29,7 @@ export function MeasurementTool() {
 
   const [pendingPoint, setPendingPoint] = useState<MeasurementPoint | null>(null)
   const [completedMeasurements, setCompletedMeasurements] = useState<CompletedMeasurement[]>([])
+  const measurementColor = resolveThemeColor('--primary', '#7291c8')
 
   const isActive = toolMode === 'measure' && !presentationMode
 
@@ -112,7 +114,7 @@ export function MeasurementTool() {
       {pendingPoint && (
         <mesh position={pendingPoint.position}>
           <sphereGeometry args={[0.05, 8, 8]} />
-          <meshBasicMaterial color="#ef4444" />
+          <meshBasicMaterial color={measurementColor} />
         </mesh>
       )}
 
@@ -122,15 +124,15 @@ export function MeasurementTool() {
           <group key={m.id}>
             <mesh position={m.p1}>
               <sphereGeometry args={[0.05, 8, 8]} />
-              <meshBasicMaterial color="#ef4444" />
+               <meshBasicMaterial color={measurementColor} />
             </mesh>
             <mesh position={m.p2}>
               <sphereGeometry args={[0.05, 8, 8]} />
-              <meshBasicMaterial color="#ef4444" />
+               <meshBasicMaterial color={measurementColor} />
             </mesh>
             <Line
               points={[m.p1, m.p2]}
-              color="#ef4444"
+               color={measurementColor}
               lineWidth={2}
               dashed
               dashSize={0.1}
@@ -139,7 +141,7 @@ export function MeasurementTool() {
             <Html position={midpoint} center distanceFactor={10}>
               <div
                 data-testid="measurement-label"
-                className="bg-zinc-900/90 text-white text-xs px-2 py-1 rounded border border-zinc-600 whitespace-nowrap pointer-events-none"
+                 className="whitespace-nowrap rounded border border-subtle bg-elevated px-2 py-1 text-xs text-strong pointer-events-none"
               >
                 {formatDistance(m.distance)}
               </div>

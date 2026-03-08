@@ -18,7 +18,7 @@ function LoadingFallback() {
   return (
     <mesh>
       <boxGeometry args={[1, 1, 1]} />
-      <meshBasicMaterial color="#27272a" wireframe />
+      <meshBasicMaterial color="hsl(240 5% 28%)" wireframe />
     </mesh>
   )
 }
@@ -96,10 +96,10 @@ function AnnotationInputDialog() {
   return (
     <div
       data-testid="annotation-input-dialog"
-      className="fixed z-50 bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl p-3 w-56"
+      className="fixed z-50 w-56 rounded-lg border border-strong bg-elevated p-3 shadow-panel"
       style={{ left: clampedLeft, top: clampedTop }}
     >
-      <p className="text-zinc-400 text-xs mb-2">Add annotation</p>
+      <p className="mb-2 text-xs text-dim">Add annotation</p>
       <input
         autoFocus
         value={inputText}
@@ -109,21 +109,21 @@ function AnnotationInputDialog() {
           if (e.key === 'Escape') handleCancel()
         }}
         placeholder="Enter label text..."
-        className="w-full bg-zinc-800 text-white text-sm px-2 py-1.5 rounded border border-zinc-600 outline-none focus:border-blue-500 mb-2"
+        className="mb-2 w-full rounded border border-subtle bg-field px-2 py-1.5 text-sm text-strong outline-none focus:border-primary"
         data-testid="annotation-text-input"
       />
       <div className="flex gap-2">
         <button
           onClick={handleConfirm}
           disabled={!inputText.trim()}
-          className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs py-1.5 rounded transition-colors"
+          className="ui-hover-emphasis flex-1 rounded bg-primary py-1.5 text-xs text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           data-testid="annotation-confirm-btn"
         >
           Add
         </button>
         <button
           onClick={handleCancel}
-          className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs py-1.5 rounded transition-colors"
+          className="ui-hover-emphasis flex-1 rounded bg-field py-1.5 text-xs text-soft transition-colors hover:bg-field-hover"
         >
           Cancel
         </button>
