@@ -5,7 +5,6 @@ import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GLBViewer } from './GLBViewer'
 import { PointCloudViewer } from './PointCloudViewer'
-import { ScreenshotCapture } from './ScreenshotButton'
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay'
 import { useActiveScene, useViewerStore } from '@/store/viewerStore'
 import { MeasurementTool } from '@/components/tools/MeasurementTool'
@@ -48,6 +47,7 @@ const DIALOG_HEIGHT = 120  // approximate height
 
 function AnnotationInputDialog() {
    const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
+   const presentationMode = useViewerStore((s) => s.presentationMode)
    const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
    const addAnnotation = useViewerStore((s) => s.addAnnotation)
    const openAnnotationPanel = useViewerStore((s) => s.openAnnotationPanel)
@@ -56,7 +56,7 @@ function AnnotationInputDialog() {
    const [inputText, setInputText] = useState('')
 
   const handleConfirm = useCallback(() => {
-    if (!pendingAnnotationInput || !inputText.trim() || !activeSceneId) return
+    if (presentationMode || !pendingAnnotationInput || !inputText.trim() || !activeSceneId) return
     const newId = `ann-${Date.now()}`
     addAnnotation({
       id: newId,
@@ -74,14 +74,14 @@ function AnnotationInputDialog() {
     selectAnnotation(newId)
     setPendingAnnotationInput(null)
     setInputText('')
-  }, [pendingAnnotationInput, inputText, activeSceneId, addAnnotation, openAnnotationPanel, selectAnnotation, setPendingAnnotationInput])
+  }, [presentationMode, pendingAnnotationInput, inputText, activeSceneId, addAnnotation, openAnnotationPanel, selectAnnotation, setPendingAnnotationInput])
 
   const handleCancel = useCallback(() => {
     setPendingAnnotationInput(null)
     setInputText('')
   }, [setPendingAnnotationInput])
 
-  if (!pendingAnnotationInput) return null
+  if (presentationMode || !pendingAnnotationInput) return null
 
   const clampedLeft = Math.min(
     Math.max(pendingAnnotationInput.screenPos.x + 10, 8),
@@ -163,7 +163,6 @@ export function SceneCanvas() {
         camera={{ position: [0, 5, 15], fov: 50, near: 0.01, far: 1000 }}
         gl={{
           antialias: true,
-          preserveDrawingBuffer: true,
           toneMapping: 3,
           toneMappingExposure: 1,
         }}
@@ -221,8 +220,6 @@ export function SceneCanvas() {
             showPanel={0}
           />
         )}
-
-        <ScreenshotCapture />
       </Canvas>
 
       <LoadingOverlay
