@@ -49,9 +49,11 @@ export function AnnotationMarker({ annotation, isActive, onSelect }: AnnotationM
       sprite
       occlude={false}
     >
-      <div
+      <button
+        type="button"
         data-testid={`annotation-marker-${annotation.id}`}
-        className="relative cursor-pointer select-none"
+        aria-label={annotation.title || 'Open annotation'}
+        className="relative cursor-pointer select-none border-0 bg-transparent p-0"
         style={{ pointerEvents: 'auto' }}
         onClick={(e) => {
           e.stopPropagation()
@@ -73,38 +75,39 @@ export function AnnotationMarker({ annotation, isActive, onSelect }: AnnotationM
         <div
           className={cn(
             'relative flex h-6 w-6 items-center justify-center rounded-full transition-all duration-150',
+            isActive ? 'scale-110' : isHovered ? 'scale-105' : 'scale-100',
             !isActive && !isHovered && 'annotation-breathe'
           )}
         >
           <div
             className={cn(
-              'absolute inset-0 rounded-full border-2 transition-colors duration-150',
+              'absolute inset-0 rounded-full border-2 transition-all duration-150',
               isActive
-                ? 'border-[color:var(--signal-strong)] shadow-[0_0_24px_color-mix(in_oklab,var(--signal-strong)_90%,transparent)] ring-2 ring-[color:color-mix(in_oklab,var(--signal-strong)_30%,transparent)]'
+                ? 'border-[color:var(--signal-ring)] shadow-[0_0_28px_color-mix(in_oklab,var(--signal-halo-open)_100%,transparent)] ring-2 ring-[color:color-mix(in_oklab,var(--signal-open)_36%,transparent)]'
                 : isHovered
-                ? 'border-[color:var(--signal-strong)] shadow-[0_0_16px_color-mix(in_oklab,var(--signal-hover)_80%,transparent)]'
-                : 'border-[color:var(--signal-ring)] shadow-[0_0_12px_color-mix(in_oklab,var(--signal)_60%,transparent)] opacity-90',
+                ? 'border-[color:var(--signal-ring)] shadow-[0_0_20px_color-mix(in_oklab,var(--signal-halo-hover)_100%,transparent)] ring-2 ring-[color:color-mix(in_oklab,var(--signal-hover)_24%,transparent)]'
+                : 'border-[color:var(--signal-ring-soft)] shadow-[0_0_14px_color-mix(in_oklab,var(--signal-halo-closed)_100%,transparent)] ring-1 ring-[color:color-mix(in_oklab,var(--signal-ring)_22%,transparent)] opacity-95',
               isActive && isHovered && 'annotation-node-pulse'
             )}
             style={nodePulseStyle}
           />
           <div
             className={cn(
-              'h-3 w-3 rounded-full transition-all duration-150 shadow-[0_0_14px_color-mix(in_oklab,var(--signal)_48%,transparent)]',
+              'h-3 w-3 rounded-full transition-all duration-150 shadow-[0_0_14px_color-mix(in_oklab,var(--signal-halo-closed)_100%,transparent)]',
               isActive
-                ? 'bg-[var(--signal-strong)] scale-110'
+                ? 'bg-[var(--signal-open)] shadow-[0_0_18px_color-mix(in_oklab,var(--signal-halo-open)_100%,transparent)]'
                 : isHovered
-                ? 'bg-[var(--signal-hover)] scale-105'
-                : 'bg-[var(--signal)]'
+                ? 'bg-[var(--signal-hover)] shadow-[0_0_16px_color-mix(in_oklab,var(--signal-halo-hover)_100%,transparent)]'
+                : 'bg-[var(--signal-closed)]'
             )}
           />
         </div>
         {isHovered && !isActive && (
           <div className="absolute left-5 top-1/2 -translate-y-1/2 whitespace-nowrap rounded border border-subtle bg-elevated px-1.5 py-0 shadow-panel">
-            <span className="text-[10px] font-medium text-strong">{annotation.title}</span>
+            <span className="text-[10px] font-medium text-soft">{annotation.title}</span>
           </div>
         )}
-      </div>
+      </button>
     </Html>
   )
 }

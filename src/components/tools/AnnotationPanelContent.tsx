@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { useViewerStore } from '@/store/viewerStore'
 import { imageStorage } from '@/storage/imageStorage'
@@ -63,7 +63,7 @@ function ResizableMedia({
     }
   }, [setCameraControlsEnabled])
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
     e.stopPropagation()
     detachListenersRef.current?.()
@@ -127,19 +127,21 @@ function ResizableMedia({
       }}
     >
       {children}
-      <div
+      <button
+        type="button"
           className={cn(
            'absolute bottom-1 right-1 z-20 flex h-5 w-5 items-center justify-center rounded-sm border border-subtle bg-elevated text-strong transition-opacity',
            showHandleAlways ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-100 hover:opacity-100'
-         )}
+          )}
         style={{ cursor: 'nwse-resize', pointerEvents: 'auto' }}
         onMouseDown={handleMouseDown}
         aria-label="Resize media"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <title>Resize media</title>
           <path d="M9 3L3 9M9 6L6 9M9 9H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-      </div>
+      </button>
     </div>
   )
 }
@@ -310,6 +312,16 @@ export function AnnotationPanelContent({
   const singleImage = annotation.images.length === 1
   const defaultImageWidth = clamp(Math.round(190 * primaryImageAspectRatio), 240, 420)
   const minImageWidth = clamp(Math.round(defaultImageWidth * 0.7), 180, 280)
+  const linkKeys = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    return annotation.links.map((link) => {
+      const base = `${link.url.trim()}::${link.label.trim()}` || 'empty-link'
+      const count = counts.get(base) ?? 0
+      counts.set(base, count + 1)
+      return `${annotation.id}:${base}:${count}`
+    })
+  }, [annotation.id, annotation.links])
 
   return (
     <div className="space-y-2 pt-1" data-testid="annotation-panel-content">
@@ -371,11 +383,11 @@ export function AnnotationPanelContent({
         <div data-testid="annotation-panel-links" className="space-y-1">
           {annotation.links.map((link, i) => (
             <a
-              key={i}
+              key={linkKeys[i]}
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-[color:var(--signal-strong)] hover:opacity-85"
+              className="flex items-center gap-1.5 text-xs text-[color:var(--signal-open)] hover:text-[color:var(--signal-ring)]"
               style={{ textShadow: DESCRIPTION_TEXT_SHADOW }}
             >
               <ExternalLink size={10} />

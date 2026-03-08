@@ -1,6 +1,6 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from 'react'
 import * as THREE from 'three'
-import { useThree, useFrame, ThreeEvent } from '@react-three/fiber'
+import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useCursor } from '@react-three/drei'
 import { useViewerStore } from '@/store/viewerStore'
 import type { Annotation } from '@/types'
@@ -47,7 +47,7 @@ export function AnnotationMarkers() {
   const farCoreMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: resolveThemeColor('--signal', '#89baf1'),
+        color: resolveThemeColor('--signal-closed', '#1d4ed8'),
         transparent: true,
         opacity: 0.98,
         depthTest: false,
@@ -59,9 +59,9 @@ export function AnnotationMarkers() {
   )
   const farHaloMaterial = useMemo(
     () => new THREE.MeshBasicMaterial({
-      color: resolveThemeColor('--signal-ring', '#eef4ff'),
+      color: resolveThemeColor('--signal-ring', '#ffffff'),
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.54,
       depthTest: false,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -164,9 +164,9 @@ export function AnnotationMarkers() {
     const matrix = new THREE.Matrix4()
     const haloMatrix = new THREE.Matrix4()
     const pulse = 1 + Math.sin(clock.elapsedTime * 2) * 0.15
-    const activeColor = new THREE.Color(resolveThemeColor('--signal-strong', '#60a5fa'))
+    const activeColor = new THREE.Color(resolveThemeColor('--signal-open', '#8fd8ff'))
     const hoverColor = new THREE.Color(resolveThemeColor('--signal-hover', '#3b82f6'))
-    const idleColor = new THREE.Color(resolveThemeColor('--signal', '#1d4ed8'))
+    const idleColor = new THREE.Color(resolveThemeColor('--signal-closed', '#1d4ed8'))
     const ringColor = new THREE.Color(resolveThemeColor('--signal-ring', '#ffffff'))
 
     farAnnotations.forEach(({ annotation, dist }, i) => {
@@ -175,10 +175,10 @@ export function AnnotationMarkers() {
       const isHovered = hoveredFarId === annotation.id
       const distanceScale = THREE.MathUtils.clamp(dist / 12, 1.05, 4.2)
 
-      const coreScale = pulse * distanceScale * (isHovered && !isActive ? 1.28 : isActive ? 1.12 : 1)
-      const haloScale = pulse * distanceScale * (isActive || isHovered ? 2.45 : 1.55)
+      const coreScale = pulse * distanceScale * (isActive ? (isHovered ? 1.42 : 1.28) : isHovered ? 1.18 : 1)
+      const haloScale = pulse * distanceScale * (isActive ? 2.85 : isHovered ? 2.15 : 1.72)
       const markerColor = isActive ? activeColor : isHovered ? hoverColor : idleColor
-      const haloColor = isActive || isHovered ? activeColor : ringColor
+      const haloColor = isActive ? activeColor : isHovered ? hoverColor : ringColor
 
       matrix.makeScale(coreScale, coreScale, coreScale)
       matrix.setPosition(pos)
@@ -224,10 +224,6 @@ export function AnnotationMarkers() {
     [handlePanelToggle]
   )
 
-  if (!annotationsVisible) return null
-
-  const instanceCapacity = Math.max(sceneAnnotations.length, 1)
-
   const visibleAnnotationById = useMemo(
     () => new Map(visibleAnnotations.map((annotation) => [annotation.id, annotation] as const)),
     [visibleAnnotations]
@@ -240,8 +236,13 @@ export function AnnotationMarkers() {
     [closeMarkerIds, visibleAnnotationById]
   )
 
+  if (!annotationsVisible) return null
+
+  const instanceCapacity = Math.max(sceneAnnotations.length, 1)
+
   return (
     <>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: React Three Fiber instanced meshes are scene objects, not DOM nodes. */}
       <instancedMesh
         key={`far-core-${activeSceneId}-${instanceCapacity}`}
         ref={farCoreRef}

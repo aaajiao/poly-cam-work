@@ -197,11 +197,11 @@ function AnnotationFloatingPanel({
   const lastCameraQuatRef = useRef(new THREE.Quaternion().copy(camera.quaternion))
   const lastCameraFovRef = useRef(camera instanceof THREE.PerspectiveCamera ? camera.fov : 50)
   const lineColor = isLinkHighlighted
-    ? resolveThemeColor('--signal-strong', '#60a5fa')
-    : resolveThemeColor('--signal-ring', '#ffffff')
-  const baseLineWidth = isLinkHighlighted ? 4.2 : 2
-  const baseGlowWidth = isLinkHighlighted ? 12 : 6
-  const baseGlowOpacity = isLinkHighlighted ? 0.38 : 0.15
+    ? resolveThemeColor('--annotation-line-active', '#8fd8ff')
+    : resolveThemeColor('--annotation-line', '#4f74de')
+  const baseLineWidth = isLinkHighlighted ? 4.6 : 2.8
+  const baseGlowWidth = isLinkHighlighted ? 14 : 9
+  const baseGlowOpacity = isLinkHighlighted ? 0.46 : 0.24
   const titleStyle = useMemo(() => {
     const style: CSSProperties & Record<string, string> = {
       textShadow: 'var(--text-shadow-title)',
@@ -481,18 +481,46 @@ function AnnotationFloatingPanel({
 
   useEffect(() => {
     pendingRelayoutRef.current = true
+    void panelIndex
   }, [panelIndex])
 
   useEffect(() => {
     setPrimaryImageAspectRatio(4 / 3)
+    void annotation.id
   }, [annotation.id])
 
   useEffect(() => {
     setEntered(false)
     lineProgressRef.current = 0
+    void annotation.id
     const timeout = setTimeout(() => setEntered(true), 40)
     return () => clearTimeout(timeout)
   }, [annotation.id])
+
+  useEffect(() => {
+    const root = panelRootRef.current
+    if (!root) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      onBringToFront()
+      event.stopPropagation()
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (performance.now() < suppressClickUntilRef.current) {
+        event.preventDefault()
+      }
+      event.stopPropagation()
+    }
+
+    root.addEventListener('pointerdown', handlePointerDown)
+    root.addEventListener('click', handleClick)
+
+    return () => {
+      root.removeEventListener('pointerdown', handlePointerDown)
+      root.removeEventListener('click', handleClick)
+    }
+  }, [onBringToFront])
 
   useEffect(() => {
     return () => {
@@ -680,25 +708,17 @@ function AnnotationFloatingPanel({
             transformOrigin: 'bottom left',
             zIndex,
           }}
-          onClick={(e) => e.stopPropagation()}
-          onClickCapture={(e) => {
-            if (performance.now() < suppressClickUntilRef.current) {
-              e.preventDefault()
-              e.stopPropagation()
-            }
-          }}
-          onPointerDownCapture={() => onBringToFront()}
         >
           <div className="flex items-start gap-1.5 pb-1">
             <button
               type="button"
               data-testid={`annotation-panel-drag-${annotation.id}`}
               className={cn(
-                 'mt-[1px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-subtle bg-elevated text-soft transition-colors',
+                 'mt-[1px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-subtle bg-elevated text-[color:var(--signal-closed)] transition-colors',
                  isPanelDragging
-                  ? 'cursor-grabbing border-signal-soft text-[color:var(--signal-strong)]'
-                  : 'cursor-grab hover:border-strong hover:text-strong'
-               )}
+                  ? 'cursor-grabbing border-signal-soft text-[color:var(--signal-open)]'
+                  : 'cursor-grab hover:border-signal-soft hover:text-[color:var(--signal-hover)]'
+                )}
               onPointerDown={handleDragStart}
               onClick={(e) => {
                 e.preventDefault()
@@ -711,10 +731,10 @@ function AnnotationFloatingPanel({
             </button>
              <h3
                className={cn(
-                  'text-sm font-semibold leading-tight text-strong',
-                  isLinkHighlighted && 'text-[color:var(--signal-strong)]',
-                  isLinkHighlighted && 'annotation-title-pulse'
-                )}
+                   'text-sm font-semibold leading-tight text-[color:var(--signal-open)]',
+                   isLinkHighlighted && 'text-[color:var(--signal-ring)]',
+                   isLinkHighlighted && 'annotation-title-pulse'
+                 )}
               style={titleStyle}
             >
               {annotation.title}
