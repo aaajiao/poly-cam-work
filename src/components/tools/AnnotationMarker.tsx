@@ -80,24 +80,28 @@ export function AnnotationMarker({ annotation, isActive, onSelect }: AnnotationM
             className={cn(
               'absolute inset-0 rounded-full border-2 transition-colors duration-150',
               isActive
-                ? 'border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.92)]'
+                ? 'border-[color:var(--signal-strong)] shadow-[0_0_24px_color-mix(in_oklab,var(--signal-strong)_90%,transparent)] ring-2 ring-[color:color-mix(in_oklab,var(--signal-strong)_30%,transparent)]'
                 : isHovered
-                ? 'border-white shadow-[0_0_8px_rgba(255,255,255,0.8)]'
-                : 'border-white/70',
+                ? 'border-[color:var(--signal-strong)] shadow-[0_0_16px_color-mix(in_oklab,var(--signal-hover)_80%,transparent)]'
+                : 'border-[color:var(--signal-ring)] shadow-[0_0_12px_color-mix(in_oklab,var(--signal)_60%,transparent)] opacity-90',
               isActive && isHovered && 'annotation-node-pulse'
             )}
             style={nodePulseStyle}
           />
           <div
             className={cn(
-              'h-2.5 w-2.5 rounded-full transition-all duration-150',
-              isActive ? 'bg-blue-500' : isHovered ? 'bg-blue-300' : 'bg-blue-500'
+              'h-3 w-3 rounded-full transition-all duration-150 shadow-[0_0_14px_color-mix(in_oklab,var(--signal)_48%,transparent)]',
+              isActive
+                ? 'bg-[var(--signal-strong)] scale-110'
+                : isHovered
+                ? 'bg-[var(--signal-hover)] scale-105'
+                : 'bg-[var(--signal)]'
             )}
           />
         </div>
         {isHovered && !isActive && (
-          <div className="absolute left-5 top-1/2 -translate-y-1/2 rounded border border-zinc-700 bg-zinc-900/95 px-1.5 py-0 whitespace-nowrap shadow-lg">
-            <span className="text-[10px] font-medium text-zinc-100">{annotation.title}</span>
+          <div className="absolute left-5 top-1/2 -translate-y-1/2 whitespace-nowrap rounded border border-subtle bg-elevated px-1.5 py-0 shadow-panel">
+            <span className="text-[10px] font-medium text-strong">{annotation.title}</span>
           </div>
         )}
       </div>

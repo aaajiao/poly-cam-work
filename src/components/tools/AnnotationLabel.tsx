@@ -36,9 +36,9 @@ export function AnnotationLabel({ annotation }: AnnotationLabelProps) {
         className="relative"
         style={{ pointerEvents: 'auto' }}
       >
-        <div className="absolute -top-1 -left-1 w-2 h-2 bg-yellow-400 rounded-full border border-yellow-600" />
+        <div className="absolute -top-1 -left-1 h-2 w-2 rounded-full border border-[color:var(--signal-ring)] bg-[var(--signal)]" />
 
-        <div className="ml-3 bg-zinc-900/95 border border-zinc-600 rounded-md shadow-lg min-w-max">
+        <div className="ml-3 min-w-max rounded-md border border-strong bg-elevated shadow-panel">
           {isEditing ? (
             <div className="flex items-center gap-1 p-1">
               <input
@@ -49,29 +49,29 @@ export function AnnotationLabel({ annotation }: AnnotationLabelProps) {
                   if (e.key === 'Enter') handleSave()
                   if (e.key === 'Escape') setIsEditing(false)
                 }}
-                className="bg-zinc-800 text-white text-xs px-2 py-1 rounded border border-zinc-600 w-32 outline-none"
+                className="w-32 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none"
               />
               <button
                 onClick={handleSave}
-                className="text-green-400 hover:text-green-300 text-xs px-1"
+                className="px-1 text-xs text-success hover:opacity-80"
               >
                 ✓
               </button>
             </div>
           ) : (
             <div className="flex items-center gap-1 px-2 py-1">
-              <span className="text-yellow-300 text-xs font-medium">{annotation.title}</span>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="text-zinc-500 hover:text-zinc-300 ml-1"
-              >
+               <span className="text-xs font-medium text-strong">{annotation.title}</span>
+               <button
+                 onClick={() => setIsEditing(true)}
+                 className="ml-1 text-faint hover:text-soft"
+               >
                 <Edit2 size={10} />
               </button>
               <button
                 data-testid={`annotation-delete-${annotation.id}`}
                 onClick={() => removeAnnotation(annotation.id)}
-                className="text-zinc-500 hover:text-red-400"
-              >
+                 className="text-faint hover:text-danger"
+               >
                 <X size={10} />
               </button>
             </div>

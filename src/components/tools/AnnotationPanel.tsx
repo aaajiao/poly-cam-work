@@ -20,6 +20,7 @@ import {
 import { AnnotationPanelContent } from '@/components/tools/AnnotationPanelContent'
 import { cn } from '@/lib/utils'
 import type { Annotation } from '@/types'
+import { resolveThemeColor } from '@/utils/themeColors'
 
 const CAMERA_POSITION_EPSILON_SQ = 0.04
 const CAMERA_ROTATION_EPSILON = 0.0008
@@ -195,15 +196,16 @@ function AnnotationFloatingPanel({
   const lastCameraPosRef = useRef(new THREE.Vector3().copy(camera.position))
   const lastCameraQuatRef = useRef(new THREE.Quaternion().copy(camera.quaternion))
   const lastCameraFovRef = useRef(camera instanceof THREE.PerspectiveCamera ? camera.fov : 50)
-  const lineColor = isLinkHighlighted ? '#f8fafc' : 'white'
+  const lineColor = isLinkHighlighted
+    ? resolveThemeColor('--signal-strong', '#60a5fa')
+    : resolveThemeColor('--signal-ring', '#ffffff')
   const baseLineWidth = isLinkHighlighted ? 4.2 : 2
   const baseGlowWidth = isLinkHighlighted ? 12 : 6
   const baseGlowOpacity = isLinkHighlighted ? 0.38 : 0.15
   const titleStyle = useMemo(() => {
     const style: CSSProperties & Record<string, string> = {
-      textShadow:
-        '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9), 1px -1px 2px rgba(0,0,0,0.9), -1px 1px 2px rgba(0,0,0,0.9)',
-      WebkitTextStroke: '0.5px rgba(0,0,0,0.6)',
+      textShadow: 'var(--text-shadow-title)',
+      WebkitTextStroke: 'var(--text-stroke-title)',
     }
 
     if (isLinkHighlighted) {
@@ -692,11 +694,11 @@ function AnnotationFloatingPanel({
               type="button"
               data-testid={`annotation-panel-drag-${annotation.id}`}
               className={cn(
-                'mt-[1px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-zinc-700/80 bg-zinc-900/85 text-zinc-300 transition-colors',
-                isPanelDragging
-                  ? 'cursor-grabbing border-blue-400/80 text-blue-200'
-                  : 'cursor-grab hover:border-zinc-500 hover:text-zinc-100'
-              )}
+                 'mt-[1px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-subtle bg-elevated text-soft transition-colors',
+                 isPanelDragging
+                  ? 'cursor-grabbing border-signal-soft text-[color:var(--signal-strong)]'
+                  : 'cursor-grab hover:border-strong hover:text-strong'
+               )}
               onPointerDown={handleDragStart}
               onClick={(e) => {
                 e.preventDefault()
@@ -707,11 +709,12 @@ function AnnotationFloatingPanel({
             >
               <GripVertical size={11} />
             </button>
-            <h3
-              className={cn(
-                'text-sm font-semibold leading-tight text-white',
-                isLinkHighlighted && 'annotation-title-pulse'
-              )}
+             <h3
+               className={cn(
+                  'text-sm font-semibold leading-tight text-strong',
+                  isLinkHighlighted && 'text-[color:var(--signal-strong)]',
+                  isLinkHighlighted && 'annotation-title-pulse'
+                )}
               style={titleStyle}
             >
               {annotation.title}

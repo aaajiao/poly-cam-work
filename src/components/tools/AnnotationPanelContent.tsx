@@ -7,8 +7,7 @@ import { VimeoEmbed } from '@/components/ui/VimeoEmbed'
 import { cn } from '@/lib/utils'
 import type { Annotation, AnnotationImage } from '@/types'
 
-const DESCRIPTION_TEXT_SHADOW =
-  '0 0 4px rgba(0,0,0,0.9), 1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9)'
+const DESCRIPTION_TEXT_SHADOW = 'var(--text-shadow-strong)'
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -129,10 +128,10 @@ function ResizableMedia({
     >
       {children}
       <div
-        className={cn(
-          'absolute bottom-1 right-1 z-20 flex h-5 w-5 items-center justify-center rounded-sm border border-zinc-600 bg-zinc-900/90 text-zinc-100 transition-opacity',
-          showHandleAlways ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-100 hover:opacity-100'
-        )}
+          className={cn(
+           'absolute bottom-1 right-1 z-20 flex h-5 w-5 items-center justify-center rounded-sm border border-subtle bg-elevated text-strong transition-opacity',
+           showHandleAlways ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-100 hover:opacity-100'
+         )}
         style={{ cursor: 'nwse-resize', pointerEvents: 'auto' }}
         onMouseDown={handleMouseDown}
         aria-label="Resize media"
@@ -255,7 +254,7 @@ function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnails
     const singleThumb = thumbs[imageKey(single)]
     return (
       <div
-        className="overflow-hidden rounded bg-zinc-800"
+        className="overflow-hidden rounded bg-field"
         style={{ aspectRatio: singleThumb?.aspectRatio ?? 4 / 3 }}
       >
         {singleThumb ? (
@@ -265,7 +264,7 @@ function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnails
             className="h-full w-full object-contain"
           />
         ) : (
-          <div className="h-full w-full animate-pulse bg-zinc-800" />
+          <div className="h-full w-full animate-pulse bg-field" />
         )}
       </div>
     )
@@ -278,7 +277,7 @@ function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnails
       {images.map((img) => {
         const thumb = thumbs[imageKey(img)]
         return (
-          <div key={imageKey(img)} className="overflow-hidden rounded bg-zinc-800">
+          <div key={imageKey(img)} className="overflow-hidden rounded bg-field">
             {thumb ? (
               <img
                 src={thumb.sourceUrl}
@@ -286,7 +285,7 @@ function ImageThumbnails({ images, onPrimaryAspectRatioChange }: ImageThumbnails
                 className="block h-auto w-full object-contain"
               />
             ) : (
-              <div className="h-full w-full animate-pulse bg-zinc-800" />
+              <div className="h-full w-full animate-pulse bg-field" />
             )}
           </div>
         )
@@ -317,7 +316,7 @@ export function AnnotationPanelContent({
       {annotation.description && !hasMedia && (
         <p
           data-testid="annotation-panel-description"
-          className="line-clamp-3 text-xs leading-relaxed text-zinc-300"
+          className="line-clamp-3 text-xs leading-relaxed text-soft"
           style={{ textShadow: DESCRIPTION_TEXT_SHADOW }}
         >
           {annotation.description}
@@ -361,7 +360,7 @@ export function AnnotationPanelContent({
       {annotation.description && hasMedia && (
         <p
           data-testid="annotation-panel-description"
-          className="line-clamp-3 text-xs leading-relaxed text-zinc-300"
+          className="line-clamp-3 text-xs leading-relaxed text-soft"
           style={{ textShadow: DESCRIPTION_TEXT_SHADOW }}
         >
           {annotation.description}
@@ -376,7 +375,7 @@ export function AnnotationPanelContent({
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-blue-300 hover:text-blue-200"
+              className="flex items-center gap-1.5 text-xs text-[color:var(--signal-strong)] hover:opacity-85"
               style={{ textShadow: DESCRIPTION_TEXT_SHADOW }}
             >
               <ExternalLink size={10} />
