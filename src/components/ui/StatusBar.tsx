@@ -8,12 +8,12 @@ export function StatusBar() {
   const loadingProgress = useViewerStore((s) => s.loadingProgress)
 
   return (
-    <div className="flex items-center gap-4 text-xs text-zinc-500 w-full" data-testid="status-bar">
+    <div className="flex items-center gap-4 text-xs text-faint w-full" data-testid="status-bar">
       {isLoading ? (
-        <span className="text-blue-400">Loading... {loadingProgress}%</span>
+        <span className="text-accent">Loading... {loadingProgress}%</span>
       ) : (
         <>
-          <span className="text-zinc-400">{activeScene?.name ?? 'No scene'}</span>
+          <span className="text-dim">{activeScene?.name ?? 'No scene'}</span>
           <span>|</span>
           <span className="capitalize">{viewMode}</span>
           <span>|</span>

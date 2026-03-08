@@ -33,11 +33,11 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback
 
       return (
-        <div className="w-full h-full flex items-center justify-center bg-zinc-950">
+        <div className="w-full h-full flex items-center justify-center bg-stage">
           <div className="flex flex-col items-center gap-4 p-8 max-w-sm text-center">
-            <AlertTriangle size={48} className="text-red-400" />
-            <h2 className="text-zinc-200 text-lg font-medium">3D Viewer Error</h2>
-            <p className="text-zinc-500 text-sm">
+            <AlertTriangle size={48} className="text-danger" />
+            <h2 className="text-soft text-lg font-medium">3D Viewer Error</h2>
+            <p className="text-faint text-sm">
               {this.state.error?.message ?? 'An unexpected error occurred in the 3D viewer.'}
             </p>
             <Button
