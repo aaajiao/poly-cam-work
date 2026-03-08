@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { X, Image, Video, Link, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useViewerStore } from '@/store/viewerStore'
@@ -18,13 +18,23 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
   const [localDesc, setLocalDesc] = useState(annotation.description)
   const [videoInput, setVideoInput] = useState(annotation.videoUrl ?? '')
   const [localLinks, setLocalLinks] = useState<AnnotationLink[]>(annotation.links)
+  const linkKeys = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    return localLinks.map((link) => {
+      const base = `${link.url.trim()}::${link.label.trim()}` || 'empty-link'
+      const count = counts.get(base) ?? 0
+      counts.set(base, count + 1)
+      return `${annotation.id}:${base}:${count}`
+    })
+  }, [annotation.id, localLinks])
 
   useEffect(() => {
     setLocalTitle(annotation.title)
     setLocalDesc(annotation.description)
     setVideoInput(annotation.videoUrl ?? '')
     setLocalLinks(annotation.links)
-  }, [annotation.id])
+  }, [annotation.description, annotation.links, annotation.title, annotation.videoUrl])
 
   const videoError = videoInput !== '' && !isValidVimeoUrl(videoInput)
 
@@ -75,7 +85,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           }}
           maxLength={100}
           data-testid="annotation-title-input"
-          className="w-full rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
+          className="w-full rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-[color:var(--accent-border)]"
         />
         <span className="text-faint text-xs">{localTitle.length}/100</span>
       </div>
@@ -92,7 +102,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           maxLength={2000}
           rows={3}
           data-testid="annotation-description-input"
-          className="w-full resize-none rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
+          className="w-full resize-none rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-[color:var(--accent-border)]"
         />
         <span className="text-faint text-xs">{localDesc.length}/2000</span>
       </div>
@@ -124,7 +134,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           data-testid="annotation-video-input"
           className={cn(
             'w-full rounded border bg-field px-2 py-1 text-xs text-strong outline-none',
-            videoError ? 'border-destructive' : 'border-subtle focus:border-primary'
+            videoError ? 'border-destructive' : 'border-subtle focus:border-[color:var(--accent-border)]'
           )}
         />
         {videoError && (
@@ -136,14 +146,14 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
         <p className="text-faint text-xs uppercase tracking-wide mb-1">Links</p>
         <div className="space-y-1">
           {localLinks.map((link, i) => (
-            <div key={i} className="flex gap-1 items-center">
+            <div key={linkKeys[i]} className="flex gap-1 items-center">
               <input
                 value={link.url}
                 onChange={(e) => handleLinkChange(i, 'url', e.target.value)}
                 onBlur={handleLinkBlur}
                 placeholder="URL"
                 data-testid={`annotation-link-url-${i}`}
-                className="min-w-0 flex-1 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
+                className="min-w-0 flex-1 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-[color:var(--accent-border)]"
               />
               <input
                 value={link.label}
@@ -151,9 +161,10 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
                 onBlur={handleLinkBlur}
                 placeholder="Label"
                 data-testid={`annotation-link-label-${i}`}
-                className="w-20 shrink-0 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-primary"
+                className="w-20 shrink-0 rounded border border-subtle bg-field px-2 py-1 text-xs text-strong outline-none focus:border-[color:var(--accent-border)]"
               />
               <button
+                type="button"
                 onClick={() => removeLink(i)}
                 data-testid={`annotation-link-delete-${i}`}
                 aria-label="Remove link"
@@ -164,6 +175,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
             </div>
           ))}
           <button
+            type="button"
             onClick={addLink}
             data-testid="annotation-add-link-btn"
             className="text-xs text-accent transition-colors hover:opacity-85"
@@ -248,10 +260,12 @@ export function AnnotationManager() {
           )}
         </div>
         <button
+          type="button"
           data-testid="annotations-toggle"
+          aria-label={annotationsPanelOpen ? 'Collapse annotations panel' : 'Expand annotations panel'}
           onClick={() => setAnnotationsPanelOpen(!annotationsPanelOpen)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            annotationsPanelOpen ? 'bg-primary' : 'bg-field'
+            annotationsPanelOpen ? 'bg-accent-soft' : 'bg-field'
           }`}
         >
           <span
@@ -280,39 +294,45 @@ export function AnnotationManager() {
                 return (
                   <div
                     key={annotation.id}
-                    data-testid={`annotation-item-${annotation.id}`}
-                    onClick={() => {
-                      if (isPanelOpen) {
-                        closeAnnotationPanel(annotation.id)
-                        if (selectedAnnotationId === annotation.id) {
-                          selectAnnotation(null)
-                        }
-                        return
-                      }
-
-                      openAnnotationPanel(annotation.id)
-                      selectAnnotation(annotation.id)
-                    }}
-                    className={cn(
-                      'flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer transition-colors group',
-                      isSelected
-                        ? 'border border-accent-soft bg-accent-soft'
-                        : 'border border-transparent hover:bg-elevated'
-                    )}
+                    className="group flex items-center gap-1.5"
                   >
-                    <span
+                    <button
+                      type="button"
+                      data-testid={`annotation-item-${annotation.id}`}
+                      onClick={() => {
+                        if (isPanelOpen) {
+                          closeAnnotationPanel(annotation.id)
+                          if (selectedAnnotationId === annotation.id) {
+                            selectAnnotation(null)
+                          }
+                          return
+                        }
+
+                        openAnnotationPanel(annotation.id)
+                        selectAnnotation(annotation.id)
+                      }}
                       className={cn(
-                        'flex-1 text-xs truncate',
-                        isSelected ? 'text-accent' : 'text-soft'
+                        'flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1.5 text-left transition-colors',
+                        isSelected
+                          ? 'border border-accent-soft bg-accent-soft'
+                          : 'border border-transparent hover:bg-elevated'
                       )}
                     >
-                      {annotation.title || <span className="italic text-faint">Untitled</span>}
-                    </span>
+                      <span
+                        className={cn(
+                          'flex-1 truncate text-xs',
+                          isSelected ? 'text-accent' : 'text-soft'
+                        )}
+                      >
+                        {annotation.title || <span className="italic text-faint">Untitled</span>}
+                      </span>
 
-                    <MediaIndicators annotation={annotation} />
+                      <MediaIndicators annotation={annotation} />
+                    </button>
 
                     {!presentationMode && (
                       <button
+                        type="button"
                         data-testid={`annotation-delete-${annotation.id}`}
                         aria-label="Delete annotation"
                         onClick={(e) => {
