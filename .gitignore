@@ -22,9 +22,10 @@ test-results/
 # OS files
 .DS_Store
 
-# IDE
-.claude/settings.local.json
-.claude/*.local.*
+# IDE and local config
+.claude/
+.opencode/
+.agents/
 
 # Original scan files (kept for reference, not needed in project)
 glb/
