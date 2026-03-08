@@ -13,3 +13,10 @@ export function resolveThemeColor(variableName: string, fallback: string): strin
 
   return color || fallback
 }
+
+export function resolveThemeVariableValue(variableName: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+
+  const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim()
+  return value || fallback
+}
