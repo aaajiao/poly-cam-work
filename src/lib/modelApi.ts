@@ -1,4 +1,4 @@
-import type { ScanScene } from '@/types'
+import type { ScanScene, DiscoveryValidationError } from '@/types'
 
 interface ApiErrorPayload {
   error?: string
@@ -6,6 +6,11 @@ interface ApiErrorPayload {
 
 interface ModelsListResponse {
   models: ScanScene[]
+}
+
+interface DiscoverLocalModelsResponse {
+  scenes: ScanScene[]
+  errors: DiscoveryValidationError[]
 }
 
 interface CreateModelResponse {
@@ -16,6 +21,15 @@ interface CreateModelResponse {
 interface SyncModelsResponse {
   ok: true
   models: ScanScene[]
+}
+
+export class SceneConflictError extends Error {
+  readonly status = 409
+
+  constructor(sceneId: string) {
+    super(`Scene "${sceneId}" already exists in registry`)
+    this.name = 'SceneConflictError'
+  }
 }
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -50,6 +64,7 @@ export async function createModel(input: {
   plyUrl: string
   id?: string
   mergeById?: boolean
+  createOnly?: boolean
 }): Promise<ScanScene> {
   const result = await requestJson<CreateModelResponse>('/api/models', {
     method: 'POST',
@@ -68,4 +83,44 @@ export async function syncModels(models: Array<{ id: string; name: string; glbUr
   })
 
   return result.models
+}
+
+export async function registerOfficialScene(input: {
+  id: string
+  name: string
+  glbUrl: string
+  plyUrl: string
+}): Promise<ScanScene> {
+  const response = await fetch('/api/models', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: input.id,
+      name: input.name,
+      glbUrl: input.glbUrl,
+      plyUrl: input.plyUrl,
+      createOnly: true,
+    }),
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null
+    const message = payload?.error ?? `Request failed with status ${response.status}`
+
+    if (response.status === 409) {
+      throw new SceneConflictError(input.id)
+    }
+
+    const error = new Error(message)
+    ;(error as Error & { status?: number }).status = response.status
+    throw error
+  }
+
+  const result = (await response.json()) as CreateModelResponse
+  return result.model
+}
+
+export async function discoverLocalScenes(): Promise<DiscoverLocalModelsResponse> {
+  return requestJson<DiscoverLocalModelsResponse>('/api/discover/local-models')
 }
