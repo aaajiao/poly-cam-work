@@ -19,14 +19,14 @@ src/
 ├── components/
 │   ├── viewer/      # R3F Canvas + GLB/PLY renderers (see viewer/AGENTS.md)
 │   ├── tools/       # 3D interaction tools (see tools/AGENTS.md)
-│   ├── sidebar/     # FileManager, PropertyPanel, AnnotationManager, etc.
-│   ├── toolbar/     # Toolbar, ToolButtons, ViewModeToggle
+│   ├── sidebar/     # FileManager/PublishButton split modules, PropertyPanel, AnnotationManager
+│   ├── toolbar/     # Toolbar, ToolButtons, ViewModeToggle, lazy-loaded auth/publish entry
 │   ├── upload/      # DropZone + upload UI
 │   └── ui/          # shadcn + app-specific UI (VimeoEmbed, StatusBar, etc.)
 ├── hooks/           # usePLYLoader, useFileUpload, useScreenshot
 ├── lib/             # shared helpers + API clients (modelApi, publishApi, utils)
 ├── storage/         # IndexedDB + Vercel Blob adapters for images/models
-├── store/           # zustand viewerStore + presetScenes
+├── store/           # zustand viewerStore + extracted sceneCatalog/draftPersistence helpers + presetScenes
 ├── types/           # shared app types
 ├── utils/           # pure helpers: colorMapping, measurement, vimeo, raycasting, screenshot
 └── workers/         # ply-parser.worker.ts (off-thread PLY parsing)
@@ -80,14 +80,15 @@ Main interaction:
 - Publish API: `POST /api/publish/:sceneId` creates immutable release + updates live pointer
 - Release management: `GET /api/publish/:sceneId` lists versions, `DELETE /api/publish/:sceneId` deletes one version
 - Rollback API: `POST /api/rollback/:sceneId` moves live pointer and syncs draft baseline
-- UI controls: `PublishButton` shows `saved/unsaved`, release dropdown, rollback click, and delete with confirmation
+- Store helpers: `src/store/draftPersistence.ts` contains local draft import/export and publish-payload helpers
+- UI controls: `PublishButton` shows `saved/unsaved`, release dropdown, rollback click, and delete with confirmation; `Toolbar.tsx` lazy-loads `LoginDialog` and `PublishButton`
 
 ### 6) Model registry + cloud scene flow
 
 - Model registry API: `GET/POST /api/models` stores cloud scene metadata in Blob (`models/index.json`)
 - Model upload API: `POST /api/models/upload` issues client upload tokens with strict path/metadata checks
 - Frontend API client: `src/lib/modelApi.ts` powers list/create/replace model operations
-- Store integration: `viewerStore.loadCloudScenes` and `syncPresetScenesToCloud` hydrate cloud scenes and keep active scene valid
+- Store integration: `src/store/sceneCatalog.ts` contains cloud/discovered scene catalog resolution helpers; `viewerStore.loadCloudScenes` and `syncPresetScenesToCloud` hydrate cloud scenes and keep active scene valid
 - Stale model/image cleanup: handled in registry replacement code and `scripts/cleanup-orphan-assets.ts`
 
 ### 7) Official scene workflow (Maintainer)
@@ -114,12 +115,15 @@ Official scenes are repository-first. Maintainers add model assets to the codeba
 | Change clipping behavior | `src/components/tools/ClippingPlane.tsx` |
 | Change screenshot behavior | `src/components/viewer/ScreenshotButton.tsx`, `src/hooks/useScreenshot.ts` |
 | Change Vimeo URL handling | `src/utils/vimeo.ts`, `src/components/ui/VimeoEmbed.tsx` |
-| Change cloud model loading/sync behavior | `src/store/viewerStore.ts`, `src/lib/modelApi.ts` |
+| Change cloud model loading/sync behavior | `src/store/sceneCatalog.ts`, `src/store/viewerStore.ts`, `src/lib/modelApi.ts` |
 | Change model registry or upload token logic | `api/models/index.ts`, `api/models/upload.ts` |
+| Change draft import/export or publish payload shaping | `src/store/draftPersistence.ts`, `src/store/viewerStore.ts`, `src/lib/publishApi.ts` |
 | Change publish workflow APIs | `api/*`, `api/_lib/*`, `src/lib/publishApi.ts` |
-| Change publish UI/labels/version menu | `src/components/sidebar/PublishButton.tsx`, `src/components/sidebar/LoginDialog.tsx` |
+| Change publish UI/labels/version menu | `src/components/sidebar/PublishButton.tsx`, `src/components/sidebar/PublishActionControls.tsx`, `src/components/sidebar/PublishVersionMenu.tsx`, `src/components/sidebar/LoginDialog.tsx` |
+| Change scene list/sidebar sync UI | `src/components/sidebar/FileManager.tsx`, `src/components/sidebar/FileManagerHeader.tsx`, `src/components/sidebar/FileManagerSceneList.tsx`, `src/components/sidebar/fileManagerSceneEntries.ts` |
+| Change lazy-loaded editor/auth UI boundaries | `src/components/toolbar/Toolbar.tsx`, `src/components/sidebar/Sidebar.tsx` |
 | Change orphaned blob cleanup behavior | `api/_lib/sceneAssetCleanup.ts`, `scripts/cleanup-orphan-assets.ts` |
-| Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx` |
+| Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx`, especially `viewer.test.tsx`, `publishButton.test.tsx`, `toolbarLazyUi.test.tsx`, `sidebarLazyUi.test.tsx` |
 | Add/adjust E2E smoke test | `e2e/smoke.test.ts` |
 
 ---
@@ -165,6 +169,7 @@ Use a 3-layer test model and keep responsibilities strict.
 2. **Browser integration (Vitest browser project)**
    - Component interactions and store integration through UI
    - Primary place for annotation/sidebar/tool interaction behavior
+   - Includes lazy-loaded toolbar/sidebar resolution checks and publish UI interaction coverage
 
 3. **E2E (Playwright)**
    - Keep minimal and high-value only
