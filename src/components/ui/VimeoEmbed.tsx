@@ -56,7 +56,7 @@ export function VimeoEmbed({ videoId, className, sourceUrl }: VimeoEmbedProps) {
 
   return (
     <div
-      className={cn('relative w-full overflow-hidden rounded bg-black', className)}
+      className={cn('relative w-full overflow-hidden rounded bg-stage', className)}
       style={{ aspectRatio }}
     >
       <iframe
@@ -78,13 +78,13 @@ export function VimeoEmbed({ videoId, className, sourceUrl }: VimeoEmbedProps) {
         }}
         aria-hidden="true"
       >
-        <div className="absolute inset-0 rounded-bl-md bg-gradient-to-l from-black/95 via-black/70 to-transparent" />
+        <div className="absolute inset-0 rounded-bl-md bg-gradient-to-l from-[var(--stage)] via-[var(--shell)] to-transparent" />
       </div>
       <a
         href={publicUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="absolute right-1 top-1 z-20 flex h-6 w-6 items-center justify-center rounded bg-zinc-900/85 text-[10px] font-semibold text-zinc-100 transition-colors hover:bg-zinc-800/90"
+        className="absolute right-1 top-1 z-20 flex h-6 w-6 items-center justify-center rounded bg-elevated text-[10px] font-semibold text-strong transition-colors hover:bg-field"
         onClick={(e) => e.stopPropagation()}
         aria-label="Open on Vimeo"
         title="Open on Vimeo"

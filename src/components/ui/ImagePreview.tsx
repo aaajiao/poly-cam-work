@@ -10,9 +10,9 @@ interface ImagePreviewProps {
 export function ImagePreview({ imageUrl, className, alt = 'Image' }: ImagePreviewProps) {
   if (!imageUrl) {
     return (
-      <div
-        className={cn(
-          'flex items-center justify-center bg-zinc-800 rounded text-zinc-600',
+        <div
+          className={cn(
+          'flex items-center justify-center bg-field rounded text-faint',
           className
         )}
       >

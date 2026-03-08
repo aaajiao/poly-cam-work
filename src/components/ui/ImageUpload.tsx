@@ -263,10 +263,10 @@ export function ImageUpload({
           if (event.key === 'Enter' || event.key === ' ') handleClick()
         }}
         className={cn(
-          'border-2 border-dashed border-zinc-600 rounded-lg p-4 text-center cursor-pointer transition-colors',
-          isDragging && 'border-blue-500 bg-blue-500/10',
+          'border-2 border-dashed border-subtle rounded-lg bg-panel p-4 text-center cursor-pointer transition-colors',
+          isDragging && 'border-primary bg-accent-soft',
           atLimit && 'opacity-50 cursor-not-allowed',
-          !atLimit && !isDragging && 'hover:border-zinc-400',
+          !atLimit && !isDragging && 'hover:border-strong',
           isUploading && 'opacity-70 pointer-events-none'
         )}
       >
@@ -280,20 +280,20 @@ export function ImageUpload({
           onChange={handleFileChange}
         />
         {isUploading ? (
-          <div className="flex items-center justify-center gap-2 text-zinc-400">
+          <div className="flex items-center justify-center gap-2 text-dim">
             <Loader2 size={16} className="animate-spin" />
             <span className="text-xs">Saving locally…</span>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
-            <Upload size={16} className="text-zinc-500" />
-            <p className="text-xs text-zinc-400">
+            <Upload size={16} className="text-faint" />
+            <p className="text-xs text-dim">
               {atLimit
                 ? `Maximum ${maxImages} images reached`
                 : 'Drop images here or click to browse'}
             </p>
             {!atLimit && (
-              <p className="text-[11px] text-zinc-600">
+               <p className="text-[11px] text-faint">
                 {images.length}/{maxImages} · local save first · max 10MB each
               </p>
             )}
@@ -302,7 +302,7 @@ export function ImageUpload({
       </div>
 
       {error && (
-        <p className="text-xs text-red-400" data-testid="image-upload-error">
+        <p className="text-xs text-danger" data-testid="image-upload-error">
           {error}
         </p>
       )}
@@ -312,7 +312,7 @@ export function ImageUpload({
           {thumbnails.map((thumbnail) => (
             <div
               key={thumbnail.key}
-              className="relative aspect-square rounded overflow-hidden bg-zinc-800"
+              className="relative aspect-square rounded overflow-hidden bg-field"
             >
               <img
                 src={thumbnail.url}
@@ -326,7 +326,7 @@ export function ImageUpload({
                   event.stopPropagation()
                   void handleDelete(thumbnail.key)
                 }}
-                className="absolute top-1 right-1 bg-zinc-900/80 rounded p-0.5 text-zinc-400 hover:text-red-400 transition-colors"
+                className="absolute top-1 right-1 rounded bg-elevated p-0.5 text-dim hover:text-danger transition-colors"
               >
                 <X size={12} />
               </button>
