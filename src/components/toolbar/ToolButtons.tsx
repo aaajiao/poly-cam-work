@@ -21,7 +21,7 @@ export function ToolButtons() {
     <TooltipProvider delayDuration={300}>
       <div className="flex items-center gap-2">
         <div
-          className="flex items-center bg-zinc-900 border border-zinc-700 rounded-md overflow-hidden"
+          className="flex items-center bg-panel border border-subtle rounded-md overflow-hidden"
           data-testid="tool-buttons"
         >
           {TOOLS.map((tool) => (
@@ -32,11 +32,11 @@ export function ToolButtons() {
                   disabled={presentationMode}
                   onClick={() => setToolMode(tool.value)}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
-                    presentationMode && 'cursor-not-allowed text-zinc-600 hover:bg-transparent hover:text-zinc-600',
+                    'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                    presentationMode && 'cursor-not-allowed text-faint hover:bg-transparent hover:text-faint',
                     toolMode === tool.value
-                      ? 'bg-blue-600 text-white'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-dim hover:text-soft hover:bg-elevated'
                   )}
                 >
                   {tool.icon}
@@ -57,11 +57,11 @@ export function ToolButtons() {
               disabled={presentationMode}
               onClick={toggleAnnotationsVisible}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
-                presentationMode && 'cursor-not-allowed border-zinc-800 text-zinc-600 hover:bg-zinc-900 hover:text-zinc-600',
+                'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
+                presentationMode && 'cursor-not-allowed border-subtle text-faint hover:bg-panel hover:text-faint',
                 annotationsVisible
-                  ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-500'
-                  : 'bg-zinc-900 text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:bg-zinc-800'
+                  ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
+                  : 'bg-panel text-faint border-subtle hover:text-soft hover:bg-elevated'
               )}
             >
               {annotationsVisible ? <Eye size={14} /> : <EyeOff size={14} />}
