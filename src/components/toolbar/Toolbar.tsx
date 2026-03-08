@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Camera, Scissors } from 'lucide-react'
+import { Eye, Scissors } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ViewModeToggle } from './ViewModeToggle'
@@ -20,13 +20,10 @@ const PublishButton = lazy(async () => {
 export function Toolbar() {
   const clipEnabled = useViewerStore((s) => s.clipPlane.enabled)
   const setClipPlane = useViewerStore((s) => s.setClipPlane)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
+  const setPresentationMode = useViewerStore((s) => s.setPresentationMode)
 
   const toggleClip = () => setClipPlane({ enabled: !clipEnabled })
-
-  const handleScreenshot = () => {
-    const fn = (window as Window & { __takeScreenshot?: () => void }).__takeScreenshot
-    if (fn) fn()
-  }
 
   return (
     <div className="flex items-center gap-2 w-full">
@@ -41,15 +38,17 @@ export function Toolbar() {
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
-              data-testid="clip-toggle"
-              onClick={toggleClip}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
-                clipEnabled
-                  ? 'bg-blue-600 text-white border-blue-500'
-                  : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-zinc-200 hover:bg-zinc-800'
-              )}
+             <button
+               data-testid="clip-toggle"
+               disabled={presentationMode}
+               onClick={toggleClip}
+               className={cn(
+                 'flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
+                 presentationMode && 'cursor-not-allowed border-zinc-800 text-zinc-600 hover:bg-zinc-900 hover:text-zinc-600',
+                 clipEnabled
+                   ? 'bg-blue-600 text-white border-blue-500'
+                   : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-zinc-200 hover:bg-zinc-800'
+               )}
             >
               <Scissors size={14} />
               <span className="hidden md:inline">Clip</span>
@@ -80,12 +79,12 @@ export function Toolbar() {
       <Button
         variant="ghost"
         size="icon"
-        data-testid="screenshot-btn"
-        onClick={handleScreenshot}
-        className="h-8 w-8 text-zinc-400 hover:text-zinc-100"
-        title="Screenshot"
+        data-testid="presentation-mode-btn"
+        onClick={() => setPresentationMode(!presentationMode)}
+        className="h-9 w-9 rounded-full border border-zinc-700/80 bg-zinc-900/60 text-zinc-400 opacity-75 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100 hover:opacity-100"
+        title={presentationMode ? 'Exit presentation mode' : 'Enter presentation mode'}
       >
-        <Camera size={16} />
+        <Eye size={16} />
       </Button>
     </div>
   )

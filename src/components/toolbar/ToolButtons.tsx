@@ -15,6 +15,7 @@ export function ToolButtons() {
   const setToolMode = useViewerStore((s) => s.setToolMode)
   const annotationsVisible = useViewerStore((s) => s.annotationsVisible)
   const toggleAnnotationsVisible = useViewerStore((s) => s.toggleAnnotationsVisible)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -28,9 +29,11 @@ export function ToolButtons() {
               <TooltipTrigger asChild>
                 <button
                   data-testid={`tool-${tool.value}`}
+                  disabled={presentationMode}
                   onClick={() => setToolMode(tool.value)}
                   className={cn(
                     'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                    presentationMode && 'cursor-not-allowed text-zinc-600 hover:bg-transparent hover:text-zinc-600',
                     toolMode === tool.value
                       ? 'bg-blue-600 text-white'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
@@ -51,9 +54,11 @@ export function ToolButtons() {
           <TooltipTrigger asChild>
             <button
               data-testid="toggle-annotations-btn"
+              disabled={presentationMode}
               onClick={toggleAnnotationsVisible}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
+                presentationMode && 'cursor-not-allowed border-zinc-800 text-zinc-600 hover:bg-zinc-900 hover:text-zinc-600',
                 annotationsVisible
                   ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-500'
                   : 'bg-zinc-900 text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:bg-zinc-800'

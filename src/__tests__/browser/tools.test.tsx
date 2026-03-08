@@ -11,6 +11,7 @@ function resetStore() {
     openAnnotationPanelIds: [],
     annotationsPanelOpen: false,
     sidebarOpen: false,
+    presentationMode: false,
     cameraControlsEnabled: true,
     clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false },
   })
@@ -72,14 +73,22 @@ describe('browser toolbar tools', () => {
     expect(useViewerStore.getState().annotationsVisible).toBe(true)
   })
 
-  test('screenshot button exists and invokes screenshot bridge', async () => {
-    const screenshotSpy = vi.fn()
-    ;(window as Window & { __takeScreenshot?: () => void }).__takeScreenshot = screenshotSpy
-
+  test('presentation button toggles presentation mode', async () => {
     const screen = await render(<Toolbar />)
 
-    await expect.element(screen.getByTestId('screenshot-btn')).toBeVisible()
-    await screen.getByTestId('screenshot-btn').click()
-    expect(screenshotSpy).toHaveBeenCalledOnce()
+    await expect.element(screen.getByTestId('presentation-mode-btn')).toBeVisible()
+    await screen.getByTestId('presentation-mode-btn').click()
+    expect(useViewerStore.getState().presentationMode).toBe(true)
+  })
+
+  test('toolbar controls do not activate editing while presentation mode is on', async () => {
+    useViewerStore.setState({ presentationMode: true, toolMode: 'orbit', clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false } })
+    const screen = await render(<Toolbar />)
+
+    await expect.element(screen.getByTestId('tool-annotate')).toBeDisabled()
+    await expect.element(screen.getByTestId('clip-toggle')).toBeDisabled()
+
+    expect(useViewerStore.getState().toolMode).toBe('orbit')
+    expect(useViewerStore.getState().clipPlane.enabled).toBe(false)
   })
 })
