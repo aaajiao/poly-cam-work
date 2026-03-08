@@ -13,21 +13,21 @@ const AnnotationManager = lazy(async () => {
 
 export function Sidebar() {
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto bg-shell">
       <div className="p-3">
-        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Properties</p>
+        <p className="text-xs text-faint uppercase tracking-wider mb-2">Properties</p>
         <PropertyPanel />
       </div>
-      <div className="border-t border-zinc-800 p-3">
+      <div className="border-t border-subtle p-3">
         <Suspense fallback={null}>
           <FileManager />
         </Suspense>
       </div>
-      <div className="border-t border-zinc-800 p-3">
-        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Tools</p>
+      <div className="border-t border-subtle p-3">
+        <p className="text-xs text-faint uppercase tracking-wider mb-2">Tools</p>
         <ToolsPanel />
       </div>
-      <div className="border-t border-zinc-800 p-3">
+      <div className="border-t border-subtle p-3">
         <Suspense fallback={null}>
           <AnnotationManager />
         </Suspense>

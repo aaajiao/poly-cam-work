@@ -29,11 +29,11 @@ export function Toolbar() {
     <div className="flex items-center gap-2 w-full">
       <ViewModeToggle />
 
-      <div className="w-px h-6 bg-zinc-700" />
+      <div className="w-px h-6 bg-border" />
 
       <ToolButtons />
 
-      <div className="w-px h-6 bg-zinc-700" />
+      <div className="w-px h-6 bg-border" />
 
       <TooltipProvider delayDuration={300}>
         <Tooltip>
@@ -43,12 +43,12 @@ export function Toolbar() {
                disabled={presentationMode}
                onClick={toggleClip}
                className={cn(
-                 'flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
-                 presentationMode && 'cursor-not-allowed border-zinc-800 text-zinc-600 hover:bg-zinc-900 hover:text-zinc-600',
-                 clipEnabled
-                   ? 'bg-blue-600 text-white border-blue-500'
-                   : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-zinc-200 hover:bg-zinc-800'
-               )}
+                  'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
+                  presentationMode && 'cursor-not-allowed border-subtle text-faint hover:bg-panel hover:text-faint',
+                  clipEnabled
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-panel text-dim border-subtle hover:text-soft hover:bg-elevated'
+                )}
             >
               <Scissors size={14} />
               <span className="hidden md:inline">Clip</span>
@@ -66,7 +66,7 @@ export function Toolbar() {
         <div className="hidden md:flex items-center" data-testid="fps-toolbar-slot-wrapper">
           <div
             id="fps-toolbar-slot"
-            className="h-8 w-14 overflow-hidden rounded border border-zinc-700 bg-zinc-950/80"
+            className="h-8 w-14 overflow-hidden rounded border border-subtle bg-panel"
           />
         </div>
       )}
@@ -81,7 +81,7 @@ export function Toolbar() {
         size="icon"
         data-testid="presentation-mode-btn"
         onClick={() => setPresentationMode(!presentationMode)}
-        className="h-9 w-9 rounded-full border border-zinc-700/80 bg-zinc-900/60 text-zinc-400 opacity-75 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100 hover:opacity-100"
+        className="h-9 w-9 rounded-full border border-subtle bg-panel text-dim opacity-75 transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
         title={presentationMode ? 'Exit presentation mode' : 'Enter presentation mode'}
       >
         <Eye size={16} />
