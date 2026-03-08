@@ -1,13 +1,11 @@
-import { useRef, useState } from 'react'
-import { Layers, Upload, Cloud, CloudCheck, HardDrive, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Layers, Cloud, CloudCheck, HardDrive, Loader2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { useViewerStore } from '@/store/viewerStore'
 import type { ScanScene } from '@/types'
-import { vercelBlobModelStorage } from '@/storage/vercelBlobModelStorage'
-import * as modelApi from '@/lib/modelApi'
 
-type SceneSyncState = 'cloud' | 'local' | 'session'
+type SceneSyncState = 'published' | 'bootstrap' | 'discovered' | 'session'
 
 function SceneItem({ scene, syncState, isActive, onClick }: {
   scene: ScanScene
@@ -15,8 +13,34 @@ function SceneItem({ scene, syncState, isActive, onClick }: {
   isActive: boolean
   onClick: () => void
 }) {
-  const syncLabel = syncState === 'session' ? 'Session' : 'Local'
-  const SyncIcon = syncState === 'cloud' ? CloudCheck : syncState === 'session' ? Upload : HardDrive
+  const officialStatus = scene.officialStatus?.syncStatus
+  
+  let syncLabel = 'Bootstrap'
+  let SyncIcon = HardDrive
+  let badgeClass = 'border-zinc-600 bg-zinc-800 text-zinc-400'
+
+  if (syncState === 'published') {
+    syncLabel = 'Cloud'
+    SyncIcon = CloudCheck
+    badgeClass = 'border-emerald-500/40 bg-emerald-600/20 text-emerald-300'
+  } else if (syncState === 'session') {
+    syncLabel = 'Session'
+    SyncIcon = Layers
+    badgeClass = 'border-purple-500/40 bg-purple-600/20 text-purple-300'
+  } else if (syncState === 'discovered') {
+    SyncIcon = Layers
+    if (officialStatus === 'error') {
+      syncLabel = 'Sync Error'
+      badgeClass = 'border-red-500/40 bg-red-600/20 text-red-300'
+    } else if (officialStatus === 'syncing') {
+      syncLabel = 'Syncing'
+      SyncIcon = Loader2
+      badgeClass = 'border-blue-500/40 bg-blue-600/20 text-blue-300'
+    } else {
+      syncLabel = 'Discovered'
+      badgeClass = 'border-sky-500/40 bg-sky-600/20 text-sky-300'
+    }
+  }
 
   return (
     <button
@@ -36,15 +60,11 @@ function SceneItem({ scene, syncState, isActive, onClick }: {
         data-testid={`scene-sync-state-${scene.id}`}
         className={cn(
           'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]',
-          syncState === 'cloud'
-            ? 'border-emerald-500/40 bg-emerald-600/20 text-emerald-300'
-            : syncState === 'session'
-              ? 'border-sky-500/40 bg-sky-600/20 text-sky-300'
-              : 'border-zinc-600 bg-zinc-800 text-zinc-400'
+          badgeClass
         )}
       >
-        <SyncIcon size={10} className="flex-shrink-0" />
-        {syncState === 'cloud' ? null : <span>{syncLabel}</span>}
+        <SyncIcon size={10} className={cn("flex-shrink-0", officialStatus === 'syncing' && "animate-spin")} />
+        <span>{syncLabel}</span>
       </span>
       {isActive && (
         <Badge variant="secondary" className="text-xs px-1 py-0 h-4 bg-blue-600/30 text-blue-300 border-0">
@@ -55,54 +75,43 @@ function SceneItem({ scene, syncState, isActive, onClick }: {
   )
 }
 
-function extension(file: File) {
-  const dotIndex = file.name.lastIndexOf('.')
-  if (dotIndex < 0) return ''
-  return file.name.slice(dotIndex).toLowerCase()
-}
-
-function baseName(file: File) {
-  return file.name.replace(/\.[^.]+$/, '')
-}
-
-function sceneIdFromName(name: string) {
-  const normalized = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-
-  return `cloud-${normalized || `scene-${Date.now()}`}`
-}
-
 export function FileManager() {
   const scenes = useViewerStore((s) => s.scenes)
-  const cloudScenes = useViewerStore((s) => s.cloudScenes)
+  const publishedScenes = useViewerStore((s) => s.publishedScenes)
+  const discoveredScenes = useViewerStore((s) => s.discoveredScenes)
   const uploadedScenes = useViewerStore((s) => s.uploadedScenes)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
   const isAuthenticated = useViewerStore((s) => s.isAuthenticated)
   const setActiveScene = useViewerStore((s) => s.setActiveScene)
-  const addCloudScene = useViewerStore((s) => s.addCloudScene)
   const syncPresetScenesToCloud = useViewerStore((s) => s.syncPresetScenesToCloud)
+  const syncDiscoveredScene = useViewerStore((s) => s.syncDiscoveredScene)
+  const loadDiscoveredScenes = useViewerStore((s) => s.loadDiscoveredScenes)
 
-  const [isUploadingModel, setIsUploadingModel] = useState(false)
   const [isSyncingPresets, setIsSyncingPresets] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [uploadNotice, setUploadNotice] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncNotice, setSyncNotice] = useState<string | null>(null)
 
-  const cloudScenesById = new Map(cloudScenes.map((scene) => [scene.id, scene]))
+  const publishedScenesById = new Map(publishedScenes.map((scene) => [scene.id, scene]))
+  const discoveredScenesById = new Map(discoveredScenes.map((scene) => [scene.id, scene]))
   const uploadedScenesById = new Map(uploadedScenes.map((scene) => [scene.id, scene]))
   const presetSceneIds = new Set(scenes.map((scene) => scene.id))
 
   const presetEntries = scenes.map((presetScene) => {
-    const cloudScene = cloudScenesById.get(presetScene.id)
+    const publishedScene = publishedScenesById.get(presetScene.id)
+    const discoveredScene = discoveredScenesById.get(presetScene.id)
     const sessionScene = uploadedScenesById.get(presetScene.id)
-    if (cloudScene) {
+    if (publishedScene) {
       return {
-        scene: cloudScene,
-        syncState: 'cloud' as const,
+        scene: publishedScene,
+        syncState: 'published' as const,
+      }
+    }
+
+    if (discoveredScene) {
+      return {
+        scene: discoveredScene,
+        syncState: 'discovered' as const,
       }
     }
 
@@ -115,103 +124,76 @@ export function FileManager() {
 
     return {
       scene: presetScene,
-      syncState: 'local' as const,
+      syncState: 'bootstrap' as const,
     }
   })
 
-  const cloudOnlyEntries = cloudScenes
+  const publishedOnlyEntries = publishedScenes
     .filter((scene) => !presetSceneIds.has(scene.id))
     .map((scene) => ({
       scene,
-      syncState: 'cloud' as const,
+      syncState: 'published' as const,
+    }))
+
+  const discoveredOnlyEntries = discoveredScenes
+    .filter((scene) => !presetSceneIds.has(scene.id) && !publishedScenesById.has(scene.id))
+    .map((scene) => ({
+      scene,
+      syncState: 'discovered' as const,
     }))
 
   const sessionOnlyEntries = uploadedScenes
-    .filter((scene) => !presetSceneIds.has(scene.id) && !cloudScenesById.has(scene.id))
+    .filter((scene) => !presetSceneIds.has(scene.id) && !publishedScenesById.has(scene.id) && !discoveredScenesById.has(scene.id))
     .map((scene) => ({
       scene,
       syncState: 'session' as const,
     }))
 
-  const sceneEntries = [...presetEntries, ...cloudOnlyEntries, ...sessionOnlyEntries]
-  const unsyncedPresetCount = presetEntries.filter((entry) => entry.syncState !== 'cloud').length
+  const sceneEntries = [...presetEntries, ...publishedOnlyEntries, ...discoveredOnlyEntries, ...sessionOnlyEntries]
+  const unsyncedPresetCount = presetEntries.filter((entry) => entry.syncState !== 'published').length
   const canSyncPresets =
-    isAuthenticated && unsyncedPresetCount > 0 && !isSyncingPresets && !isUploadingModel
-
-  const onModelFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files ? Array.from(event.target.files) : []
-    event.currentTarget.value = ''
-    if (files.length === 0) return
-
-    const glbFile = files.find((file) => extension(file) === '.glb')
-    const plyFile = files.find((file) => extension(file) === '.ply')
-
-    if (!glbFile || !plyFile) {
-      setUploadError('Select one GLB file and one PLY file together.')
-      return
-    }
-
-    if (!isAuthenticated) {
-      setUploadError('Login required to upload models.')
-      return
-    }
-
-    setUploadError(null)
-    setUploadNotice(null)
-    setIsUploadingModel(true)
-
-    try {
-      const displayName = baseName(glbFile) || baseName(plyFile)
-      const sceneId = sceneIdFromName(displayName)
-
-      const [glbUrl, plyUrl] = await Promise.all([
-        vercelBlobModelStorage.upload(glbFile, { sceneKey: sceneId, kind: 'glb' }),
-        vercelBlobModelStorage.upload(plyFile, { sceneKey: sceneId, kind: 'ply' }),
-      ])
-
-      const model = await modelApi.createModel({
-        id: sceneId,
-        name: displayName,
-        glbUrl,
-        plyUrl,
-        mergeById: true,
-      })
-
-      addCloudScene({
-        ...model,
-        source: 'cloud',
-      })
-      setUploadNotice(`Uploaded ${model.name}.`)
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Model upload failed.')
-    } finally {
-      setIsUploadingModel(false)
-    }
-  }
+    isAuthenticated && unsyncedPresetCount > 0 && !isSyncingPresets
 
   const onSyncPresets = async () => {
     if (!isAuthenticated) {
-      setUploadError('Login required to sync preset models.')
+      setSyncError('Login required to sync preset models.')
       return
     }
 
     if (unsyncedPresetCount === 0) {
-      setUploadError(null)
-      setUploadNotice('All preset scenes are already synced.')
+      setSyncError(null)
+      setSyncNotice('All preset scenes are already synced.')
       return
     }
 
-    setUploadError(null)
-    setUploadNotice(null)
+    setSyncError(null)
+    setSyncNotice(null)
     setIsSyncingPresets(true)
 
     try {
       const synced = await syncPresetScenesToCloud()
-      setUploadNotice(`Synced ${synced.length} preset scenes to cloud.`)
+      setSyncNotice(`Synced ${synced.length} preset scenes to cloud.`)
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Failed to sync preset models.')
+      setSyncError(error instanceof Error ? error.message : 'Failed to sync preset models.')
     } finally {
       setIsSyncingPresets(false)
+    }
+  }
+
+  const onSyncDiscoveredScene = async (sceneId: string) => {
+    try {
+      await syncDiscoveredScene(sceneId)
+    } catch {
+      // Store already sets error sync status; suppress console noise for expected retryable errors
+    }
+  }
+
+  const onRefreshDiscovered = async () => {
+    setIsRefreshing(true)
+    try {
+      await loadDiscoveredScenes()
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
@@ -221,6 +203,23 @@ export function FileManager() {
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs text-zinc-500 uppercase tracking-wider">Scenes</p>
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              data-testid="refresh-scenes-button"
+              disabled={isRefreshing}
+              onClick={() => {
+                void onRefreshDiscovered()
+              }}
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
+                isRefreshing
+                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+              )}
+            >
+              <RefreshCw size={12} className={cn(isRefreshing && "animate-spin")} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
             <button
               type="button"
               data-testid="sync-preset-models-button"
@@ -250,64 +249,84 @@ export function FileManager() {
                     : 'Synced'}
               </span>
             </button>
-            <button
-              type="button"
-              data-testid="upload-model-button"
-              disabled={!isAuthenticated || isUploadingModel || isSyncingPresets}
-              onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                'flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
-                !isAuthenticated || isUploadingModel || isSyncingPresets
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                  : 'bg-blue-600/20 text-blue-300 hover:bg-blue-600/30'
-              )}
-            >
-              {isUploadingModel ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-              <span>{isUploadingModel ? 'Uploading...' : 'Upload'}</span>
-            </button>
           </div>
-          <input
-            ref={fileInputRef}
-            data-testid="upload-model-input"
-            type="file"
-            accept=".glb,.ply"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              void onModelFileChange(event)
-            }}
-          />
         </div>
 
-        {uploadError && (
-          <p className="mb-2 px-1 text-[11px] text-red-400" data-testid="upload-model-error">
-            {uploadError}
+        {syncError && (
+          <p className="mb-2 px-1 text-[11px] text-red-400" data-testid="sync-error">
+            {syncError}
           </p>
         )}
 
-        {uploadNotice && !uploadError && (
-          <p className="mb-2 px-1 text-[11px] text-emerald-400" data-testid="upload-model-notice">
-            {uploadNotice}
+        {syncNotice && !syncError && (
+          <p className="mb-2 px-1 text-[11px] text-emerald-400" data-testid="sync-notice">
+            {syncNotice}
           </p>
-        )}
-
-        {!isAuthenticated && (
-          <p className="mb-2 px-1 text-[11px] text-zinc-500">Login to upload model pairs (GLB + PLY).</p>
         )}
 
         <div className="space-y-1" data-testid="scan-list">
           {sceneEntries.length === 0 ? (
             <p className="px-3 py-2 text-xs text-zinc-600">No scenes available.</p>
           ) : (
-            sceneEntries.map((entry) => (
-              <SceneItem
-                key={entry.scene.id}
-                scene={entry.scene}
-                syncState={entry.syncState}
-                isActive={entry.scene.id === activeSceneId}
-                onClick={() => setActiveScene(entry.scene.id)}
-              />
-            ))
+            sceneEntries.map((entry) => {
+              const officialSyncStatus = entry.scene.officialStatus?.syncStatus
+              const showSyncAction =
+                entry.syncState === 'discovered' &&
+                officialSyncStatus !== 'synced' &&
+                isAuthenticated
+
+              if (showSyncAction) {
+                return (
+                  <div key={entry.scene.id} className="flex items-center gap-1">
+                    <div className="flex-1 min-w-0">
+                      <SceneItem
+                        scene={entry.scene}
+                        syncState={entry.syncState}
+                        isActive={entry.scene.id === activeSceneId}
+                        onClick={() => setActiveScene(entry.scene.id)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      data-testid={`sync-scene-button-${entry.scene.id}`}
+                      disabled={officialSyncStatus === 'syncing'}
+                      onClick={() => void onSyncDiscoveredScene(entry.scene.id)}
+                      className={cn(
+                        'flex items-center justify-center rounded p-1.5 transition-colors',
+                        officialSyncStatus === 'syncing'
+                          ? 'text-zinc-500 cursor-not-allowed'
+                          : officialSyncStatus === 'error'
+                            ? 'text-red-400 hover:bg-red-600/20'
+                            : 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                      )}
+                      title={
+                        officialSyncStatus === 'syncing'
+                          ? 'Syncing...'
+                          : officialSyncStatus === 'error'
+                            ? 'Retry sync to cloud'
+                            : 'Sync to cloud'
+                      }
+                    >
+                      {officialSyncStatus === 'syncing' ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Cloud size={14} />
+                      )}
+                    </button>
+                  </div>
+                )
+              }
+
+              return (
+                <SceneItem
+                  key={entry.scene.id}
+                  scene={entry.scene}
+                  syncState={entry.syncState}
+                  isActive={entry.scene.id === activeSceneId}
+                  onClick={() => setActiveScene(entry.scene.id)}
+                />
+              )
+            })
           )}
         </div>
       </div>

@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useViewerStore } from '@/store/viewerStore'
+import {
+  resolveActiveSceneFromCatalog,
+  resolveOfficialSceneSyncDiff,
+  useViewerStore,
+} from '@/store/viewerStore'
 import * as publishApi from '@/lib/publishApi'
 import * as modelApi from '@/lib/modelApi'
 import { imageStorage } from '@/storage/imageStorage'
@@ -10,11 +14,14 @@ import type { SceneDraft } from '@/types'
 describe('viewerStore', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    localStorage.removeItem('polycam-viewer-state')
 
     // Reset store to initial state
     useViewerStore.setState({
       activeSceneId: 'scan-a',
-      cloudScenes: [],
+      publishedScenes: [],
+      discoveredScenes: [],
+      uploadedScenes: [],
       viewMode: 'mesh',
       toolMode: 'orbit',
       measurements: [],
@@ -34,6 +41,7 @@ describe('viewerStore', () => {
       publishedVersionByScene: {},
       publishedVersionsByScene: {},
       loadRequestVersionByScene: {},
+      officialSceneSyncOverridesByScene: {},
     })
   })
 
@@ -51,6 +59,94 @@ describe('viewerStore', () => {
     expect(state.scenes[0].plyUrl).toBe('/models/scan-a.ply')
     expect(state.scenes[1].glbUrl).toBe('/models/scan-b.glb')
     expect(state.scenes[1].plyUrl).toBe('/models/scan-b.ply')
+  })
+
+  it('resolves active official scene with discovered -> published -> bootstrap precedence', () => {
+    useViewerStore.setState({
+      activeSceneId: 'scan-a',
+      discoveredScenes: [
+        {
+          id: 'scan-a',
+          name: 'Scan A Local Discovered',
+          glbUrl: '/models/scan-a-local.glb',
+          plyUrl: '/models/scan-a-local.ply',
+          catalogSource: 'discovered',
+        },
+      ],
+      publishedScenes: [
+        {
+          id: 'scan-a',
+          name: 'Scan A Published',
+          glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a.glb',
+          plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a.ply',
+          catalogSource: 'published',
+        },
+      ],
+    })
+
+    const activeScene = resolveActiveSceneFromCatalog(useViewerStore.getState())
+    expect(activeScene?.name).toBe('Scan A Local Discovered')
+    expect(activeScene?.catalogSource).toBe('discovered')
+  })
+
+  it('resolves published official scene when discovered variant is absent', () => {
+    useViewerStore.setState({
+      activeSceneId: 'scan-a',
+      discoveredScenes: [],
+      publishedScenes: [
+        {
+          id: 'scan-a',
+          name: 'Scan A Published',
+          glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a.glb',
+          plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a.ply',
+          catalogSource: 'published',
+        },
+      ],
+    })
+
+    const activeScene = resolveActiveSceneFromCatalog(useViewerStore.getState())
+    expect(activeScene?.name).toBe('Scan A Published')
+    expect(activeScene?.catalogSource).toBe('published')
+  })
+
+  it('keeps discovered scene selectable even when its URLs are not cloud-valid', () => {
+    useViewerStore.setState({
+      activeSceneId: 'scan-local',
+      discoveredScenes: [
+        {
+          id: 'scan-local',
+          name: 'Scan Local',
+          glbUrl: '/models/scan-local.glb',
+          plyUrl: '/models/scan-local.ply',
+          catalogSource: 'discovered',
+        },
+      ],
+      publishedScenes: [
+        {
+          id: 'scan-local',
+          name: 'Scan Local Published Invalid',
+          glbUrl: 'https://example.com/scan-local.glb',
+          plyUrl: 'https://example.com/scan-local.ply',
+          catalogSource: 'published',
+        },
+      ],
+    })
+
+    const activeScene = resolveActiveSceneFromCatalog(useViewerStore.getState())
+    expect(activeScene?.id).toBe('scan-local')
+    expect(activeScene?.catalogSource).toBe('discovered')
+  })
+
+  it('falls back to bootstrap scene for shipped IDs', () => {
+    useViewerStore.setState({
+      activeSceneId: 'scan-b',
+      discoveredScenes: [],
+      publishedScenes: [],
+    })
+
+    const activeScene = resolveActiveSceneFromCatalog(useViewerStore.getState())
+    expect(activeScene?.id).toBe('scan-b')
+    expect(activeScene?.catalogSource).toBe('bootstrap')
   })
 
   it('setViewMode updates viewMode', () => {
@@ -219,14 +315,14 @@ describe('viewerStore', () => {
         name: 'Cloud One',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-1.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-1.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
       {
         id: 'cloud-2',
         name: 'Cloud Two',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-2.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-2.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
     ])
 
@@ -234,7 +330,7 @@ describe('viewerStore', () => {
     await loadCloudScenes()
 
     const state = useViewerStore.getState()
-    expect(state.cloudScenes).toHaveLength(2)
+    expect(state.publishedScenes).toHaveLength(2)
     expect(state.activeSceneId).toBe('scan-a')
   })
 
@@ -247,7 +343,7 @@ describe('viewerStore', () => {
         name: 'Cloud First',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-first.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-first.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
     ])
 
@@ -255,19 +351,19 @@ describe('viewerStore', () => {
     await loadCloudScenes()
 
     const state = useViewerStore.getState()
-    expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-first'])
+    expect(state.publishedScenes.map((scene) => scene.id)).toEqual(['cloud-first'])
     expect(state.activeSceneId).toBe('cloud-first')
   })
 
   it('loadCloudScenes keeps previous cloud list when request fails', async () => {
     useViewerStore.setState({
-      cloudScenes: [
+      publishedScenes: [
         {
           id: 'cloud-existing',
           name: 'Cloud Existing',
           glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-existing.glb',
           plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-existing.ply',
-          source: 'cloud',
+          catalogSource: 'published',
         },
       ],
     })
@@ -278,33 +374,33 @@ describe('viewerStore', () => {
     await loadCloudScenes()
 
     const state = useViewerStore.getState()
-    expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-existing'])
+    expect(state.publishedScenes.map((scene) => scene.id)).toEqual(['cloud-existing'])
   })
 
-  it('addCloudScene prepends and activates uploaded cloud model', () => {
+  it('addPublishedScene prepends and activates uploaded cloud model', () => {
     useViewerStore.setState({
-      cloudScenes: [
+      publishedScenes: [
         {
           id: 'cloud-old',
           name: 'Cloud Old',
           glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-old.glb',
           plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-old.ply',
-          source: 'cloud',
+          catalogSource: 'published',
         },
       ],
     })
 
-    const { addCloudScene } = useViewerStore.getState()
-    addCloudScene({
+    const { addPublishedScene } = useViewerStore.getState()
+    addPublishedScene({
       id: 'cloud-new',
       name: 'Cloud New',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-new.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/cloud-new.ply',
-      source: 'cloud',
+      catalogSource: 'published',
     })
 
     const state = useViewerStore.getState()
-    expect(state.cloudScenes.map((scene) => scene.id)).toEqual(['cloud-new', 'cloud-old'])
+    expect(state.publishedScenes.map((scene) => scene.id)).toEqual(['cloud-new', 'cloud-old'])
     expect(state.activeSceneId).toBe('cloud-new')
   })
 
@@ -325,21 +421,21 @@ describe('viewerStore', () => {
         name: 'Scan A (Corridor)',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a/glb-scan-a.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-a/ply-scan-a.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
       {
         id: 'scan-b',
         name: 'Scan B (Large Room)',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-b/glb-scan-b.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-b/ply-scan-b.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
       {
         id: 'scan-c',
         name: 'Scan C (Multi-Room)',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-c/glb-scan-c.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/scan-c/ply-scan-c.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
     ])
 
@@ -354,7 +450,7 @@ describe('viewerStore', () => {
       expect.objectContaining({ id: 'scan-c' }),
     ])
     expect(synced).toHaveLength(3)
-    expect(useViewerStore.getState().cloudScenes.map((scene) => scene.id)).toEqual([
+    expect(useViewerStore.getState().publishedScenes.map((scene) => scene.id)).toEqual([
       'scan-a',
       'scan-b',
       'scan-c',
@@ -364,13 +460,13 @@ describe('viewerStore', () => {
   it('syncPresetScenesToCloud reuses already-cloud preset assets and uploads only missing presets', async () => {
     useViewerStore.setState({
       isAuthenticated: true,
-      cloudScenes: [
+      publishedScenes: [
         {
           id: 'scan-a',
           name: 'Scan A (Corridor)',
           glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-a/models/glb-existing.glb',
           plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-a/models/ply-existing.ply',
-          source: 'cloud',
+          catalogSource: 'published',
         },
       ],
     })
@@ -389,21 +485,21 @@ describe('viewerStore', () => {
         name: 'Scan A (Corridor)',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-a/models/glb-existing.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-a/models/ply-existing.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
       {
         id: 'scan-b',
         name: 'Scan B (Large Room)',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-b/models/glb-scan-b.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-b/models/ply-scan-b.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
       {
         id: 'scan-c',
         name: 'Scan C (Multi-Room)',
         glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-c/models/glb-scan-c.glb',
         plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/scenes/scan-c/models/ply-scan-c.ply',
-        source: 'cloud',
+        catalogSource: 'published',
       },
     ])
 
@@ -427,7 +523,7 @@ describe('viewerStore', () => {
     useViewerStore.setState({ isAuthenticated: false })
     vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: false })
     const { syncPresetScenesToCloud } = useViewerStore.getState()
-    await expect(syncPresetScenesToCloud()).rejects.toThrow('Login required to sync preset models.')
+    await expect(syncPresetScenesToCloud()).rejects.toThrow('Login required to sync official scenes.')
   })
 
   it('loadPublishedVersions stores sorted versions and live version mapping', async () => {
@@ -502,6 +598,137 @@ describe('viewerStore', () => {
       { filename: 'remote.jpg', url: 'https://blob.example/remote.jpg' },
     ])
     expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(true)
+  })
+
+  it('loadDraft for newly synced scene updates only that scene and preserves existing scene draft maps', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-existing-scan-a',
+          position: [0, 0, 0],
+          title: 'Existing scan-a',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+        {
+          id: 'ann-pre-sync-new-scene',
+          position: [1, 1, 1],
+          title: 'Pre-sync local',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'synced-scene',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 7 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true, 'synced-scene': false },
+      sceneMutationVersion: { 'scan-a': 3 },
+    })
+
+    const { markOfficialSceneSyncSuccess, loadDraft } = useViewerStore.getState()
+    markOfficialSceneSyncSuccess({
+      id: 'synced-scene',
+      name: 'Synced Scene',
+      glbUrl: 'https://blob.test/synced-scene.glb',
+      plyUrl: 'https://blob.test/synced-scene.ply',
+    })
+
+    vi.spyOn(publishApi, 'getDraft').mockResolvedValue({
+      sceneId: 'synced-scene',
+      revision: 4,
+      annotations: [
+        {
+          id: 'ann-server-new-scene',
+          position: [2, 2, 2],
+          title: 'Server draft',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'synced-scene',
+          createdAt: Date.now(),
+        },
+      ],
+      updatedAt: Date.now(),
+    })
+
+    await loadDraft('synced-scene')
+
+    const state = useViewerStore.getState()
+    expect(state.sceneMutationVersion['synced-scene']).toBe(1)
+    expect(state.annotations.some((annotation) => annotation.id === 'ann-existing-scan-a')).toBe(true)
+    expect(state.annotations.some((annotation) => annotation.id === 'ann-server-new-scene')).toBe(true)
+    expect(state.annotations.some((annotation) => annotation.id === 'ann-pre-sync-new-scene')).toBe(false)
+    expect(state.draftRevisionByScene['synced-scene']).toBe(4)
+    expect(state.draftDirtyByScene['synced-scene']).toBe(false)
+    expect(state.draftRevisionByScene['scan-a']).toBe(7)
+    expect(state.draftDirtyByScene['scan-a']).toBe(true)
+  })
+
+  it('saveDraft on newly synced scene uses stable sceneId and leaves existing scene state unchanged', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-existing-scan-a',
+          position: [0, 0, 0],
+          title: 'Existing scan-a',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+        {
+          id: 'ann-new-synced-scene',
+          position: [3, 3, 3],
+          title: 'New synced scene annotation',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'synced-scene',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 8, 'synced-scene': 0 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft', 'synced-scene': 'draft' },
+      draftDirtyByScene: { 'scan-a': true, 'synced-scene': true },
+    })
+
+    const { markOfficialSceneSyncSuccess, saveDraft } = useViewerStore.getState()
+    markOfficialSceneSyncSuccess({
+      id: 'synced-scene',
+      name: 'Synced Scene',
+      glbUrl: 'https://blob.test/synced-scene.glb',
+      plyUrl: 'https://blob.test/synced-scene.ply',
+    })
+
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 1,
+    })
+
+    await saveDraft('synced-scene')
+
+    const [calledSceneId, payload] = saveDraftSpy.mock.calls[0] ?? []
+    expect(calledSceneId).toBe('synced-scene')
+    expect(payload?.sceneId).toBe('synced-scene')
+    expect(payload?.annotations).toHaveLength(1)
+    expect(payload?.annotations[0]?.sceneId).toBe('synced-scene')
+
+    const state = useViewerStore.getState()
+    expect(state.draftRevisionByScene['synced-scene']).toBe(1)
+    expect(state.draftDirtyByScene['synced-scene']).toBe(false)
+    expect(state.draftRevisionByScene['scan-a']).toBe(8)
+    expect(state.draftDirtyByScene['scan-a']).toBe(true)
   })
 
   it('publishDraft uploads local images before publish', async () => {
@@ -811,6 +1038,564 @@ describe('viewerStore', () => {
     expect(state.draftDirtyByScene['scan-a']).toBe(true)
   })
 
+  it('loadDiscoveredScenes excludes preset scene IDs from discovered results', async () => {
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        { id: 'scan-a', name: 'Scan A', glbUrl: '/models/scan-a.glb', plyUrl: '/models/scan-a.ply' },
+        { id: 'scan-b', name: 'Scan B', glbUrl: '/models/scan-b.glb', plyUrl: '/models/scan-b.ply' },
+        { id: 'scan-c', name: 'Scan C', glbUrl: '/models/scan-c.glb', plyUrl: '/models/scan-c.ply' },
+        { id: 'scan-d', name: 'Scan D', glbUrl: '/models/scan-d.glb', plyUrl: '/models/scan-d.ply' },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes).toHaveLength(1)
+    expect(state.discoveredScenes[0].id).toBe('scan-d')
+    expect(state.discoveredScenes[0].catalogSource).toBe('discovered')
+    expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('unsynced')
+    expect(state.discoveredScenes[0].officialStatus?.pairCompleteness).toBe('complete')
+
+    expect(state.scenes.map((s) => s.id)).toEqual(['scan-a', 'scan-b', 'scan-c'])
+    expect(state.scenes[0].catalogSource).toBe('bootstrap')
+  })
+
+  it('loadDiscoveredScenes surfaces new scene with correct discovered status', async () => {
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        { id: 'new-room', name: 'New Room', glbUrl: '/models/new-room.glb', plyUrl: '/models/new-room.ply' },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes).toHaveLength(1)
+    const scene = state.discoveredScenes[0]
+    expect(scene.id).toBe('new-room')
+    expect(scene.name).toBe('New Room')
+    expect(scene.glbUrl).toBe('/models/new-room.glb')
+    expect(scene.plyUrl).toBe('/models/new-room.ply')
+    expect(scene.catalogSource).toBe('discovered')
+    expect(scene.officialStatus).toEqual({
+      sceneId: 'new-room',
+      catalogSource: 'discovered',
+      pairCompleteness: 'complete',
+      syncStatus: 'unsynced',
+    })
+  })
+
+  it('loadDiscoveredScenes returns empty when only preset scenes exist locally', async () => {
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        { id: 'scan-a', name: 'Scan A', glbUrl: '/models/scan-a.glb', plyUrl: '/models/scan-a.ply' },
+        { id: 'scan-b', name: 'Scan B', glbUrl: '/models/scan-b.glb', plyUrl: '/models/scan-b.ply' },
+        { id: 'scan-c', name: 'Scan C', glbUrl: '/models/scan-c.glb', plyUrl: '/models/scan-c.ply' },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes).toHaveLength(0)
+  })
+
+  it('loadDiscoveredScenes sets activeSceneId to first discovered when none selected', async () => {
+    useViewerStore.setState({ activeSceneId: null })
+
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        { id: 'scan-d', name: 'Scan D', glbUrl: '/models/scan-d.glb', plyUrl: '/models/scan-d.ply' },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    expect(useViewerStore.getState().activeSceneId).toBe('scan-d')
+  })
+
+  it('loadDiscoveredScenes keeps existing activeSceneId when one is set', async () => {
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        { id: 'scan-d', name: 'Scan D', glbUrl: '/models/scan-d.glb', plyUrl: '/models/scan-d.ply' },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    expect(useViewerStore.getState().activeSceneId).toBe('scan-a')
+  })
+
+  it('loadDiscoveredScenes keeps previous list when request fails', async () => {
+    useViewerStore.setState({
+      discoveredScenes: [
+        {
+          id: 'scan-existing',
+          name: 'Existing Discovered',
+          glbUrl: '/models/scan-existing.glb',
+          plyUrl: '/models/scan-existing.ply',
+          catalogSource: 'discovered',
+        },
+      ],
+    })
+
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockRejectedValue(new Error('network down'))
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    expect(useViewerStore.getState().discoveredScenes.map((s) => s.id)).toEqual(['scan-existing'])
+  })
+
+  it('loadDiscoveredScenes does not call API when import.meta.env.DEV is false', async () => {
+    const originalDev = import.meta.env.DEV
+    try {
+      import.meta.env.DEV = false as unknown as boolean
+
+      const spy = vi.spyOn(modelApi, 'discoverLocalScenes')
+
+      const { loadDiscoveredScenes } = useViewerStore.getState()
+      await loadDiscoveredScenes()
+
+      expect(spy).not.toHaveBeenCalled()
+      expect(useViewerStore.getState().discoveredScenes).toEqual([])
+    } finally {
+      import.meta.env.DEV = originalDev
+    }
+  })
+
+  it('loadDiscoveredScenes keeps discovered scene when same sceneId exists in cloud and marks it synced', async () => {
+    useViewerStore.setState({
+      publishedScenes: [
+        {
+          id: 'published-collision',
+          name: 'Published Scene',
+          glbUrl: 'https://example.com/published.glb',
+          plyUrl: 'https://example.com/published.ply',
+          catalogSource: 'published',
+        },
+      ],
+    })
+
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValueOnce({
+      scenes: [
+        {
+          id: 'published-collision',
+          name: 'Local Scene Variant',
+          glbUrl: '/models/published-collision.glb',
+          plyUrl: '/models/published-collision.ply',
+        },
+        {
+          id: 'new-discovered',
+          name: 'New Discovered',
+          glbUrl: '/models/new-discovered.glb',
+          plyUrl: '/models/new-discovered.ply',
+        },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes).toHaveLength(2)
+    expect(state.discoveredScenes.map((scene) => scene.id)).toEqual([
+      'published-collision',
+      'new-discovered',
+    ])
+    expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+    expect(state.discoveredScenes[1].officialStatus?.syncStatus).toBe('unsynced')
+  })
+
+  it('loadDiscoveredScenes refresh fully replaces discovered catalog from filesystem truth', async () => {
+    vi.spyOn(modelApi, 'discoverLocalScenes')
+      .mockResolvedValueOnce({
+        scenes: [
+          {
+            id: 'refresh-alpha',
+            name: 'Refresh Alpha',
+            glbUrl: '/models/refresh-alpha.glb',
+            plyUrl: '/models/refresh-alpha.ply',
+          },
+          {
+            id: 'refresh-beta',
+            name: 'Refresh Beta',
+            glbUrl: '/models/refresh-beta.glb',
+            plyUrl: '/models/refresh-beta.ply',
+          },
+        ],
+        errors: [],
+      })
+      .mockResolvedValueOnce({
+        scenes: [
+          {
+            id: 'refresh-beta',
+            name: 'Refresh Beta',
+            glbUrl: '/models/refresh-beta.glb',
+            plyUrl: '/models/refresh-beta.ply',
+          },
+          {
+            id: 'refresh-gamma',
+            name: 'Refresh Gamma',
+            glbUrl: '/models/refresh-gamma.glb',
+            plyUrl: '/models/refresh-gamma.ply',
+          },
+        ],
+        errors: [],
+      })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+    expect(useViewerStore.getState().discoveredScenes.map((scene) => scene.id)).toEqual([
+      'refresh-alpha',
+      'refresh-beta',
+    ])
+
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes.map((scene) => scene.id)).toEqual(['refresh-beta', 'refresh-gamma'])
+    expect(resolveOfficialSceneSyncDiff(state)).toEqual([
+      {
+        sceneId: 'refresh-beta',
+        discovered: true,
+        published: false,
+        syncStatus: 'unsynced',
+      },
+      {
+        sceneId: 'refresh-gamma',
+        discovered: true,
+        published: false,
+        syncStatus: 'unsynced',
+      },
+    ])
+  })
+
+  it('loadDiscoveredScenes dedupes duplicate scene IDs from discovery payload', async () => {
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        {
+          id: 'dup-scene',
+          name: 'Duplicate Scene First',
+          glbUrl: '/models/dup-scene-a.glb',
+          plyUrl: '/models/dup-scene-a.ply',
+        },
+        {
+          id: 'dup-scene',
+          name: 'Duplicate Scene Second',
+          glbUrl: '/models/dup-scene-b.glb',
+          plyUrl: '/models/dup-scene-b.ply',
+        },
+        {
+          id: 'unique-scene',
+          name: 'Unique Scene',
+          glbUrl: '/models/unique-scene.glb',
+          plyUrl: '/models/unique-scene.ply',
+        },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes.map((scene) => scene.id)).toEqual(['dup-scene', 'unique-scene'])
+    expect(state.discoveredScenes[0].name).toBe('Duplicate Scene First')
+  })
+
+  it('loadDiscoveredScenes recovers interrupted syncing state as retryable error', async () => {
+    useViewerStore.setState({
+      discoveredScenes: [
+        {
+          id: 'interrupted-scene',
+          name: 'Interrupted Scene',
+          glbUrl: '/models/interrupted-scene.glb',
+          plyUrl: '/models/interrupted-scene.ply',
+          catalogSource: 'discovered',
+        },
+      ],
+      officialSceneSyncOverridesByScene: {
+        'interrupted-scene': 'syncing',
+      },
+    })
+
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        {
+          id: 'interrupted-scene',
+          name: 'Interrupted Scene',
+          glbUrl: '/models/interrupted-scene.glb',
+          plyUrl: '/models/interrupted-scene.ply',
+        },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.officialSceneSyncOverridesByScene['interrupted-scene']).toBe('error')
+    expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+  })
+
+  it('persists discovered scenes and sync retry overrides for reload recovery', () => {
+    useViewerStore.setState({
+      discoveredScenes: [
+        {
+          id: 'persisted-scene',
+          name: 'Persisted Scene',
+          glbUrl: '/models/persisted-scene.glb',
+          plyUrl: '/models/persisted-scene.ply',
+          catalogSource: 'discovered',
+          officialStatus: {
+            sceneId: 'persisted-scene',
+            catalogSource: 'discovered',
+            pairCompleteness: 'complete',
+            syncStatus: 'error',
+          },
+        },
+      ],
+      officialSceneSyncOverridesByScene: {
+        'persisted-scene': 'error',
+      },
+    })
+
+    const raw = localStorage.getItem('polycam-viewer-state')
+    expect(raw).toBeTruthy()
+
+    const persisted = JSON.parse(raw as string) as {
+      state?: {
+        discoveredScenes?: Array<{ id: string; officialStatus?: { syncStatus?: string } }>
+        officialSceneSyncOverridesByScene?: Record<string, string>
+      }
+    }
+
+    expect(persisted.state?.discoveredScenes?.map((scene) => scene.id)).toEqual(['persisted-scene'])
+    expect(persisted.state?.discoveredScenes?.[0]?.officialStatus?.syncStatus).toBe('error')
+    expect(persisted.state?.officialSceneSyncOverridesByScene?.['persisted-scene']).toBe('error')
+  })
+
+  it('setOfficialSceneSyncStatus supports syncing, error, and retry back to derived unsynced', () => {
+    const {
+      addDiscoveredScene,
+      setOfficialSceneSyncStatus,
+      clearOfficialSceneSyncStatus,
+    } = useViewerStore.getState()
+
+    addDiscoveredScene({
+      id: 'sync-state-scene',
+      name: 'Sync State Scene',
+      glbUrl: '/models/sync-state-scene.glb',
+      plyUrl: '/models/sync-state-scene.ply',
+    })
+
+    expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('unsynced')
+
+    setOfficialSceneSyncStatus('sync-state-scene', 'syncing')
+    expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('syncing')
+
+    setOfficialSceneSyncStatus('sync-state-scene', 'error')
+    expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+
+    clearOfficialSceneSyncStatus('sync-state-scene')
+    expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('unsynced')
+  })
+
+  it('markOfficialSceneSyncSuccess transitions discovered scene to synced via cloud diff', () => {
+    const {
+      addDiscoveredScene,
+      setOfficialSceneSyncStatus,
+      markOfficialSceneSyncSuccess,
+    } = useViewerStore.getState()
+
+    addDiscoveredScene({
+      id: 'sync-success-scene',
+      name: 'Sync Success Scene',
+      glbUrl: '/models/sync-success-scene.glb',
+      plyUrl: '/models/sync-success-scene.ply',
+    })
+
+    setOfficialSceneSyncStatus('sync-success-scene', 'syncing')
+    expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('syncing')
+
+    markOfficialSceneSyncSuccess({
+      id: 'sync-success-scene',
+      name: 'Sync Success Scene',
+      glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/sync-success-scene.glb',
+      plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/sync-success-scene.ply',
+    })
+
+    const state = useViewerStore.getState()
+    expect(state.publishedScenes.some((scene) => scene.id === 'sync-success-scene')).toBe(true)
+    expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+  })
+
+  it('resolveOfficialSceneSyncDiff tracks discovered/cloud membership and sync status', () => {
+    useViewerStore.setState({
+      discoveredScenes: [
+        {
+          id: 'diff-local-only',
+          name: 'Diff Local Only',
+          glbUrl: '/models/diff-local-only.glb',
+          plyUrl: '/models/diff-local-only.ply',
+          catalogSource: 'discovered',
+        },
+        {
+          id: 'diff-shared',
+          name: 'Diff Shared Local',
+          glbUrl: '/models/diff-shared.glb',
+          plyUrl: '/models/diff-shared.ply',
+          catalogSource: 'discovered',
+        },
+      ],
+      publishedScenes: [
+        {
+          id: 'diff-shared',
+          name: 'Diff Shared Cloud',
+          glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/diff-shared.glb',
+          plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/diff-shared.ply',
+          catalogSource: 'published',
+        },
+      ],
+      officialSceneSyncOverridesByScene: {
+        'diff-local-only': 'error',
+      },
+    })
+
+    const syncDiff = resolveOfficialSceneSyncDiff(useViewerStore.getState())
+    expect(syncDiff).toEqual([
+      {
+        sceneId: 'diff-local-only',
+        discovered: true,
+        published: false,
+        syncStatus: 'error',
+      },
+      {
+        sceneId: 'diff-shared',
+        discovered: true,
+        published: true,
+        syncStatus: 'synced',
+      },
+    ])
+  })
+
+  it('loadDiscoveredScenes keeps local discovered scene selectable after sync success refresh', async () => {
+    useViewerStore.setState({
+      activeSceneId: 'stable-refresh-scene',
+      publishedScenes: [
+        {
+          id: 'stable-refresh-scene',
+          name: 'Cloud Stable Refresh Scene',
+          glbUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/stable-refresh-scene.glb',
+          plyUrl: 'https://fudojb4sssxlkcld.public.blob.vercel-storage.com/models/stable-refresh-scene.ply',
+          catalogSource: 'published',
+        },
+      ],
+    })
+
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValueOnce({
+      scenes: [
+        {
+          id: 'stable-refresh-scene',
+          name: 'Local Stable Refresh Scene',
+          glbUrl: '/models/stable-refresh-scene.glb',
+          plyUrl: '/models/stable-refresh-scene.ply',
+        },
+      ],
+      errors: [],
+    })
+
+    const { loadDiscoveredScenes } = useViewerStore.getState()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(state.discoveredScenes.map((scene) => scene.id)).toEqual(['stable-refresh-scene'])
+    expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+    const activeScene = resolveActiveSceneFromCatalog(state)
+    expect(activeScene?.id).toBe('stable-refresh-scene')
+    expect(activeScene?.catalogSource).toBe('discovered')
+  })
+
+  it('keeps stable sceneId across discovered sync, cloud reload, and local refresh', async () => {
+    useViewerStore.setState({
+      activeSceneId: 'stable-lifecycle',
+      isAuthenticated: true,
+    })
+    vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+    const uploadSpy = vi
+      .spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+      .mockResolvedValueOnce('https://blob.test/stable-lifecycle.glb')
+      .mockResolvedValueOnce('https://blob.test/stable-lifecycle.ply')
+
+    vi.spyOn(modelApi, 'registerOfficialScene').mockResolvedValue({
+      id: 'stable-lifecycle',
+      name: 'Stable Lifecycle',
+      glbUrl: 'https://blob.test/stable-lifecycle.glb',
+      plyUrl: 'https://blob.test/stable-lifecycle.ply',
+      catalogSource: 'published',
+    })
+
+    vi.spyOn(modelApi, 'getModels').mockResolvedValue([
+      {
+        id: 'stable-lifecycle',
+        name: 'Stable Lifecycle Cloud',
+        glbUrl: 'https://blob.test/stable-lifecycle.glb',
+        plyUrl: 'https://blob.test/stable-lifecycle.ply',
+        catalogSource: 'published',
+      },
+    ])
+
+    vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValue({
+      scenes: [
+        {
+          id: 'stable-lifecycle',
+          name: 'Stable Lifecycle Local',
+          glbUrl: '/models/stable-lifecycle.glb',
+          plyUrl: '/models/stable-lifecycle.ply',
+        },
+      ],
+      errors: [],
+    })
+
+    const { addDiscoveredScene, syncDiscoveredScene, loadCloudScenes, loadDiscoveredScenes } = useViewerStore.getState()
+    addDiscoveredScene({
+      id: 'stable-lifecycle',
+      name: 'Stable Lifecycle Local',
+      glbUrl: '/models/stable-lifecycle.glb',
+      plyUrl: '/models/stable-lifecycle.ply',
+    })
+
+    await syncDiscoveredScene('stable-lifecycle')
+    await loadCloudScenes()
+    await loadDiscoveredScenes()
+
+    const state = useViewerStore.getState()
+    expect(uploadSpy).toHaveBeenCalledTimes(2)
+    expect(state.activeSceneId).toBe('stable-lifecycle')
+    expect(state.discoveredScenes.some((scene) => scene.id === 'stable-lifecycle')).toBe(true)
+    expect(state.publishedScenes.some((scene) => scene.id === 'stable-lifecycle')).toBe(true)
+    expect(state.discoveredScenes[0].officialStatus?.sceneId).toBe('stable-lifecycle')
+    expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+    const activeScene = resolveActiveSceneFromCatalog(state)
+    expect(activeScene?.id).toBe('stable-lifecycle')
+    expect(activeScene?.catalogSource).toBe('discovered')
+  })
+
   it('loadDraft keeps dirty state when user deletes last local annotation during in-flight request', async () => {
     const resolver: { current: ((value: SceneDraft) => void) | null } = { current: null }
     const draftPromise = new Promise<SceneDraft>((resolve) => {
@@ -878,5 +1663,586 @@ describe('viewerStore', () => {
     const state = useViewerStore.getState()
     expect(state.annotations).toHaveLength(0)
     expect(state.draftDirtyByScene['scan-a']).toBe(true)
+  })
+
+  describe('discovered scenes validation', () => {
+    it('accepts valid GLB+PLY pair as one complete official scene', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'test-scene',
+        name: 'Test Scene',
+        glbUrl: '/models/test-scene.glb',
+        plyUrl: '/models/test-scene.ply',
+      })
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(1)
+      expect(state.discoveredScenes[0].id).toBe('test-scene')
+      expect(state.discoveredScenes[0].officialStatus?.pairCompleteness).toBe('complete')
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('unsynced')
+      expect(state.discoveredScenes[0].officialStatus?.catalogSource).toBe('discovered')
+    })
+
+    it('rejects incomplete pair with missing GLB', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+      const incompleteScene = {
+        id: 'orphan-ply',
+        name: 'Orphan PLY',
+        glbUrl: '',
+        plyUrl: '/models/orphan-ply.ply',
+      }
+
+      addDiscoveredScene(incompleteScene)
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(0)
+    })
+
+    it('rejects incomplete pair with missing PLY', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+      const incompleteScene = {
+        id: 'orphan-glb',
+        name: 'Orphan GLB',
+        glbUrl: '/models/orphan-glb.glb',
+        plyUrl: '',
+      }
+
+      addDiscoveredScene(incompleteScene)
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(0)
+    })
+
+    it('filters out preset scene IDs from discovered results', async () => {
+      const { loadDiscoveredScenes } = useViewerStore.getState()
+
+      vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValueOnce({
+        scenes: [
+          {
+            id: 'scan-a',
+            name: 'Scan A',
+            glbUrl: '/models/scan-a.glb',
+            plyUrl: '/models/scan-a.ply',
+          },
+          {
+            id: 'new-scene',
+            name: 'New Scene',
+            glbUrl: '/models/new-scene.glb',
+            plyUrl: '/models/new-scene.ply',
+          },
+        ],
+        errors: [],
+      })
+
+      await loadDiscoveredScenes()
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(1)
+      expect(state.discoveredScenes[0].id).toBe('new-scene')
+    })
+
+    it('handles discovery endpoint returning validation errors', async () => {
+      const { loadDiscoveredScenes } = useViewerStore.getState()
+
+      vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValueOnce({
+        scenes: [
+          {
+            id: 'valid-pair',
+            name: 'Valid Pair',
+            glbUrl: '/models/valid-pair.glb',
+            plyUrl: '/models/valid-pair.ply',
+          },
+        ],
+        errors: [
+          {
+            code: 'orphan-glb',
+            basename: 'orphan-file',
+            message: 'Orphan GLB file: "orphan-file.glb" has no matching PLY file',
+          },
+          {
+            code: 'orphan-ply',
+            basename: 'another-orphan',
+            message: 'Orphan PLY file: "another-orphan.ply" has no matching GLB file',
+          },
+        ],
+      })
+
+      await loadDiscoveredScenes()
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(1)
+      expect(state.discoveredScenes[0].id).toBe('valid-pair')
+    })
+
+    it('maintains stable sceneId across discovery and store operations', () => {
+      const { addDiscoveredScene, setActiveScene } = useViewerStore.getState()
+      const sceneId = 'stable-test-scene'
+
+      addDiscoveredScene({
+        id: sceneId,
+        name: 'Stable Test Scene',
+        glbUrl: '/models/stable-test-scene.glb',
+        plyUrl: '/models/stable-test-scene.ply',
+      })
+
+      setActiveScene(sceneId)
+
+      const state = useViewerStore.getState()
+      expect(state.activeSceneId).toBe(sceneId)
+      expect(state.discoveredScenes[0].id).toBe(sceneId)
+      expect(state.discoveredScenes[0].officialStatus?.sceneId).toBe(sceneId)
+    })
+
+    it('preserves existing discovered scenes when adding new ones', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+
+      addDiscoveredScene({
+        id: 'first-scene',
+        name: 'First Scene',
+        glbUrl: '/models/first-scene.glb',
+        plyUrl: '/models/first-scene.ply',
+      })
+
+      addDiscoveredScene({
+        id: 'second-scene',
+        name: 'Second Scene',
+        glbUrl: '/models/second-scene.glb',
+        plyUrl: '/models/second-scene.ply',
+      })
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(2)
+      expect(state.discoveredScenes.map((s) => s.id)).toEqual(['first-scene', 'second-scene'])
+    })
+
+    it('marks discovered scenes as unsynced by default', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+
+      addDiscoveredScene({
+        id: 'unsynced-test',
+        name: 'Unsynced Test',
+        glbUrl: '/models/unsynced-test.glb',
+        plyUrl: '/models/unsynced-test.ply',
+      })
+
+      const state = useViewerStore.getState()
+      const scene = state.discoveredScenes[0]
+      expect(scene.officialStatus?.syncStatus).toBe('unsynced')
+      expect(scene.officialStatus?.catalogSource).toBe('discovered')
+    })
+
+    // Stable sceneId and collision handling tests
+    it('preserves stable sceneId through lifecycle', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+      const sceneId = 'stable-id-test'
+
+      addDiscoveredScene({
+        id: sceneId,
+        name: 'Stable ID Test',
+        glbUrl: '/models/stable-id-test.glb',
+        plyUrl: '/models/stable-id-test.ply',
+      })
+
+      const state = useViewerStore.getState()
+      const scene = state.discoveredScenes[0]
+      expect(scene.id).toBe(sceneId)
+      expect(scene.officialStatus?.sceneId).toBe(sceneId)
+    })
+
+    it('rejects collision with preset scene ID', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+
+      addDiscoveredScene({
+        id: 'scan-a',
+        name: 'Collision with Preset',
+        glbUrl: '/models/scan-a-new.glb',
+        plyUrl: '/models/scan-a-new.ply',
+      })
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(0)
+    })
+
+    it('rejects collision with existing discovered scene ID', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+
+      addDiscoveredScene({
+        id: 'collision-test',
+        name: 'First Scene',
+        glbUrl: '/models/collision-test-1.glb',
+        plyUrl: '/models/collision-test-1.ply',
+      })
+
+      addDiscoveredScene({
+        id: 'collision-test',
+        name: 'Second Scene (Collision)',
+        glbUrl: '/models/collision-test-2.glb',
+        plyUrl: '/models/collision-test-2.ply',
+      })
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(1)
+      expect(state.discoveredScenes[0].name).toBe('First Scene')
+    })
+
+    it('allows local discovered sceneId to coexist with published sceneId', () => {
+      const { addDiscoveredScene, addPublishedScene } = useViewerStore.getState()
+
+      addPublishedScene({
+        id: 'published-collision',
+        name: 'Published Scene',
+        glbUrl: 'https://example.com/published.glb',
+        plyUrl: 'https://example.com/published.ply',
+      })
+
+      addDiscoveredScene({
+        id: 'published-collision',
+        name: 'Discovered Collision',
+        glbUrl: '/models/published-collision.glb',
+        plyUrl: '/models/published-collision.ply',
+      })
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes).toHaveLength(1)
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+      expect(state.publishedScenes).toHaveLength(1)
+    })
+
+    it('collision does not mutate state', () => {
+      const { addDiscoveredScene } = useViewerStore.getState()
+
+      addDiscoveredScene({
+        id: 'immutable-test',
+        name: 'First Scene',
+        glbUrl: '/models/immutable-test-1.glb',
+        plyUrl: '/models/immutable-test-1.ply',
+      })
+
+      const stateBefore = useViewerStore.getState()
+      const discoveredBefore = [...stateBefore.discoveredScenes]
+
+      addDiscoveredScene({
+        id: 'immutable-test',
+        name: 'Collision Attempt',
+        glbUrl: '/models/immutable-test-2.glb',
+        plyUrl: '/models/immutable-test-2.ply',
+      })
+
+      const stateAfter = useViewerStore.getState()
+      expect(stateAfter.discoveredScenes).toEqual(discoveredBefore)
+    })
+  })
+
+  describe('syncDiscoveredScene', () => {
+    it('uploads GLB+PLY and registers scene on success', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'sync-ok',
+        name: 'Sync OK',
+        glbUrl: '/models/sync-ok.glb',
+        plyUrl: '/models/sync-ok.ply',
+      })
+
+      const uploadSpy = vi
+        .spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockResolvedValueOnce('https://blob.test/sync-ok.glb')
+        .mockResolvedValueOnce('https://blob.test/sync-ok.ply')
+
+      const registerSpy = vi.spyOn(modelApi, 'registerOfficialScene').mockResolvedValue({
+        id: 'sync-ok',
+        name: 'Sync OK',
+        glbUrl: 'https://blob.test/sync-ok.glb',
+        plyUrl: 'https://blob.test/sync-ok.ply',
+      })
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await syncDiscoveredScene('sync-ok')
+
+      expect(uploadSpy).toHaveBeenCalledTimes(2)
+      expect(uploadSpy).toHaveBeenCalledWith('/models/sync-ok.glb', { sceneKey: 'sync-ok', kind: 'glb' })
+      expect(uploadSpy).toHaveBeenCalledWith('/models/sync-ok.ply', { sceneKey: 'sync-ok', kind: 'ply' })
+      expect(registerSpy).toHaveBeenCalledWith({
+        id: 'sync-ok',
+        name: 'Sync OK',
+        glbUrl: 'https://blob.test/sync-ok.glb',
+        plyUrl: 'https://blob.test/sync-ok.ply',
+      })
+
+      const state = useViewerStore.getState()
+      expect(state.publishedScenes.some((s) => s.id === 'sync-ok')).toBe(true)
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+      expect(state.officialSceneSyncOverridesByScene['sync-ok']).toBeUndefined()
+    })
+
+    it('sets error status when upload fails and does not call register', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'upload-fail',
+        name: 'Upload Fail',
+        glbUrl: '/models/upload-fail.glb',
+        plyUrl: '/models/upload-fail.ply',
+      })
+
+      vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockRejectedValueOnce(new Error('GLB upload failed'))
+        .mockResolvedValueOnce('https://blob.test/upload-fail.ply')
+
+      const registerSpy = vi.spyOn(modelApi, 'registerOfficialScene')
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('upload-fail')).rejects.toThrow('GLB upload failed')
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes[0].id).toBe('upload-fail')
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+      expect(registerSpy).not.toHaveBeenCalled()
+      expect(state.publishedScenes.some((s) => s.id === 'upload-fail')).toBe(false)
+    })
+
+    it('sets error status when PLY upload fails after GLB succeeds', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'ply-fail',
+        name: 'PLY Fail',
+        glbUrl: '/models/ply-fail.glb',
+        plyUrl: '/models/ply-fail.ply',
+      })
+
+      vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockResolvedValueOnce('https://blob.test/ply-fail.glb')
+        .mockRejectedValueOnce(new Error('PLY upload failed'))
+
+      const registerSpy = vi.spyOn(modelApi, 'registerOfficialScene')
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('ply-fail')).rejects.toThrow('PLY upload failed')
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+      expect(registerSpy).not.toHaveBeenCalled()
+      expect(state.publishedScenes.some((s) => s.id === 'ply-fail')).toBe(false)
+    })
+
+    it('sets error status when registration fails after successful uploads', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'reg-fail',
+        name: 'Reg Fail',
+        glbUrl: '/models/reg-fail.glb',
+        plyUrl: '/models/reg-fail.ply',
+      })
+
+      vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockResolvedValueOnce('https://blob.test/reg-fail.glb')
+        .mockResolvedValueOnce('https://blob.test/reg-fail.ply')
+
+      vi.spyOn(modelApi, 'registerOfficialScene').mockRejectedValue(new Error('Server error'))
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('reg-fail')).rejects.toThrow('Server error')
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+      expect(state.publishedScenes.some((s) => s.id === 'reg-fail')).toBe(false)
+    })
+
+    it('keeps unrelated published scenes untouched when discovered sync registration fails', async () => {
+      useViewerStore.setState({
+        isAuthenticated: true,
+        publishedScenes: [
+          {
+            id: 'official-existing',
+            name: 'Official Existing',
+            glbUrl: 'https://blob.test/official-existing.glb',
+            plyUrl: 'https://blob.test/official-existing.ply',
+            catalogSource: 'published',
+          },
+        ],
+      })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'new-sync-fail',
+        name: 'New Sync Fail',
+        glbUrl: '/models/new-sync-fail.glb',
+        plyUrl: '/models/new-sync-fail.ply',
+      })
+
+      vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockResolvedValueOnce('https://blob.test/new-sync-fail.glb')
+        .mockResolvedValueOnce('https://blob.test/new-sync-fail.ply')
+
+      vi.spyOn(modelApi, 'registerOfficialScene').mockRejectedValue(new Error('registry unavailable'))
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('new-sync-fail')).rejects.toThrow('registry unavailable')
+
+      const state = useViewerStore.getState()
+      expect(state.publishedScenes.map((scene) => scene.id)).toEqual(['official-existing'])
+      expect(state.discoveredScenes.find((scene) => scene.id === 'new-sync-fail')).toBeTruthy()
+      expect(state.discoveredScenes.find((scene) => scene.id === 'new-sync-fail')?.officialStatus?.syncStatus).toBe('error')
+    })
+
+    it('auth expiration during registration fails safely and keeps discovered scene recoverable', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'auth-expire-scene',
+        name: 'Auth Expire Scene',
+        glbUrl: '/models/auth-expire.glb',
+        plyUrl: '/models/auth-expire.ply',
+      })
+
+      vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockResolvedValueOnce('https://blob.test/auth-expire.glb')
+        .mockResolvedValueOnce('https://blob.test/auth-expire.ply')
+
+      vi.spyOn(modelApi, 'registerOfficialScene').mockRejectedValue(
+        Object.assign(new Error('Authentication required'), { status: 401 })
+      )
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('auth-expire-scene')).rejects.toThrow('Authentication required')
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes.find((scene) => scene.id === 'auth-expire-scene')).toBeTruthy()
+      expect(state.discoveredScenes.find((scene) => scene.id === 'auth-expire-scene')?.officialStatus?.syncStatus).toBe('error')
+      expect(state.officialSceneSyncOverridesByScene['auth-expire-scene']).toBe('error')
+      expect(state.publishedScenes.some((scene) => scene.id === 'auth-expire-scene')).toBe(false)
+    })
+
+    it('sets error status on 409 collision from registerOfficialScene', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'conflict-scene',
+        name: 'Conflict Scene',
+        glbUrl: '/models/conflict-scene.glb',
+        plyUrl: '/models/conflict-scene.ply',
+      })
+
+      vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+        .mockResolvedValueOnce('https://blob.test/conflict-scene.glb')
+        .mockResolvedValueOnce('https://blob.test/conflict-scene.ply')
+
+      vi.spyOn(modelApi, 'registerOfficialScene').mockRejectedValue(
+        new modelApi.SceneConflictError('conflict-scene')
+      )
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('conflict-scene')).rejects.toThrow(modelApi.SceneConflictError)
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+      expect(state.publishedScenes.some((s) => s.id === 'conflict-scene')).toBe(false)
+    })
+
+    it('requires authentication before starting sync', async () => {
+      useViewerStore.setState({ isAuthenticated: false })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: false })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'auth-test',
+        name: 'Auth Test',
+        glbUrl: '/models/auth-test.glb',
+        plyUrl: '/models/auth-test.ply',
+      })
+
+      const uploadSpy = vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('auth-test')).rejects.toThrow('Login required')
+
+      expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('unsynced')
+      expect(uploadSpy).not.toHaveBeenCalled()
+    })
+
+    it('throws when discovered scene does not exist', async () => {
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('nonexistent')).rejects.toThrow('Discovered scene not found')
+    })
+
+    it('supports retry after error transitions back to synced', async () => {
+      useViewerStore.setState({ isAuthenticated: true })
+      vi.spyOn(publishApi, 'getSession').mockResolvedValue({ authenticated: true })
+
+      const { addDiscoveredScene } = useViewerStore.getState()
+      addDiscoveredScene({
+        id: 'retry-scene',
+        name: 'Retry Scene',
+        glbUrl: '/models/retry-scene.glb',
+        plyUrl: '/models/retry-scene.ply',
+      })
+
+      const uploadSpy = vi.spyOn(vercelBlobModelStorage, 'uploadFromUrl')
+      uploadSpy.mockRejectedValue(new Error('Network error'))
+
+      const { syncDiscoveredScene } = useViewerStore.getState()
+      await expect(syncDiscoveredScene('retry-scene')).rejects.toThrow('Network error')
+      expect(useViewerStore.getState().discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+      expect(useViewerStore.getState().officialSceneSyncOverridesByScene['retry-scene']).toBe('error')
+
+      vi.spyOn(modelApi, 'discoverLocalScenes').mockResolvedValueOnce({
+        scenes: [
+          {
+            id: 'retry-scene',
+            name: 'Retry Scene',
+            glbUrl: '/models/retry-scene.glb',
+            plyUrl: '/models/retry-scene.ply',
+          },
+        ],
+        errors: [],
+      })
+
+      const { loadDiscoveredScenes } = useViewerStore.getState()
+      await loadDiscoveredScenes()
+
+      const refreshedErrorState = useViewerStore.getState()
+      expect(refreshedErrorState.discoveredScenes[0].officialStatus?.syncStatus).toBe('error')
+
+      uploadSpy.mockReset()
+      uploadSpy
+        .mockResolvedValueOnce('https://blob.test/retry-scene.glb')
+        .mockResolvedValueOnce('https://blob.test/retry-scene.ply')
+
+      vi.spyOn(modelApi, 'registerOfficialScene').mockResolvedValue({
+        id: 'retry-scene',
+        name: 'Retry Scene',
+        glbUrl: 'https://blob.test/retry-scene.glb',
+        plyUrl: 'https://blob.test/retry-scene.ply',
+        catalogSource: 'published',
+      })
+
+      await syncDiscoveredScene('retry-scene')
+
+      const state = useViewerStore.getState()
+      expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe('synced')
+      expect(state.publishedScenes.some((s) => s.id === 'retry-scene')).toBe(true)
+      expect(state.officialSceneSyncOverridesByScene['retry-scene']).toBeUndefined()
+      expect(resolveOfficialSceneSyncDiff(state)).toContainEqual({
+        sceneId: 'retry-scene',
+        discovered: true,
+        published: true,
+        syncStatus: 'synced',
+      })
+    })
   })
 })

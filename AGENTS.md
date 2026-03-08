@@ -90,6 +90,16 @@ Main interaction:
 - Store integration: `viewerStore.loadCloudScenes` and `syncPresetScenesToCloud` hydrate cloud scenes and keep active scene valid
 - Stale model/image cleanup: handled in registry replacement code and `scripts/cleanup-orphan-assets.ts`
 
+### 7) Official scene workflow (Maintainer)
+
+Official scenes are repository-first. Maintainers add model assets to the codebase, then sync them to the cloud catalog.
+
+1. **Discovery**: `GET /api/models/discover` (dev-only) scans `public/models/` for GLB/PLY pairs.
+2. **Refresh**: `FileManager` uses `loadDiscoveredScenes` to find new local models.
+3. **Sync**: `syncDiscoveredScene` uploads local assets to Vercel Blob and registers them in the cloud catalog.
+4. **Authoring**: Once synced, the scene is available for annotation and publishing like any other cloud scene.
+5. **Separation**: Asset sync (model files) and scene-content publish (annotations) are separate workflows.
+
 ---
 
 ## Where To Look

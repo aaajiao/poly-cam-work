@@ -1,7 +1,7 @@
 import type { ScanScene } from '../../src/types'
 import { requireAuth } from '../_lib/auth'
 import { deleteBlobByPathname, readJsonBlob, writeJsonBlob } from '../_lib/blobStore'
-import { badRequest, jsonResponse, methodNotAllowed, unauthorized } from '../_lib/http'
+import { badRequest, conflict, jsonResponse, methodNotAllowed, unauthorized } from '../_lib/http'
 
 interface ModelRegistryDocument {
   version: number
@@ -14,6 +14,7 @@ interface CreateModelBody {
   glbUrl?: string
   plyUrl?: string
   mergeById?: boolean
+  createOnly?: boolean
 }
 
 interface ReplaceModelInput {
@@ -158,7 +159,6 @@ function normalizeModel(model: ScanScene): ScanScene | null {
     name: model.name,
     glbUrl: model.glbUrl,
     plyUrl: model.plyUrl,
-    source: 'cloud',
     createdAt: typeof model.createdAt === 'number' ? model.createdAt : Date.now(),
     updatedAt: typeof model.updatedAt === 'number' ? model.updatedAt : Date.now(),
   }
@@ -223,7 +223,6 @@ async function createModelWithRetry(input: {
         name: input.name,
         glbUrl: input.glbUrl,
         plyUrl: input.plyUrl,
-        source: 'cloud',
         createdAt: now,
         updatedAt: now,
       }
@@ -232,6 +231,53 @@ async function createModelWithRetry(input: {
       await writeModelRegistry(models)
       return model
     } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw new Error(
+    `Failed to persist model registration${
+      lastError instanceof Error && lastError.message ? `: ${lastError.message}` : ''
+    }`
+  )
+}
+
+async function createModelCreateOnlyWithRetry(input: {
+  requestedId: string
+  name: string
+  glbUrl: string
+  plyUrl: string
+}) {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      const registry = await readModelRegistry()
+      const existingIds = new Set(registry.models.map((model) => model.id))
+      
+      // Create-only semantics - fail if sceneId already exists
+      if (existingIds.has(input.requestedId)) {
+        // Collision is not retryable - fail immediately
+        throw new Error(`Scene ID "${input.requestedId}" already exists in registry`)
+      }
+
+      const now = Date.now()
+      const model: ScanScene = {
+        id: input.requestedId,
+        name: input.name,
+        glbUrl: input.glbUrl,
+        plyUrl: input.plyUrl,
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      const models = [model, ...registry.models]
+      await writeModelRegistry(models)
+      return model
+    } catch (error) {
+      // Check if this is a collision error (non-retryable)
+      if (error instanceof Error && error.message.includes('already exists in registry')) {
+        throw error
+      }
       lastError = error
     }
   }
@@ -261,7 +307,6 @@ async function upsertModelByIdWithRetry(input: {
         name: input.name,
         glbUrl: input.glbUrl,
         plyUrl: input.plyUrl,
-        source: 'cloud',
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       }
@@ -404,28 +449,53 @@ export default async function handler(request: Request) {
     return badRequest('name, glbUrl, and plyUrl must be non-empty')
   }
 
-  if (!isValidAssetUrl(glbUrl) || !isValidAssetUrl(plyUrl)) {
-    return badRequest('glbUrl and plyUrl must be valid HTTP(S) asset URLs')
-  }
-
   const requestedId = typeof createBody.id === 'string' ? sanitizeSceneId(createBody.id) : ''
   if (createBody.mergeById && !requestedId) {
     return badRequest('id is required when mergeById is true')
   }
+  if (createBody.createOnly && !requestedId) {
+    return badRequest('id is required when createOnly is true')
+  }
 
-  const model = createBody.mergeById
-    ? await upsertModelByIdWithRetry({
-        id: requestedId,
-        name,
-        glbUrl,
-        plyUrl,
-      })
-    : await createModelWithRetry({
+  if (!isValidAssetUrl(glbUrl) || !isValidAssetUrl(plyUrl)) {
+    return badRequest('glbUrl and plyUrl must be valid HTTP(S) asset URLs')
+  }
+
+  let model: ScanScene
+  try {
+    if (createBody.createOnly) {
+      // Create-only semantics for official scenes - fail on collision
+      model = await createModelCreateOnlyWithRetry({
         requestedId,
         name,
         glbUrl,
         plyUrl,
       })
+    } else if (createBody.mergeById) {
+      // Merge-by-id behavior
+      model = await upsertModelByIdWithRetry({
+        id: requestedId,
+        name,
+        glbUrl,
+        plyUrl,
+      })
+    } else {
+      // Auto-suffix behavior
+      model = await createModelWithRetry({
+        requestedId,
+        name,
+        glbUrl,
+        plyUrl,
+      })
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    // Collision errors get 409 Conflict; infrastructure errors get 500
+    if (error instanceof Error && error.message.includes('already exists in registry')) {
+      return conflict(message)
+    }
+    return jsonResponse({ error: message }, 500)
+  }
 
   return jsonResponse({ ok: true, model })
 }
