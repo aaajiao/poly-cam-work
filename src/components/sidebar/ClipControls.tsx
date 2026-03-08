@@ -10,10 +10,11 @@ export function ClipControls() {
       <div className="flex items-center justify-between">
         <span className="text-dim text-xs">Clipping Plane</span>
         <button
+          type="button"
           data-testid="clip-enable-toggle"
           onClick={() => setClipPlane({ enabled: !clipPlane.enabled })}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            clipPlane.enabled ? 'bg-primary' : 'bg-field'
+            clipPlane.enabled ? 'bg-accent-soft' : 'bg-field'
           }`}
         >
           <span
@@ -33,12 +34,13 @@ export function ClipControls() {
             <div className="flex gap-1" data-testid="clip-axis-selector">
               {(['x', 'y', 'z'] as const).map((axis) => (
                 <button
+                  type="button"
                   key={axis}
                   data-testid={`clip-axis-${axis}`}
                   onClick={() => setClipPlane({ axis })}
-                   className={`ui-hover-emphasis flex-1 py-1 text-xs rounded transition-colors uppercase font-mono ${
-                    clipPlane.axis === axis
-                      ? 'bg-primary text-primary-foreground'
+                    className={`ui-hover-emphasis flex-1 py-1 text-xs rounded transition-colors uppercase font-mono ${
+                     clipPlane.axis === axis
+                      ? 'bg-accent-soft text-accent border border-accent-soft'
                       : 'bg-field text-dim hover:bg-field-hover'
                     }`}
                 >
@@ -63,17 +65,18 @@ export function ClipControls() {
               value={clipPlane.position}
               onChange={(e) => setClipPlane({ position: parseFloat(e.target.value) })}
                className="w-full accent-[var(--primary)]"
-              data-testid="clip-position-slider"
-            />
+               data-testid="clip-position-slider"
+             />
           </div>
 
           <div className="flex items-center justify-between">
-             <span className="text-dim text-xs">Flip direction</span>
+            <span className="text-dim text-xs">Flip direction</span>
             <button
+              type="button"
               data-testid="clip-flip-toggle"
               onClick={() => setClipPlane({ flipped: !clipPlane.flipped })}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                 clipPlane.flipped ? 'bg-primary' : 'bg-field'
+                 clipPlane.flipped ? 'bg-accent-soft' : 'bg-field'
                }`}
             >
               <span

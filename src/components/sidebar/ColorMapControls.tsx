@@ -21,13 +21,14 @@ export function ColorMapControls() {
       <div className="flex gap-1">
         {MODES.map((mode) => (
           <button
+            type="button"
             key={mode.value}
             data-testid={`color-map-${mode.value}`}
             onClick={() => setColorMapMode(mode.value)}
             className={cn(
               'ui-hover-emphasis flex-1 py-1 text-xs rounded transition-colors',
               colorMapMode === mode.value
-                ? 'bg-primary text-primary-foreground'
+                ? 'bg-accent-soft text-accent border border-accent-soft'
                 : 'bg-field text-dim hover:bg-field-hover'
             )}
           >
