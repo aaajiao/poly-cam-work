@@ -35,7 +35,7 @@ export function PublishActionControls({
         data-testid="import-local-data"
         variant="outline"
         disabled={isImporting}
-        className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
         onClick={onImportClick}
       >
         <CloudUpload size={14} />
@@ -46,7 +46,7 @@ export function PublishActionControls({
         data-testid="save-draft-button"
         variant="outline"
         disabled={isSaving || draftStatus === 'saving'}
-        className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
         onClick={onExportClick}
       >
         <CloudDownload size={14} />
@@ -56,7 +56,7 @@ export function PublishActionControls({
       <Button
         data-testid="publish-button"
         disabled={isPublishing || (!isDraftDirty && hasPublishedVersions)}
-        className="h-8 gap-1 bg-emerald-600 text-white hover:bg-emerald-500"
+        className="ui-action-success ui-hover-emphasis h-8 gap-1"
         onClick={onPublishClick}
       >
         <Upload size={14} />
@@ -65,9 +65,9 @@ export function PublishActionControls({
 
       <div className="hidden text-xs xl:block" data-testid="draft-dirty-indicator">
         {isDraftDirty ? (
-          <span className="text-amber-400">unsaved</span>
+          <span className="text-warning">unsaved</span>
         ) : (
-          <span className="text-zinc-500">saved</span>
+          <span className="text-faint">saved</span>
         )}
       </div>
 

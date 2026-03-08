@@ -27,7 +27,7 @@ export function PublishVersionMenu({
       <Button
         type="button"
         variant="outline"
-        className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
         data-testid="published-version-menu-trigger"
         onClick={onToggle}
       >
@@ -37,14 +37,14 @@ export function PublishVersionMenu({
 
       {isOpen && (
         <div
-          className="absolute right-0 top-10 z-50 w-56 rounded border border-zinc-700 bg-zinc-900/95 p-2 shadow-2xl"
+          className="absolute right-0 top-10 z-50 w-56 rounded border border-strong bg-elevated p-2 shadow-panel"
           data-testid="published-version-menu-content"
         >
-          <div className="mb-1 px-1 text-[10px] uppercase tracking-wide text-zinc-500">Releases</div>
+          <div className="mb-1 px-1 text-[10px] uppercase tracking-wide text-faint">Releases</div>
 
           <div className="max-h-56 space-y-1 overflow-y-auto" data-testid="published-version-list">
             {versions.length === 0 ? (
-              <div className="rounded px-2 py-2 text-xs text-zinc-500">None</div>
+              <div className="rounded px-2 py-2 text-xs text-faint">None</div>
             ) : (
               versions.map((version) => {
                 const isLive = liveVersion === version
@@ -54,25 +54,25 @@ export function PublishVersionMenu({
                 return (
                   <div
                     key={version}
-                    className="group flex items-center justify-between gap-1 rounded border border-zinc-700 bg-zinc-900/80 px-1.5 py-1"
+                    className="group flex items-center justify-between gap-1 rounded border border-subtle bg-panel px-1.5 py-1"
                     data-testid={`published-version-item-${version}`}
                   >
                     <button
                       type="button"
                       disabled={isRollingBack || isDeleting}
-                      className="flex items-center gap-1 text-xs text-zinc-300 hover:text-zinc-100 disabled:opacity-50"
+                      className="flex items-center gap-1 text-xs text-soft hover:text-strong disabled:opacity-50"
                       data-testid={`rollback-version-${version}`}
                       onClick={() => onRollback(version)}
                     >
-                      <RotateCcw size={12} className={isLive ? 'text-emerald-400' : ''} />
+                       <RotateCcw size={12} className={isLive ? 'text-success' : ''} />
                       <span>{`v${version}`}</span>
-                      {isLive && <span className="text-[10px] text-emerald-400">live</span>}
+                       {isLive && <span className="text-[10px] text-success">live</span>}
                     </button>
 
                     <button
                       type="button"
                       disabled={isDeleting || isRollingBack}
-                      className="rounded p-0.5 text-zinc-500 transition-colors hover:text-red-400 disabled:opacity-50"
+                       className="rounded p-0.5 text-faint transition-colors hover:text-danger disabled:opacity-50"
                       aria-label={`Delete version ${version}`}
                       data-testid={`delete-version-${version}`}
                       onClick={(event) => onDelete(version, event)}

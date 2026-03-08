@@ -43,7 +43,7 @@ export function LoginDialog() {
       <Button
         data-testid="logout-button"
         variant="outline"
-        className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+        className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
         onClick={() => {
           void logout()
         }}
@@ -60,13 +60,13 @@ export function LoginDialog() {
         <Button
           data-testid="login-button"
           variant="outline"
-          className="h-8 gap-1 border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+          className="h-8 gap-1 border-subtle bg-panel text-soft hover:bg-elevated hover:text-strong"
         >
           <LogIn size={14} />
           <span className="hidden md:inline">Login</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="border-zinc-700 bg-zinc-900 text-zinc-100 sm:max-w-md">
+      <DialogContent className="border-strong bg-elevated text-strong sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Editor Login</DialogTitle>
           <DialogDescription>
@@ -86,12 +86,12 @@ export function LoginDialog() {
                 void onSubmit()
               }
             }}
-            className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            className="w-full rounded border border-subtle bg-field px-3 py-2 text-sm text-soft outline-none focus:border-primary"
             placeholder="Password"
           />
 
           {(error || draftError) && (
-            <p className="text-xs text-red-400" data-testid="login-error-message">
+              <p className="text-xs text-danger" data-testid="login-error-message">
               {error ?? draftError}
             </p>
           )}
@@ -104,7 +104,7 @@ export function LoginDialog() {
               void onSubmit()
             }}
             disabled={isSubmitting || !password.trim()}
-            className="bg-blue-600 text-white hover:bg-blue-500"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             {isSubmitting ? 'Signing in...' : 'Sign in'}
           </Button>

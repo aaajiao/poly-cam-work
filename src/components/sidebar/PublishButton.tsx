@@ -99,12 +99,12 @@ export function PublishButton() {
         }}
       />
 
-      <div className="hidden text-xs text-zinc-500 xl:block" data-testid="publish-version-label">
+      <div className="hidden text-xs text-faint xl:block" data-testid="publish-version-label">
         {typeof liveVersion === 'number' ? `v${liveVersion}` : 'none'}
       </div>
 
       {draftError && (
-        <div className="text-xs text-red-400" data-testid="publish-error-label">
+        <div className="text-xs text-danger" data-testid="publish-error-label">
           {draftError}
         </div>
       )}
