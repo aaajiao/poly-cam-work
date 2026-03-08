@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Camera, Scissors } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -5,8 +6,16 @@ import { ViewModeToggle } from './ViewModeToggle'
 import { ToolButtons } from './ToolButtons'
 import { useViewerStore } from '@/store/viewerStore'
 import { cn } from '@/lib/utils'
-import { LoginDialog } from '@/components/sidebar/LoginDialog'
-import { PublishButton } from '@/components/sidebar/PublishButton'
+
+const LoginDialog = lazy(async () => {
+  const module = await import('@/components/sidebar/LoginDialog')
+  return { default: module.LoginDialog }
+})
+
+const PublishButton = lazy(async () => {
+  const module = await import('@/components/sidebar/PublishButton')
+  return { default: module.PublishButton }
+})
 
 export function Toolbar() {
   const clipEnabled = useViewerStore((s) => s.clipPlane.enabled)
@@ -63,8 +72,10 @@ export function Toolbar() {
         </div>
       )}
 
-      <LoginDialog />
-      <PublishButton />
+      <Suspense fallback={null}>
+        <LoginDialog />
+        <PublishButton />
+      </Suspense>
 
       <Button
         variant="ghost"
