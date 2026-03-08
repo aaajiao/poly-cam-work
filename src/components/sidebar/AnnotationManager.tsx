@@ -12,6 +12,7 @@ interface AnnotationEditorProps {
 
 function AnnotationEditor({ annotation }: AnnotationEditorProps) {
   const updateAnnotationContent = useViewerStore((s) => s.updateAnnotationContent)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
 
   const [localTitle, setLocalTitle] = useState(annotation.title)
   const [localDesc, setLocalDesc] = useState(annotation.description)
@@ -29,9 +30,10 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 
   const saveLinks = useCallback(
     (links: AnnotationLink[]) => {
+      if (presentationMode) return
       updateAnnotationContent(annotation.id, { links })
     },
-    [annotation.id, updateAnnotationContent]
+    [annotation.id, presentationMode, updateAnnotationContent]
   )
 
   const handleLinkChange = useCallback(
@@ -67,7 +69,10 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
         <input
           value={localTitle}
           onChange={(e) => setLocalTitle(e.target.value.slice(0, 100))}
-          onBlur={() => updateAnnotationContent(annotation.id, { title: localTitle })}
+          onBlur={() => {
+            if (presentationMode) return
+            updateAnnotationContent(annotation.id, { title: localTitle })
+          }}
           maxLength={100}
           data-testid="annotation-title-input"
           className="w-full bg-zinc-800 text-white text-xs px-2 py-1 rounded border border-zinc-700 outline-none focus:border-blue-500"
@@ -80,7 +85,10 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
         <textarea
           value={localDesc}
           onChange={(e) => setLocalDesc(e.target.value.slice(0, 2000))}
-          onBlur={() => updateAnnotationContent(annotation.id, { description: localDesc })}
+          onBlur={() => {
+            if (presentationMode) return
+            updateAnnotationContent(annotation.id, { description: localDesc })
+          }}
           maxLength={2000}
           rows={3}
           data-testid="annotation-description-input"
@@ -91,11 +99,14 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 
       <div className="border-t border-zinc-800 pt-2">
         <p className="text-zinc-500 text-xs uppercase tracking-wide mb-1">Images</p>
-        <ImageUpload
-          annotationId={annotation.id}
-          images={annotation.images}
-          onImagesChange={(images) => updateAnnotationContent(annotation.id, { images })}
-        />
+          <ImageUpload
+            annotationId={annotation.id}
+            images={annotation.images}
+            onImagesChange={(images) => {
+              if (presentationMode) return
+              updateAnnotationContent(annotation.id, { images })
+            }}
+          />
       </div>
 
       <div className="border-t border-zinc-800 pt-2">
@@ -104,6 +115,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
           value={videoInput}
           onChange={(e) => setVideoInput(e.target.value)}
           onBlur={() => {
+            if (presentationMode) return
             if (!videoInput || isValidVimeoUrl(videoInput)) {
               updateAnnotationContent(annotation.id, { videoUrl: videoInput || null })
             }
@@ -195,6 +207,7 @@ function MediaIndicators({ annotation }: MediaIndicatorsProps) {
 export function AnnotationManager() {
   const annotations = useViewerStore((s) => s.annotations)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
   const openAnnotationPanelIds = useViewerStore((s) => s.openAnnotationPanelIds)
   const selectAnnotation = useViewerStore((s) => s.selectAnnotation)
@@ -253,7 +266,9 @@ export function AnnotationManager() {
         <>
           {sceneAnnotations.length === 0 && (
             <p className="text-zinc-600 text-xs text-center py-3">
-              No annotations yet. Press <kbd className="bg-zinc-800 px-1 rounded">A</kbd> to add markers.
+              {presentationMode
+                ? 'No annotations yet.'
+                : <>No annotations yet. Press <kbd className="bg-zinc-800 px-1 rounded">A</kbd> to add markers.</>}
             </p>
           )}
 
@@ -296,24 +311,26 @@ export function AnnotationManager() {
 
                     <MediaIndicators annotation={annotation} />
 
-                    <button
-                      data-testid={`annotation-delete-${annotation.id}`}
-                      aria-label="Delete annotation"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(annotation)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all shrink-0"
-                    >
-                      <Trash2 size={11} />
-                    </button>
+                    {!presentationMode && (
+                      <button
+                        data-testid={`annotation-delete-${annotation.id}`}
+                        aria-label="Delete annotation"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(annotation)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all shrink-0"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
                   </div>
                 )
               })}
             </div>
           )}
 
-          {selectedAnnotation && (
+          {selectedAnnotation && !presentationMode && (
             <div className="border-t border-zinc-800 mt-3" data-testid="annotation-editor">
               <AnnotationEditor key={selectedAnnotation.id} annotation={selectedAnnotation} />
             </div>

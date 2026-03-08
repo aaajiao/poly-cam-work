@@ -20,6 +20,7 @@ interface CompletedMeasurement {
 
 export function MeasurementTool() {
   const toolMode = useViewerStore((s) => s.toolMode)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
   const addMeasurement = useViewerStore((s) => s.addMeasurement)
   const { camera, scene, gl } = useThree()
   const raycasterRef = useRef(new THREE.Raycaster())
@@ -28,7 +29,7 @@ export function MeasurementTool() {
   const [pendingPoint, setPendingPoint] = useState<MeasurementPoint | null>(null)
   const [completedMeasurements, setCompletedMeasurements] = useState<CompletedMeasurement[]>([])
 
-  const isActive = toolMode === 'measure'
+  const isActive = toolMode === 'measure' && !presentationMode
 
   useFrame(() => updatePointsThreshold(raycasterRef.current, camera))
 

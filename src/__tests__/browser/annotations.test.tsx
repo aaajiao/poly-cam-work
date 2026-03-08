@@ -31,16 +31,17 @@ function makeAnnotation(id: string, title: string, sceneId = 'scan-a'): Annotati
 
 function resetStore() {
   localStorage.removeItem('polycam-viewer-state')
-    useViewerStore.setState({
-      activeSceneId: 'scan-a',
-      toolMode: 'orbit',
-      measurements: [],
-      annotations: [],
-      selectedAnnotationId: null,
-      openAnnotationPanelIds: [],
-      annotationsVisible: true,
-      annotationsPanelOpen: true,
-      sidebarOpen: true,
+  useViewerStore.setState({
+    activeSceneId: 'scan-a',
+    toolMode: 'orbit',
+    measurements: [],
+    annotations: [],
+    selectedAnnotationId: null,
+    openAnnotationPanelIds: [],
+    annotationsVisible: true,
+    annotationsPanelOpen: true,
+    sidebarOpen: true,
+    presentationMode: false,
     clipPlane: { enabled: false, axis: 'y', position: 0.5, flipped: false },
     uploadedScenes: [],
   })
@@ -155,5 +156,24 @@ describe('browser annotation manager', () => {
     state = useViewerStore.getState()
     expect(state.selectedAnnotationId).toBeNull()
     expect(state.openAnnotationPanelIds).toEqual([])
+  })
+
+  test('presentation mode keeps panel toggling but hides editing controls', async () => {
+    useViewerStore.setState({
+      annotations: [makeAnnotation('ann-present', 'Presentation Node')],
+      presentationMode: true,
+      selectedAnnotationId: 'ann-present',
+    })
+    const screen = await render(<AnnotationManager />)
+
+    await expect.element(screen.getByText('Presentation Node')).toBeVisible()
+    await expect.element(screen.getByTestId('annotation-editor')).not.toBeInTheDocument()
+    await expect.element(screen.getByTestId('annotation-delete-ann-present')).not.toBeInTheDocument()
+
+    await screen.getByTestId('annotation-item-ann-present').click()
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual(['ann-present'])
+
+    await screen.getByTestId('annotation-item-ann-present').click()
+    expect(useViewerStore.getState().openAnnotationPanelIds).toEqual([])
   })
 })

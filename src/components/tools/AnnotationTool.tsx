@@ -6,6 +6,7 @@ import { raycastScene } from '@/utils/raycasting'
 
 export function AnnotationTool() {
   const toolMode = useViewerStore((s) => s.toolMode)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
   const setPendingAnnotationInput = useViewerStore((s) => s.setPendingAnnotationInput)
   const pendingAnnotationInput = useViewerStore((s) => s.pendingAnnotationInput)
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId)
@@ -15,7 +16,7 @@ export function AnnotationTool() {
   const raycasterRef = useRef(new THREE.Raycaster())
   const mouseRef = useRef(new THREE.Vector2())
 
-  const isActive = toolMode === 'annotate'
+  const isActive = toolMode === 'annotate' && !presentationMode
 
   const handleClick = useCallback((e: MouseEvent) => {
     if (!isActive || pendingAnnotationInput) return
