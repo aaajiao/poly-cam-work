@@ -733,6 +733,7 @@ function AnnotationFloatingPanel({
 export function AnnotationPanel() {
   const annotations = useViewerStore((s) => s.annotations)
   const activeSceneId = useViewerStore((s) => s.activeSceneId)
+  const presentationMode = useViewerStore((s) => s.presentationMode)
   const openAnnotationPanelIds = useViewerStore((s) => s.openAnnotationPanelIds)
   const hoveredAnnotationId = useViewerStore((s) => s.hoveredAnnotationId)
   const clearAnnotationPanels = useViewerStore((s) => s.clearAnnotationPanels)
@@ -798,13 +799,14 @@ export function AnnotationPanel() {
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (presentationMode) return
       clearAnnotationPanels()
       selectAnnotation(null)
     }
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [clearAnnotationPanels, selectAnnotation])
+  }, [clearAnnotationPanels, presentationMode, selectAnnotation])
 
   if (openAnnotations.length === 0) return null
 
