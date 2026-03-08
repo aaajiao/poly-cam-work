@@ -91,11 +91,24 @@ Authenticated editor flow:
 6. Public clients read latest release via `GET /api/release/:sceneId`
 7. Roll back via `POST /api/rollback/:sceneId`
 
+## Official Scene Workflow (Maintainer)
+
+Official scenes are repository-first. Maintainers add model assets to the codebase, then sync them to the cloud catalog.
+
+1. **Add Assets**: Place GLB and PLY pairs in `public/models/` (e.g., `my-scan.glb` and `my-scan.ply`).
+2. **Refresh**: In the File Manager, click **Refresh** to discover new local models.
+3. **Sync**: Click the **Cloud** icon next to a discovered scene to upload its assets to Vercel Blob and register it in the cloud catalog.
+4. **Author**: Once synced, the scene is available for annotation and publishing like any other cloud scene.
+
 ## Editor Semantics
 
 - `Import`: load a local draft JSON file into the current scene
 - `Export`: download current local draft JSON
-- `Publish`: push local draft (including local images) to cloud release
+- `Publish`: push local draft (including local images) to cloud release (scene content only)
+- `Sync`: upload official model assets (GLB/PLY) to cloud catalog
+- `Discovered`: local official scene found in `public/models`
+- `Cloud`: official scene whose assets are synced to Vercel Blob
+- `Session`: temporary scene uploaded via UI (not persisted in catalog)
 - `saved` / `unsaved`: local draft publish state for current scene
 - `live`: currently served release version tag
 
