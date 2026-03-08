@@ -19,28 +19,28 @@ function SceneItem({
 
   let syncLabel = 'Bootstrap'
   let SyncIcon = HardDrive
-  let badgeClass = 'border-zinc-600 bg-zinc-800 text-zinc-400'
+  let badgeClass = 'border-subtle bg-panel text-dim'
 
   if (syncState === 'published') {
     syncLabel = 'Cloud'
     SyncIcon = CloudCheck
-    badgeClass = 'border-emerald-500/40 bg-emerald-600/20 text-emerald-300'
+    badgeClass = 'border-subtle bg-success-soft text-success'
   } else if (syncState === 'session') {
     syncLabel = 'Session'
     SyncIcon = Layers
-    badgeClass = 'border-purple-500/40 bg-purple-600/20 text-purple-300'
+    badgeClass = 'border-accent-soft bg-accent-soft text-accent'
   } else if (syncState === 'discovered') {
     SyncIcon = Layers
     if (officialStatus === 'error') {
       syncLabel = 'Sync Error'
-      badgeClass = 'border-red-500/40 bg-red-600/20 text-red-300'
+      badgeClass = 'border-danger-soft bg-[color:color-mix(in_oklab,var(--destructive)_16%,transparent)] text-danger'
     } else if (officialStatus === 'syncing') {
       syncLabel = 'Syncing'
       SyncIcon = Loader2
-      badgeClass = 'border-blue-500/40 bg-blue-600/20 text-blue-300'
+      badgeClass = 'border-accent-soft bg-accent-soft text-accent'
     } else {
       syncLabel = 'Discovered'
-      badgeClass = 'border-sky-500/40 bg-sky-600/20 text-sky-300'
+      badgeClass = 'border-accent-soft bg-accent-soft text-accent'
     }
   }
 
@@ -49,11 +49,11 @@ function SceneItem({
       data-testid={`scene-item-${scene.id}`}
       onClick={onClick}
       className={cn(
-        'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+        'ui-hover-emphasis w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
         'flex items-center gap-2',
         isActive
-          ? 'bg-blue-600/20 text-blue-300 border border-blue-600/30'
-          : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+          ? 'bg-accent-soft text-accent border border-accent-soft'
+          : 'text-dim hover:bg-elevated hover:text-soft'
       )}
     >
       <Layers size={14} className="flex-shrink-0" />
@@ -66,7 +66,7 @@ function SceneItem({
         <span>{syncLabel}</span>
       </span>
       {isActive && (
-        <Badge variant="secondary" className="text-xs px-1 py-0 h-4 bg-blue-600/30 text-blue-300 border-0">
+          <Badge variant="secondary" className="text-xs px-1 py-0 h-4 bg-accent-soft text-accent border-0">
           Active
         </Badge>
       )}
@@ -92,7 +92,7 @@ export function FileManagerSceneList({
   return (
     <div className="space-y-1" data-testid="scan-list">
       {sceneEntries.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-600">No scenes available.</p>
+        <p className="px-3 py-2 text-xs text-faint">No scenes available.</p>
       ) : (
         sceneEntries.map((entry) => {
           const officialSyncStatus = entry.scene.officialStatus?.syncStatus
@@ -118,12 +118,12 @@ export function FileManagerSceneList({
                   disabled={officialSyncStatus === 'syncing'}
                   onClick={() => void onSyncScene(entry.scene.id)}
                   className={cn(
-                    'flex items-center justify-center rounded p-1.5 transition-colors',
+                     'ui-hover-emphasis flex items-center justify-center rounded p-1.5 transition-colors',
                     officialSyncStatus === 'syncing'
-                      ? 'text-zinc-500 cursor-not-allowed'
+                      ? 'text-faint cursor-not-allowed'
                       : officialSyncStatus === 'error'
-                        ? 'text-red-400 hover:bg-red-600/20'
-                        : 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                        ? 'text-danger hover:bg-[color:color-mix(in_oklab,var(--destructive)_14%,transparent)]'
+                        : 'text-dim hover:bg-elevated hover:text-soft'
                   )}
                   title={
                     officialSyncStatus === 'syncing'

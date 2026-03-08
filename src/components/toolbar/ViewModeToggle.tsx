@@ -15,7 +15,7 @@ export function ViewModeToggle() {
 
   return (
     <div
-      className="flex items-center bg-zinc-900 border border-zinc-700 rounded-md overflow-hidden"
+      className="flex items-center bg-panel border border-subtle rounded-md overflow-hidden"
       data-testid="view-mode-toggle"
     >
       {MODES.map((mode) => (
@@ -25,11 +25,11 @@ export function ViewModeToggle() {
           onClick={() => setViewMode(mode.value)}
           title={mode.label}
           className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+            'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
             viewMode === mode.value
-              ? 'bg-blue-600 text-white'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-          )}
+              ? 'bg-primary text-primary-foreground'
+              : 'text-dim hover:text-soft hover:bg-elevated'
+            )}
         >
           {mode.icon}
           <span className="hidden sm:inline">{mode.label}</span>

@@ -69,14 +69,14 @@ describe('browser viewer sidebar controls', () => {
   test('view mode toggle switches mesh, point cloud, and both', async () => {
     const screen = await render(<ViewModeToggle />)
 
-    await expect.element(screen.getByTestId('view-mode-mesh')).toHaveClass('bg-blue-600')
+    await expect.element(screen.getByTestId('view-mode-mesh')).toHaveClass('bg-primary')
 
     await screen.getByTestId('view-mode-pointcloud').click()
-    await expect.element(screen.getByTestId('view-mode-pointcloud')).toHaveClass('bg-blue-600')
+    await expect.element(screen.getByTestId('view-mode-pointcloud')).toHaveClass('bg-primary')
     expect(useViewerStore.getState().viewMode).toBe('pointcloud')
 
     await screen.getByTestId('view-mode-both').click()
-    await expect.element(screen.getByTestId('view-mode-both')).toHaveClass('bg-blue-600')
+    await expect.element(screen.getByTestId('view-mode-both')).toHaveClass('bg-primary')
     expect(useViewerStore.getState().viewMode).toBe('both')
   })
 
@@ -89,7 +89,7 @@ describe('browser viewer sidebar controls', () => {
     await expect.element(screen.getByTestId('scene-item-scan-c')).toBeVisible()
 
     await screen.getByTestId('scene-item-scan-b').click()
-    await expect.element(screen.getByTestId('scene-item-scan-b')).toHaveClass('bg-blue-600/20')
+    await expect.element(screen.getByTestId('scene-item-scan-b')).toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().activeSceneId).toBe('scan-b')
   })
 

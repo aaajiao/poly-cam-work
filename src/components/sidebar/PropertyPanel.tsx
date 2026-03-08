@@ -5,8 +5,8 @@ import { ColorMapControls } from './ColorMapControls'
 function InfoRow({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex justify-between items-center py-1">
-      <span className="text-zinc-500 text-xs">{label}</span>
-      <span className="text-zinc-300 text-xs font-mono">{value}</span>
+      <span className="text-faint text-xs">{label}</span>
+      <span className="text-soft text-xs font-mono">{value}</span>
     </div>
   )
 }
@@ -29,7 +29,7 @@ export function PropertyPanel() {
 
   if (!activeScene) {
     return (
-      <div className="text-zinc-600 text-xs text-center py-4">
+        <div className="text-faint text-xs text-center py-4">
         No scene selected
       </div>
     )
@@ -38,14 +38,14 @@ export function PropertyPanel() {
   return (
     <div className="space-y-3" data-testid="property-panel">
       <div>
-        <p className="text-zinc-200 text-sm font-medium truncate">{activeScene.name}</p>
-        <p className="text-zinc-500 text-xs mt-0.5">
+        <p className="text-strong text-sm font-medium truncate">{activeScene.name}</p>
+        <p className="text-faint text-xs mt-0.5">
           {viewMode === 'mesh' ? 'Mesh view' : viewMode === 'pointcloud' ? 'Point cloud view' : 'Both'}
         </p>
       </div>
 
       {activeScene.metadata && (
-        <div className="border-t border-zinc-800 pt-2 space-y-0.5">
+        <div className="border-t border-subtle pt-2 space-y-0.5">
           {activeScene.metadata.pointCount > 0 && (
             <InfoRow label="Points" value={formatNumber(activeScene.metadata.pointCount)} />
           )}
@@ -77,8 +77,8 @@ export function ToolsPanel() {
       {(viewMode === 'pointcloud' || viewMode === 'both') && (
         <div>
           <div className="flex justify-between items-center mb-1">
-            <span className="text-zinc-500 text-xs">Point size</span>
-            <span className="text-zinc-300 text-xs font-mono">{pointSize.toFixed(3)}</span>
+              <span className="text-faint text-xs">Point size</span>
+              <span className="text-soft text-xs font-mono">{pointSize.toFixed(3)}</span>
           </div>
           <input
             type="range"
@@ -87,7 +87,7 @@ export function ToolsPanel() {
             step="0.001"
             value={pointSize}
             onChange={(e) => setPointSize(parseFloat(e.target.value))}
-            className="w-full accent-blue-500"
+            className="w-full accent-[var(--primary)]"
             data-testid="point-size-slider"
           />
         </div>
@@ -95,7 +95,7 @@ export function ToolsPanel() {
 
       <ClipControls />
 
-      <div className="border-t border-zinc-800 pt-2">
+      <div className="border-t border-subtle pt-2">
         <ColorMapControls />
       </div>
     </div>

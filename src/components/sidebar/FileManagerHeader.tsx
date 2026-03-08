@@ -25,7 +25,7 @@ export function FileManagerHeader({
   return (
     <>
       <div className="mb-2 flex items-center justify-between px-1">
-        <p className="text-xs text-zinc-500 uppercase tracking-wider">Scenes</p>
+        <p className="text-xs text-faint uppercase tracking-wider">Scenes</p>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -33,10 +33,10 @@ export function FileManagerHeader({
             disabled={isRefreshing}
             onClick={onRefresh}
             className={cn(
-              'flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
+              'ui-hover-emphasis flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
               isRefreshing
-                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                ? 'bg-panel text-faint cursor-not-allowed'
+                : 'bg-panel text-dim hover:bg-elevated hover:text-soft'
             )}
           >
             <RefreshCw size={12} className={cn(isRefreshing && 'animate-spin')} />
@@ -48,10 +48,10 @@ export function FileManagerHeader({
             disabled={!canSyncPresets}
             onClick={onSyncPresets}
             className={cn(
-              'flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
+              'ui-hover-emphasis flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors',
               !canSyncPresets
-                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                : 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30'
+                ? 'bg-panel text-faint cursor-not-allowed'
+                : 'ui-action-success'
             )}
           >
             {isSyncingPresets ? (
@@ -73,13 +73,13 @@ export function FileManagerHeader({
       </div>
 
       {syncError && (
-        <p className="mb-2 px-1 text-[11px] text-red-400" data-testid="sync-error">
+          <p className="mb-2 px-1 text-[11px] text-danger" data-testid="sync-error">
           {syncError}
         </p>
       )}
 
       {syncNotice && !syncError && (
-        <p className="mb-2 px-1 text-[11px] text-emerald-400" data-testid="sync-notice">
+          <p className="mb-2 px-1 text-[11px] text-success" data-testid="sync-notice">
           {syncNotice}
         </p>
       )}
