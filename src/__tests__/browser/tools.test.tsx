@@ -26,11 +26,11 @@ describe('browser toolbar tools', () => {
   test('orbit tool is active by default and measure can be activated', async () => {
     const screen = await render(<Toolbar />)
 
-    await expect.element(screen.getByTestId('tool-orbit')).toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('tool-orbit')).toHaveClass('bg-accent-soft')
     await screen.getByTestId('tool-measure').click()
 
-    await expect.element(screen.getByTestId('tool-measure')).toHaveClass('bg-primary')
-    await expect.element(screen.getByTestId('tool-orbit')).not.toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('tool-measure')).toHaveClass('bg-accent-soft')
+    await expect.element(screen.getByTestId('tool-orbit')).not.toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().toolMode).toBe('measure')
   })
 
@@ -38,12 +38,12 @@ describe('browser toolbar tools', () => {
     const screen = await render(<Toolbar />)
 
     await screen.getByTestId('clip-toggle').click()
-    await expect.element(screen.getByTestId('clip-toggle')).toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('clip-toggle')).toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().clipPlane.enabled).toBe(true)
     expect(useViewerStore.getState().toolMode).toBe('orbit')
 
     await screen.getByTestId('clip-toggle').click()
-    await expect.element(screen.getByTestId('clip-toggle')).not.toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('clip-toggle')).not.toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().clipPlane.enabled).toBe(false)
     expect(useViewerStore.getState().toolMode).toBe('orbit')
   })
@@ -53,7 +53,7 @@ describe('browser toolbar tools', () => {
 
     await screen.getByTestId('tool-annotate').click()
 
-    await expect.element(screen.getByTestId('tool-annotate')).toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('tool-annotate')).toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().toolMode).toBe('annotate')
     expect(useViewerStore.getState().annotationsPanelOpen).toBe(true)
   })
@@ -62,14 +62,14 @@ describe('browser toolbar tools', () => {
     const screen = await render(<Toolbar />)
 
     const toggle = screen.getByTestId('toggle-annotations-btn')
-    await expect.element(toggle).toHaveClass('bg-primary')
+    await expect.element(toggle).toHaveClass('bg-accent-soft')
 
     await toggle.click()
     await expect.element(toggle).toHaveClass('bg-panel')
     expect(useViewerStore.getState().annotationsVisible).toBe(false)
 
     await toggle.click()
-    await expect.element(toggle).toHaveClass('bg-primary')
+    await expect.element(toggle).toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().annotationsVisible).toBe(true)
   })
 

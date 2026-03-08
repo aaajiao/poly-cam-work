@@ -39,16 +39,17 @@ export function Toolbar() {
         <Tooltip>
           <TooltipTrigger asChild>
              <button
+               type="button"
                data-testid="clip-toggle"
                disabled={presentationMode}
                onClick={toggleClip}
-               className={cn(
-                  'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
-                  presentationMode && 'cursor-not-allowed border-subtle text-faint hover:bg-panel hover:text-faint',
-                  clipEnabled
-                    ? 'bg-primary text-primary-foreground border-primary'
+                className={cn(
+                   'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
+                   presentationMode && 'cursor-not-allowed border-subtle text-faint hover:bg-panel hover:text-faint',
+                   clipEnabled
+                    ? 'bg-accent-soft text-accent border-accent-soft hover:bg-accent-soft'
                     : 'bg-panel text-dim border-subtle hover:text-soft hover:bg-elevated'
-                )}
+                 )}
             >
               <Scissors size={14} />
               <span className="hidden md:inline">Clip</span>

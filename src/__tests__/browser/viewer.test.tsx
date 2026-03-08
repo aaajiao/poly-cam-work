@@ -69,14 +69,14 @@ describe('browser viewer sidebar controls', () => {
   test('view mode toggle switches mesh, point cloud, and both', async () => {
     const screen = await render(<ViewModeToggle />)
 
-    await expect.element(screen.getByTestId('view-mode-mesh')).toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('view-mode-mesh')).toHaveClass('bg-accent-soft')
 
     await screen.getByTestId('view-mode-pointcloud').click()
-    await expect.element(screen.getByTestId('view-mode-pointcloud')).toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('view-mode-pointcloud')).toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().viewMode).toBe('pointcloud')
 
     await screen.getByTestId('view-mode-both').click()
-    await expect.element(screen.getByTestId('view-mode-both')).toHaveClass('bg-primary')
+    await expect.element(screen.getByTestId('view-mode-both')).toHaveClass('bg-accent-soft')
     expect(useViewerStore.getState().viewMode).toBe('both')
   })
 

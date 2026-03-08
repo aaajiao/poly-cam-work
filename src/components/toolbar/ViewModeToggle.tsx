@@ -20,16 +20,17 @@ export function ViewModeToggle() {
     >
       {MODES.map((mode) => (
         <button
+          type="button"
           key={mode.value}
           data-testid={`view-mode-${mode.value}`}
           onClick={() => setViewMode(mode.value)}
           title={mode.label}
-          className={cn(
-            'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
-            viewMode === mode.value
-              ? 'bg-primary text-primary-foreground'
-              : 'text-dim hover:text-soft hover:bg-elevated'
-            )}
+            className={cn(
+              'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+              viewMode === mode.value
+                ? 'border-r border-accent-soft bg-accent-soft text-accent'
+                : 'text-dim hover:text-soft hover:bg-elevated'
+             )}
         >
           {mode.icon}
           <span className="hidden sm:inline">{mode.label}</span>

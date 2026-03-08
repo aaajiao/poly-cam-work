@@ -28,6 +28,7 @@ export function ToolButtons() {
             <Tooltip key={tool.value}>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   data-testid={`tool-${tool.value}`}
                   disabled={presentationMode}
                   onClick={() => setToolMode(tool.value)}
@@ -35,7 +36,7 @@ export function ToolButtons() {
                     'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
                     presentationMode && 'cursor-not-allowed text-faint hover:bg-transparent hover:text-faint',
                     toolMode === tool.value
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'border-r border-accent-soft bg-accent-soft text-accent'
                       : 'text-dim hover:text-soft hover:bg-elevated'
                   )}
                 >
@@ -53,6 +54,7 @@ export function ToolButtons() {
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              type="button"
               data-testid="toggle-annotations-btn"
               disabled={presentationMode}
               onClick={toggleAnnotationsVisible}
@@ -60,7 +62,7 @@ export function ToolButtons() {
                 'ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors',
                 presentationMode && 'cursor-not-allowed border-subtle text-faint hover:bg-panel hover:text-faint',
                 annotationsVisible
-                  ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
+                  ? 'bg-accent-soft text-accent border-accent-soft hover:bg-accent-soft'
                   : 'bg-panel text-faint border-subtle hover:text-soft hover:bg-elevated'
               )}
             >
