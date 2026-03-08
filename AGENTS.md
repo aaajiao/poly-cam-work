@@ -160,6 +160,8 @@ Keep model `glbUrl`/`plyUrl` as valid HTTP(S) URLs with non-placeholder hosts, o
 
 Use a 3-layer test model and keep responsibilities strict.
 
+Before adding or debugging tests, read `docs/TESTING.md` for command selection, the repo's two Playwright paths, and local hang/stall troubleshooting.
+
 ### Layer boundaries
 
 1. **Unit (Vitest + jsdom)**
@@ -203,6 +205,8 @@ vercel dev
 - E2E should cover only what must be validated in full app runtime.
 - Prefer browser Vitest for annotation/store/UI behavior validation.
 - Do not grow E2E suite for state transitions or component internals.
+- If a UI behavior can be proven in `bun run test:vitest:browser`, do that before reaching for Playwright CLI.
+- Treat `bun run test:e2e:ui` as a debugging tool, not the default test path; it stays interactive until stopped.
 
 ---
 

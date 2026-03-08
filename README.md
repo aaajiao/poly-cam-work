@@ -92,6 +92,14 @@ bun run test:all
 bun run build
 ```
 
+## Testing Workflow
+
+See `docs/TESTING.md` for the repo's test-layer rules, command selection, and Playwright hang troubleshooting.
+
+- `bun run test:vitest:browser` is the main path for browser-based UI interaction coverage.
+- `bun run test:e2e` is the Playwright smoke suite for app-shell and critical runtime checks.
+- `bun run test:e2e:ui` is a debugging mode and stays interactive until you stop it.
+
 ## Publish Workflow (Vercel)
 
 Authenticated editor flow:
