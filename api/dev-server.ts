@@ -77,6 +77,10 @@ const routes: Route[] = [
     pattern: /^\/api\/rollback\/[^/]+\/?$/,
     load: () => import('./rollback/[sceneId].ts'),
   },
+  {
+    pattern: /^\/api\/discover\/local-models\/?$/,
+    load: () => import('./discover/local-models.ts'),
+  },
 ]
 
 const port = Number.parseInt(process.env.API_PORT ?? '3000', 10)

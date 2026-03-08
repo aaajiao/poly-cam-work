@@ -7,3 +7,4 @@ coverage
 .opencode
 glb
 ply
+api/discover
