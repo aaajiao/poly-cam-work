@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware'
 import type {
   ScanScene,
   OfficialSceneSyncStatus,
-  OfficialSceneSyncDiffEntry,
   ViewMode,
   ToolMode,
   Measurement,
@@ -15,6 +14,19 @@ import type {
   SceneDraft,
 } from '@/types'
 import { PRESET_SCENES } from './presetScenes'
+import {
+  applyDiscoveredSceneSyncDiff,
+  applyOfficialSceneStatus,
+  asBootstrapScene,
+  asPublishedScene,
+  clearSceneSyncOverride,
+  dedupeScenesById,
+  deriveOfficialSceneSyncStatus,
+  hasValidSceneAssetUrls,
+  normalizeRecoverableSyncOverrides,
+  resolveActiveSceneFromCatalog,
+  resolveOfficialSceneSyncDiff,
+} from './sceneCatalog'
 import { imageStorage } from '@/storage/imageStorage'
 import { vercelBlobImageStorage } from '@/storage/vercelBlobImageStorage'
 import { vercelBlobModelStorage } from '@/storage/vercelBlobModelStorage'
@@ -85,101 +97,6 @@ function normalizeDraft(sceneId: string, draft: SceneDraft): SceneDraft {
   }
 }
 
-function isPlaceholderHost(hostname: string) {
-  const normalized = hostname.trim().toLowerCase()
-  return (
-    normalized === 'example' ||
-    normalized === 'example.com' ||
-    normalized.endsWith('.example') ||
-    normalized.endsWith('.example.com')
-  )
-}
-
-function hasValidSceneAssetUrls(scene: ScanScene) {
-  try {
-    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
-    const glb = new URL(scene.glbUrl, base)
-    const ply = new URL(scene.plyUrl, base)
-
-    if ((glb.protocol !== 'https:' && glb.protocol !== 'http:') || (ply.protocol !== 'https:' && ply.protocol !== 'http:')) {
-      return false
-    }
-
-    return !isPlaceholderHost(glb.hostname) && !isPlaceholderHost(ply.hostname)
-  } catch {
-    return false
-  }
-}
-
-function applyOfficialSceneStatus(
-  scene: ScanScene,
-  catalogSource: 'bootstrap' | 'discovered' | 'published',
-  pairCompleteness: 'complete' | 'missing-glb' | 'missing-ply' = 'complete',
-  syncStatus: OfficialSceneSyncStatus = catalogSource === 'published' ? 'synced' : 'unsynced'
-): ScanScene {
-  return {
-    ...scene,
-    catalogSource,
-    officialStatus: {
-      sceneId: scene.id,
-      catalogSource,
-      pairCompleteness,
-      syncStatus,
-    },
-  }
-}
-
-function asBootstrapScene(scene: ScanScene) {
-  return applyOfficialSceneStatus(scene, 'bootstrap', 'complete', 'synced')
-}
-
-function asPublishedScene(scene: ScanScene) {
-  return applyOfficialSceneStatus(scene, 'published', 'complete', 'synced')
-}
-
-function deriveOfficialSceneSyncStatus(
-  sceneId: string,
-  publishedIds: Set<string>,
-  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>
-): OfficialSceneSyncStatus {
-  const override = syncOverridesByScene[sceneId]
-  if (override === 'syncing' || override === 'error') {
-    return override
-  }
-
-  return publishedIds.has(sceneId) ? 'synced' : 'unsynced'
-}
-
-function applyDiscoveredSceneSyncDiff(
-  discoveredScenes: ScanScene[],
-  publishedScenes: ScanScene[],
-  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>
-): ScanScene[] {
-  const publishedIds = new Set(publishedScenes.map((scene) => scene.id))
-
-  return discoveredScenes.map((scene) =>
-    applyOfficialSceneStatus(
-      scene,
-      'discovered',
-      'complete',
-      deriveOfficialSceneSyncStatus(scene.id, publishedIds, syncOverridesByScene)
-    )
-  )
-}
-
-function clearSceneSyncOverride(
-  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>,
-  sceneId: string
-) {
-  if (!(sceneId in syncOverridesByScene)) {
-    return syncOverridesByScene
-  }
-
-  const next = { ...syncOverridesByScene }
-  delete next[sceneId]
-  return next
-}
-
 function bumpSceneMutationVersion(
   versions: Record<string, number>,
   sceneId: string
@@ -188,33 +105,6 @@ function bumpSceneMutationVersion(
     ...versions,
     [sceneId]: (versions[sceneId] ?? 0) + 1,
   }
-}
-
-function dedupeScenesById(scenes: ScanScene[]) {
-  const seen = new Set<string>()
-  const deduped: ScanScene[] = []
-
-  for (const scene of scenes) {
-    if (seen.has(scene.id)) {
-      continue
-    }
-    seen.add(scene.id)
-    deduped.push(scene)
-  }
-
-  return deduped
-}
-
-function normalizeRecoverableSyncOverrides(
-  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>
-): Record<string, OfficialSceneSyncStatus> {
-  const normalized: Record<string, OfficialSceneSyncStatus> = {}
-
-  for (const [sceneId, status] of Object.entries(syncOverridesByScene)) {
-    normalized[sceneId] = status === 'syncing' ? 'error' : status
-  }
-
-  return normalized
 }
 
 function isLocalImage(image: AnnotationImage): image is Extract<AnnotationImage, { localId: string }> {
@@ -1717,64 +1607,7 @@ export const useViewerStore = create<ViewerState>()(
 
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__store = useViewerStore
 
-type ActiveSceneCatalogState = Pick<
-  ViewerState,
-  'activeSceneId' | 'discoveredScenes' | 'publishedScenes' | 'scenes' | 'uploadedScenes'
->
-
-type OfficialSceneCatalogState = Pick<
-  ViewerState,
-  'discoveredScenes' | 'publishedScenes' | 'officialSceneSyncOverridesByScene'
->
-
-export function resolveOfficialSceneSyncDiff(state: OfficialSceneCatalogState): OfficialSceneSyncDiffEntry[] {
-  const discoveredById = new Map(state.discoveredScenes.map((scene) => [scene.id, scene]))
-  const publishedById = new Map(state.publishedScenes.map((scene) => [scene.id, scene]))
-  const sceneIds = Array.from(new Set([...discoveredById.keys(), ...publishedById.keys()])).sort()
-  const publishedIds = new Set(publishedById.keys())
-
-  return sceneIds.map((sceneId) => ({
-    sceneId,
-    discovered: discoveredById.has(sceneId),
-    published: publishedById.has(sceneId),
-    syncStatus: deriveOfficialSceneSyncStatus(
-      sceneId,
-      publishedIds,
-      state.officialSceneSyncOverridesByScene
-    ),
-  }))
-}
-
-export function resolveOfficialSceneSyncStatusBySceneId(
-  state: OfficialSceneCatalogState
-): Record<string, OfficialSceneSyncStatus> {
-  return Object.fromEntries(
-    resolveOfficialSceneSyncDiff(state).map((entry) => [entry.sceneId, entry.syncStatus])
-  )
-}
-
-export function resolveActiveSceneFromCatalog(state: ActiveSceneCatalogState): ScanScene | null {
-  if (!state.activeSceneId) {
-    return null
-  }
-
-  const discoveredScene = state.discoveredScenes.find((scene) => scene.id === state.activeSceneId)
-  if (discoveredScene) {
-    return discoveredScene
-  }
-
-  const publishedScene = state.publishedScenes.find((scene) => scene.id === state.activeSceneId)
-  if (publishedScene && hasValidSceneAssetUrls(publishedScene)) {
-    return publishedScene
-  }
-
-  const bootstrapScene = state.scenes.find((scene) => scene.id === state.activeSceneId)
-  if (bootstrapScene) {
-    return bootstrapScene
-  }
-
-  return state.uploadedScenes.find((scene) => scene.id === state.activeSceneId) ?? null
-}
+export { resolveActiveSceneFromCatalog, resolveOfficialSceneSyncDiff, resolveOfficialSceneSyncStatusBySceneId } from './sceneCatalog'
 
 export const useActiveScene = () => useViewerStore(resolveActiveSceneFromCatalog)
 
