@@ -1,11 +1,61 @@
-// Scan scene definition
-export interface ScanScene {
+export type SceneId = string
+
+export type OfficialSceneCatalogSource = 'bootstrap' | 'discovered' | 'published'
+
+export type OfficialScenePairCompleteness = 'complete' | 'missing-glb' | 'missing-ply'
+
+export type OfficialSceneSyncStatus = 'unsynced' | 'syncing' | 'synced' | 'error'
+
+export interface OfficialSceneStatus {
+  sceneId: SceneId
+  catalogSource: OfficialSceneCatalogSource
+  pairCompleteness: OfficialScenePairCompleteness
+  syncStatus: OfficialSceneSyncStatus
+}
+
+export interface OfficialSceneSyncDiffEntry {
+  sceneId: SceneId
+  discovered: boolean
+  published: boolean
+  syncStatus: OfficialSceneSyncStatus
+}
+
+// Discovery validation errors (deterministic, UI-ready)
+export type DiscoveryValidationErrorCode =
+  | 'orphan-glb'
+  | 'orphan-ply'
+  | 'duplicate-basename'
+  | 'malformed-glb'
+  | 'malformed-ply'
+  | 'invalid-basename'
+
+export interface DiscoveryValidationError {
+  code: DiscoveryValidationErrorCode
+  basename: string
+  message: string
+}
+
+export interface DiscoveredSceneCandidate {
   id: string
   name: string
   glbUrl: string
   plyUrl: string
+}
+
+export interface DiscoveryResult {
+  scenes: DiscoveredSceneCandidate[]
+  errors: DiscoveryValidationError[]
+}
+
+// Scan scene definition
+export interface ScanScene {
+  id: SceneId
+  name: string
+  glbUrl: string
+  plyUrl: string
   metadata?: ScanMetadata
-  source?: 'preset' | 'cloud' | 'local'
+  catalogSource?: OfficialSceneCatalogSource
+  officialStatus?: OfficialSceneStatus
   createdAt?: number
   updatedAt?: number
 }

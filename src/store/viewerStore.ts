@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
   ScanScene,
+  OfficialSceneSyncStatus,
+  OfficialSceneSyncDiffEntry,
   ViewMode,
   ToolMode,
   Measurement,
@@ -109,6 +111,75 @@ function hasValidSceneAssetUrls(scene: ScanScene) {
   }
 }
 
+function applyOfficialSceneStatus(
+  scene: ScanScene,
+  catalogSource: 'bootstrap' | 'discovered' | 'published',
+  pairCompleteness: 'complete' | 'missing-glb' | 'missing-ply' = 'complete',
+  syncStatus: OfficialSceneSyncStatus = catalogSource === 'published' ? 'synced' : 'unsynced'
+): ScanScene {
+  return {
+    ...scene,
+    catalogSource,
+    officialStatus: {
+      sceneId: scene.id,
+      catalogSource,
+      pairCompleteness,
+      syncStatus,
+    },
+  }
+}
+
+function asBootstrapScene(scene: ScanScene) {
+  return applyOfficialSceneStatus(scene, 'bootstrap', 'complete', 'synced')
+}
+
+function asPublishedScene(scene: ScanScene) {
+  return applyOfficialSceneStatus(scene, 'published', 'complete', 'synced')
+}
+
+function deriveOfficialSceneSyncStatus(
+  sceneId: string,
+  publishedIds: Set<string>,
+  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>
+): OfficialSceneSyncStatus {
+  const override = syncOverridesByScene[sceneId]
+  if (override === 'syncing' || override === 'error') {
+    return override
+  }
+
+  return publishedIds.has(sceneId) ? 'synced' : 'unsynced'
+}
+
+function applyDiscoveredSceneSyncDiff(
+  discoveredScenes: ScanScene[],
+  publishedScenes: ScanScene[],
+  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>
+): ScanScene[] {
+  const publishedIds = new Set(publishedScenes.map((scene) => scene.id))
+
+  return discoveredScenes.map((scene) =>
+    applyOfficialSceneStatus(
+      scene,
+      'discovered',
+      'complete',
+      deriveOfficialSceneSyncStatus(scene.id, publishedIds, syncOverridesByScene)
+    )
+  )
+}
+
+function clearSceneSyncOverride(
+  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>,
+  sceneId: string
+) {
+  if (!(sceneId in syncOverridesByScene)) {
+    return syncOverridesByScene
+  }
+
+  const next = { ...syncOverridesByScene }
+  delete next[sceneId]
+  return next
+}
+
 function bumpSceneMutationVersion(
   versions: Record<string, number>,
   sceneId: string
@@ -117,6 +188,33 @@ function bumpSceneMutationVersion(
     ...versions,
     [sceneId]: (versions[sceneId] ?? 0) + 1,
   }
+}
+
+function dedupeScenesById(scenes: ScanScene[]) {
+  const seen = new Set<string>()
+  const deduped: ScanScene[] = []
+
+  for (const scene of scenes) {
+    if (seen.has(scene.id)) {
+      continue
+    }
+    seen.add(scene.id)
+    deduped.push(scene)
+  }
+
+  return deduped
+}
+
+function normalizeRecoverableSyncOverrides(
+  syncOverridesByScene: Record<string, OfficialSceneSyncStatus>
+): Record<string, OfficialSceneSyncStatus> {
+  const normalized: Record<string, OfficialSceneSyncStatus> = {}
+
+  for (const [sceneId, status] of Object.entries(syncOverridesByScene)) {
+    normalized[sceneId] = status === 'syncing' ? 'error' : status
+  }
+
+  return normalized
 }
 
 function isLocalImage(image: AnnotationImage): image is Extract<AnnotationImage, { localId: string }> {
@@ -221,7 +319,8 @@ function sanitizeLinks(value: unknown): { url: string; label: string }[] {
 
 interface ViewerState {
   scenes: ScanScene[]
-  cloudScenes: ScanScene[]
+  publishedScenes: ScanScene[]
+  discoveredScenes: ScanScene[]
   uploadedScenes: ScanScene[]
   activeSceneId: string | null
 
@@ -259,6 +358,7 @@ interface ViewerState {
   publishedVersionsByScene: Record<string, number[]>
   sceneMutationVersion: Record<string, number>
   loadRequestVersionByScene: Record<string, number>
+  officialSceneSyncOverridesByScene: Record<string, OfficialSceneSyncStatus>
 
   setPendingAnnotationInput: (input: PendingAnnotationInput | null) => void
   setActiveScene: (id: string) => void
@@ -287,8 +387,15 @@ interface ViewerState {
   setLoading: (loading: boolean, progress?: number, message?: string) => void
   addUploadedScene: (scene: ScanScene) => void
   removeUploadedScene: (id: string) => void
+  addDiscoveredScene: (scene: ScanScene) => void
+  removeDiscoveredScene: (id: string) => void
   loadCloudScenes: () => Promise<void>
-  addCloudScene: (scene: ScanScene) => void
+  loadDiscoveredScenes: () => Promise<void>
+  addPublishedScene: (scene: ScanScene) => void
+  setOfficialSceneSyncStatus: (sceneId: string, status: OfficialSceneSyncStatus) => void
+  clearOfficialSceneSyncStatus: (sceneId: string) => void
+  markOfficialSceneSyncSuccess: (scene: ScanScene) => void
+  syncDiscoveredScene: (sceneId: string) => Promise<void>
   syncPresetScenesToCloud: () => Promise<ScanScene[]>
   loadDraft: (sceneId: string) => Promise<void>
   loadPublishedVersions: (sceneId: string) => Promise<void>
@@ -307,8 +414,9 @@ interface ViewerState {
 export const useViewerStore = create<ViewerState>()(
   persist(
     (set, get) => ({
-      scenes: PRESET_SCENES,
-      cloudScenes: [],
+      scenes: PRESET_SCENES.map(asBootstrapScene),
+      publishedScenes: [],
+      discoveredScenes: [],
       uploadedScenes: [],
       activeSceneId: PRESET_SCENES[0].id,
 
@@ -351,6 +459,7 @@ export const useViewerStore = create<ViewerState>()(
       publishedVersionsByScene: {},
       sceneMutationVersion: {},
       loadRequestVersionByScene: {},
+      officialSceneSyncOverridesByScene: {},
 
       setPendingAnnotationInput: (pendingAnnotationInput) => set({ pendingAnnotationInput }),
       setActiveScene: (id) => set({
@@ -506,47 +615,282 @@ export const useViewerStore = create<ViewerState>()(
           openAnnotationPanelIds: [],
           hoveredAnnotationId: null,
         })),
+      removeUploadedScene: (id) =>
+        set((state) => {
+          const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
+          for (const annotation of removedAnnotations) {
+            for (const localId of collectLocalImageIds(annotation.images)) {
+              imageStorage.delete(localId).catch(console.error)
+            }
+          }
+
+          const removedIds = new Set(removedAnnotations.map((a) => a.id))
+          return {
+            uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
+            annotations: state.annotations.filter((a) => a.sceneId !== id),
+            draftDirtyByScene: (() => {
+              const next = { ...state.draftDirtyByScene }
+              delete next[id]
+              return next
+            })(),
+            selectedAnnotationId:
+              state.selectedAnnotationId && removedIds.has(state.selectedAnnotationId)
+                ? null
+                : state.selectedAnnotationId,
+            openAnnotationPanelIds: state.openAnnotationPanelIds.filter((panelId) => !removedIds.has(panelId)),
+            hoveredAnnotationId:
+              state.hoveredAnnotationId && removedIds.has(state.hoveredAnnotationId)
+                ? null
+                : state.hoveredAnnotationId,
+          }
+        }),
+
+       addDiscoveredScene: (scene) =>
+          set((state) => {
+           if (!scene.glbUrl || !scene.plyUrl) {
+             return state
+           }
+           // Enforce collision detection as explicit failure
+           // Check if sceneId already exists in any catalog (bootstrap, discovered, published)
+
+            const allExistingIds = new Set([
+              ...state.scenes.map((s) => s.id),
+              ...state.discoveredScenes.map((s) => s.id),
+            ])
+           if (allExistingIds.has(scene.id)) {
+             // Collision detected: return state unchanged (no mutation)
+             // This is explicit failure, not auto-suffixing or merge-by-id
+             return state
+           }
+            return {
+              discoveredScenes: applyDiscoveredSceneSyncDiff(
+                [
+                  ...state.discoveredScenes,
+                  applyOfficialSceneStatus(scene, 'discovered', 'complete', 'unsynced'),
+                ],
+                state.publishedScenes,
+                state.officialSceneSyncOverridesByScene
+              ),
+              activeSceneId: scene.id,
+              selectedAnnotationId: null,
+              openAnnotationPanelIds: [],
+             hoveredAnnotationId: null,
+           }
+         }),
       loadCloudScenes: async () => {
+        const recoveredOverrides = normalizeRecoverableSyncOverrides(
+          get().officialSceneSyncOverridesByScene
+        )
+
         try {
-          const models = (await modelApi.getModels()).filter((scene) => hasValidSceneAssetUrls(scene))
+          const models = (await modelApi.getModels())
+            .filter((scene) => hasValidSceneAssetUrls(scene))
+            .map(asPublishedScene)
           set((state) => ({
-            cloudScenes: models,
+            publishedScenes: models,
+            officialSceneSyncOverridesByScene: recoveredOverrides,
+            discoveredScenes: applyDiscoveredSceneSyncDiff(
+              state.discoveredScenes,
+              models,
+              recoveredOverrides
+            ),
             activeSceneId:
               state.activeSceneId ??
               (models[0]?.id ?? state.scenes[0]?.id ?? null),
           }))
         } catch {
-          set((state) => ({ cloudScenes: state.cloudScenes }))
+          set((state) => ({
+            publishedScenes: state.publishedScenes,
+            officialSceneSyncOverridesByScene: recoveredOverrides,
+            discoveredScenes: applyDiscoveredSceneSyncDiff(
+              state.discoveredScenes,
+              state.publishedScenes,
+              recoveredOverrides
+            ),
+          }))
         }
       },
-      addCloudScene: (scene) => {
+       loadDiscoveredScenes: async () => {
+         if (!import.meta.env.DEV) return
+            try {
+              const result = await modelApi.discoverLocalScenes()
+              const presetIds = new Set(get().scenes.map((s) => s.id))
+              const publishedIds = new Set(get().publishedScenes.map((s) => s.id))
+              const recoveredOverrides = normalizeRecoverableSyncOverrides(
+                get().officialSceneSyncOverridesByScene
+              )
+              const validScenes = dedupeScenesById(result.scenes).filter(
+                (scene) => !presetIds.has(scene.id)
+              )
+              const discovered = validScenes.map((scene) =>
+                applyOfficialSceneStatus(
+                  scene,
+                  'discovered',
+                  'complete',
+                  deriveOfficialSceneSyncStatus(
+                    scene.id,
+                    publishedIds,
+                    recoveredOverrides
+                  )
+                )
+              )
+              set((state) => ({
+                officialSceneSyncOverridesByScene: recoveredOverrides,
+                discoveredScenes: applyDiscoveredSceneSyncDiff(
+                  discovered,
+                  state.publishedScenes,
+                  recoveredOverrides
+                ),
+                activeSceneId:
+                  state.activeSceneId ??
+                  (discovered[0]?.id ?? state.scenes[0]?.id ?? null),
+             }))
+         } catch {
+           set((state) => ({ discoveredScenes: state.discoveredScenes }))
+         }
+       },
+      addPublishedScene: (scene) => {
         set((state) => ({
-          cloudScenes: [scene, ...state.cloudScenes.filter((item) => item.id !== scene.id)],
+          publishedScenes: [
+            asPublishedScene(scene),
+            ...state.publishedScenes.filter((item) => item.id !== scene.id),
+          ],
+          discoveredScenes: applyDiscoveredSceneSyncDiff(
+            state.discoveredScenes,
+            [
+              asPublishedScene(scene),
+              ...state.publishedScenes.filter((item) => item.id !== scene.id),
+            ],
+            clearSceneSyncOverride(state.officialSceneSyncOverridesByScene, scene.id)
+          ),
+          officialSceneSyncOverridesByScene: clearSceneSyncOverride(
+            state.officialSceneSyncOverridesByScene,
+            scene.id
+          ),
           activeSceneId: scene.id,
           selectedAnnotationId: null,
           openAnnotationPanelIds: [],
           hoveredAnnotationId: null,
         }))
       },
+      setOfficialSceneSyncStatus: (sceneId, status) =>
+        set((state) => {
+          const nextOverrides = {
+            ...state.officialSceneSyncOverridesByScene,
+            [sceneId]: status,
+          }
+
+          return {
+            officialSceneSyncOverridesByScene: nextOverrides,
+            discoveredScenes: applyDiscoveredSceneSyncDiff(
+              state.discoveredScenes,
+              state.publishedScenes,
+              nextOverrides
+            ),
+          }
+        }),
+      clearOfficialSceneSyncStatus: (sceneId) =>
+        set((state) => {
+          const nextOverrides = clearSceneSyncOverride(
+            state.officialSceneSyncOverridesByScene,
+            sceneId
+          )
+
+          return {
+            officialSceneSyncOverridesByScene: nextOverrides,
+            discoveredScenes: applyDiscoveredSceneSyncDiff(
+              state.discoveredScenes,
+              state.publishedScenes,
+              nextOverrides
+            ),
+          }
+        }),
+      markOfficialSceneSyncSuccess: (scene) =>
+        set((state) => {
+          const nextPublishedScenes = [
+            asPublishedScene(scene),
+            ...state.publishedScenes.filter((item) => item.id !== scene.id),
+          ]
+          const nextOverrides = clearSceneSyncOverride(
+            state.officialSceneSyncOverridesByScene,
+            scene.id
+          )
+
+          return {
+            publishedScenes: nextPublishedScenes,
+            discoveredScenes: applyDiscoveredSceneSyncDiff(
+              state.discoveredScenes,
+              nextPublishedScenes,
+              nextOverrides
+            ),
+            officialSceneSyncOverridesByScene: nextOverrides,
+            sceneMutationVersion: bumpSceneMutationVersion(state.sceneMutationVersion, scene.id),
+          }
+        }),
+      syncDiscoveredScene: async (sceneId) => {
+        const scene = get().discoveredScenes.find((s) => s.id === sceneId)
+        if (!scene) {
+          throw new Error(`Discovered scene not found: ${sceneId}`)
+        }
+
+        await get().refreshAuthSession()
+        if (!get().isAuthenticated) {
+          throw new Error('Login required to sync scene.')
+        }
+
+        get().setOfficialSceneSyncStatus(sceneId, 'syncing')
+
+        let glbUrl: string
+        let plyUrl: string
+
+        try {
+          ;[glbUrl, plyUrl] = await Promise.all([
+            vercelBlobModelStorage.uploadFromUrl(scene.glbUrl, {
+              sceneKey: scene.id,
+              kind: 'glb',
+            }),
+            vercelBlobModelStorage.uploadFromUrl(scene.plyUrl, {
+              sceneKey: scene.id,
+              kind: 'ply',
+            }),
+          ])
+        } catch (error) {
+          get().setOfficialSceneSyncStatus(sceneId, 'error')
+          throw error
+        }
+
+        try {
+          const registeredScene = await modelApi.registerOfficialScene({
+            id: scene.id,
+            name: scene.name,
+            glbUrl,
+            plyUrl,
+          })
+          get().markOfficialSceneSyncSuccess(registeredScene)
+        } catch (error) {
+          get().setOfficialSceneSyncStatus(sceneId, 'error')
+          throw error
+        }
+      },
       syncPresetScenesToCloud: async () => {
         await get().refreshAuthSession()
         if (!get().isAuthenticated) {
-          throw new Error('Login required to sync preset models.')
+          throw new Error('Login required to sync official scenes.')
         }
 
         const presetScenes = get().scenes
-        const currentCloudScenes = get().cloudScenes
-        const cloudById = new Map(currentCloudScenes.map((scene) => [scene.id, scene]))
+        const currentPublishedScenes = get().publishedScenes
+        const publishedById = new Map(currentPublishedScenes.map((scene) => [scene.id, scene]))
         const syncedModelsInput: Array<{ id: string; name: string; glbUrl: string; plyUrl: string }> = []
 
         for (const scene of presetScenes) {
-          const existingCloudScene = cloudById.get(scene.id)
-          if (existingCloudScene && hasValidSceneAssetUrls(existingCloudScene)) {
+          const existingPublishedScene = publishedById.get(scene.id)
+          if (existingPublishedScene && hasValidSceneAssetUrls(existingPublishedScene)) {
             syncedModelsInput.push({
               id: scene.id,
               name: scene.name,
-              glbUrl: existingCloudScene.glbUrl,
-              plyUrl: existingCloudScene.plyUrl,
+              glbUrl: existingPublishedScene.glbUrl,
+              plyUrl: existingPublishedScene.plyUrl,
             })
             continue
           }
@@ -572,7 +916,14 @@ export const useViewerStore = create<ViewerState>()(
 
         const syncedModels = await modelApi.syncModels(syncedModelsInput)
         set((state) => ({
-          cloudScenes: syncedModels.filter((scene) => hasValidSceneAssetUrls(scene)),
+          publishedScenes: syncedModels
+            .filter((scene) => hasValidSceneAssetUrls(scene))
+            .map(asPublishedScene),
+          discoveredScenes: applyDiscoveredSceneSyncDiff(
+            state.discoveredScenes,
+            syncedModels.filter((scene) => hasValidSceneAssetUrls(scene)).map(asPublishedScene),
+            state.officialSceneSyncOverridesByScene
+          ),
           activeSceneId: syncedModels[0]?.id ?? state.activeSceneId,
           selectedAnnotationId: null,
           openAnnotationPanelIds: [],
@@ -581,7 +932,7 @@ export const useViewerStore = create<ViewerState>()(
 
         return syncedModels
       },
-      removeUploadedScene: (id) =>
+      removeDiscoveredScene: (id) =>
         set((state) => {
           const removedAnnotations = state.annotations.filter((a) => a.sceneId === id)
           for (const annotation of removedAnnotations) {
@@ -591,7 +942,7 @@ export const useViewerStore = create<ViewerState>()(
           }
           const removedIds = new Set(removedAnnotations.map((a) => a.id))
           return {
-            uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
+            discoveredScenes: state.discoveredScenes.filter((s) => s.id !== id),
             annotations: state.annotations.filter((a) => a.sceneId !== id),
             draftDirtyByScene: (() => {
               const next = { ...state.draftDirtyByScene }
@@ -1324,9 +1675,32 @@ export const useViewerStore = create<ViewerState>()(
           state.draftDirtyByScene = {}
         }
 
+        if (!Array.isArray(state.discoveredScenes)) {
+          state.discoveredScenes = []
+        }
+
+        if (
+          typeof state.officialSceneSyncOverridesByScene !== 'object' ||
+          state.officialSceneSyncOverridesByScene === null
+        ) {
+          state.officialSceneSyncOverridesByScene = {}
+        }
+
+        state.officialSceneSyncOverridesByScene = normalizeRecoverableSyncOverrides(
+          state.officialSceneSyncOverridesByScene as Record<string, OfficialSceneSyncStatus>
+        )
+
+        state.discoveredScenes = applyDiscoveredSceneSyncDiff(
+          dedupeScenesById(state.discoveredScenes as ScanScene[]),
+          [],
+          state.officialSceneSyncOverridesByScene as Record<string, OfficialSceneSyncStatus>
+        )
+
         return persistedState
       },
       partialize: (state) => ({
+        discoveredScenes: state.discoveredScenes,
+        officialSceneSyncOverridesByScene: state.officialSceneSyncOverridesByScene,
         annotations: state.annotations,
         draftRevisionByScene: state.draftRevisionByScene,
         draftRevisionSourceByScene: state.draftRevisionSourceByScene,
@@ -1343,25 +1717,65 @@ export const useViewerStore = create<ViewerState>()(
 
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__store = useViewerStore
 
-export const useActiveScene = () =>
-  useViewerStore((state) => {
-    if (!state.activeSceneId) {
-      return null
-    }
+type ActiveSceneCatalogState = Pick<
+  ViewerState,
+  'activeSceneId' | 'discoveredScenes' | 'publishedScenes' | 'scenes' | 'uploadedScenes'
+>
 
-    const presetScene = state.scenes.find((scene) => scene.id === state.activeSceneId)
-    if (import.meta.env.DEV && presetScene) {
-      return presetScene
-    }
+type OfficialSceneCatalogState = Pick<
+  ViewerState,
+  'discoveredScenes' | 'publishedScenes' | 'officialSceneSyncOverridesByScene'
+>
 
-    const cloudScene = state.cloudScenes.find((scene) => scene.id === state.activeSceneId)
-    if (cloudScene && hasValidSceneAssetUrls(cloudScene)) {
-      return cloudScene
-    }
+export function resolveOfficialSceneSyncDiff(state: OfficialSceneCatalogState): OfficialSceneSyncDiffEntry[] {
+  const discoveredById = new Map(state.discoveredScenes.map((scene) => [scene.id, scene]))
+  const publishedById = new Map(state.publishedScenes.map((scene) => [scene.id, scene]))
+  const sceneIds = Array.from(new Set([...discoveredById.keys(), ...publishedById.keys()])).sort()
+  const publishedIds = new Set(publishedById.keys())
 
-    if (presetScene) {
-      return presetScene
-    }
+  return sceneIds.map((sceneId) => ({
+    sceneId,
+    discovered: discoveredById.has(sceneId),
+    published: publishedById.has(sceneId),
+    syncStatus: deriveOfficialSceneSyncStatus(
+      sceneId,
+      publishedIds,
+      state.officialSceneSyncOverridesByScene
+    ),
+  }))
+}
 
-    return state.uploadedScenes.find((scene) => scene.id === state.activeSceneId) ?? null
-  })
+export function resolveOfficialSceneSyncStatusBySceneId(
+  state: OfficialSceneCatalogState
+): Record<string, OfficialSceneSyncStatus> {
+  return Object.fromEntries(
+    resolveOfficialSceneSyncDiff(state).map((entry) => [entry.sceneId, entry.syncStatus])
+  )
+}
+
+export function resolveActiveSceneFromCatalog(state: ActiveSceneCatalogState): ScanScene | null {
+  if (!state.activeSceneId) {
+    return null
+  }
+
+  const discoveredScene = state.discoveredScenes.find((scene) => scene.id === state.activeSceneId)
+  if (discoveredScene) {
+    return discoveredScene
+  }
+
+  const publishedScene = state.publishedScenes.find((scene) => scene.id === state.activeSceneId)
+  if (publishedScene && hasValidSceneAssetUrls(publishedScene)) {
+    return publishedScene
+  }
+
+  const bootstrapScene = state.scenes.find((scene) => scene.id === state.activeSceneId)
+  if (bootstrapScene) {
+    return bootstrapScene
+  }
+
+  return state.uploadedScenes.find((scene) => scene.id === state.activeSceneId) ?? null
+}
+
+export const useActiveScene = () => useViewerStore(resolveActiveSceneFromCatalog)
+
+export const useOfficialSceneSyncDiff = () => useViewerStore(resolveOfficialSceneSyncDiff)
