@@ -208,7 +208,7 @@ export const useViewerStore = create<ViewerState>()(
 			annotationsVisible: true,
 			annotationsPanelOpen: false,
 			sidebarOpen: false,
-			presentationMode: false,
+			presentationMode: true,
 			cameraControlsEnabled: true,
 
 			isLoading: false,
@@ -1277,16 +1277,24 @@ export const useViewerStore = create<ViewerState>()(
 			},
 			login: async (password) => {
 				await publishApi.login(password);
-				set({ isAuthenticated: true, draftError: null });
+				set({
+					isAuthenticated: true,
+					draftError: null,
+					presentationMode: false,
+				});
 			},
 			logout: async () => {
 				await publishApi.logout();
-				set({ isAuthenticated: false });
+				set({ isAuthenticated: false, presentationMode: true });
 			},
 			refreshAuthSession: async () => {
 				try {
 					const session = await publishApi.getSession();
-					set({ isAuthenticated: session.authenticated });
+					if (session.authenticated) {
+						set({ isAuthenticated: true, presentationMode: false });
+					} else {
+						set({ isAuthenticated: false });
+					}
 				} catch {
 					set({ isAuthenticated: false });
 				}
