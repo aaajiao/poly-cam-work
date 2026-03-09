@@ -1,7 +1,7 @@
 import { type HandleUploadBody, handleUpload } from "@vercel/blob/client";
-import { requireAuth } from "../_lib/auth";
-import { getBlobReadWriteToken } from "../_lib/blobToken";
-import { badRequest, methodNotAllowed, unauthorized } from "../_lib/http";
+import { requireAuth } from "../_lib/auth.js";
+import { getBlobReadWriteToken } from "../_lib/blobToken.js";
+import { badRequest, methodNotAllowed, unauthorized } from "../_lib/http.js";
 
 const ALLOWED_MODEL_CONTENT_TYPES = [
 	"model/gltf-binary",

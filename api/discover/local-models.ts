@@ -1,6 +1,6 @@
 import { readdirSync } from "node:fs";
 import path from "node:path";
-import { discoverScenes } from "../_lib/discovery";
+import { discoverScenes } from "../_lib/discovery.js";
 
 export default function handler(request: Request): Response {
 	if (request.method !== "GET") {

@@ -1,5 +1,5 @@
 import { del, list, put } from "@vercel/blob";
-import { getBlobReadWriteToken } from "./blobToken";
+import { getBlobReadWriteToken } from "./blobToken.js";
 
 interface BlobItem {
 	url: string;

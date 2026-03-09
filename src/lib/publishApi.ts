@@ -1,163 +1,198 @@
-import type { SceneDraft } from '@/types'
+import type { SceneDraft } from "@/types";
 
 interface SaveDraftResponse {
-  ok: true
-  revision: number
+	ok: true;
+	revision: number;
 }
 
 interface PublishResponse {
-  ok: true
-  version: number
+	ok: true;
+	version: number;
 }
 
 interface PublishDraftInput {
-  message?: string
-  draft?: SceneDraft
-  expectedRevision?: number
+	message?: string;
+	draft?: SceneDraft;
+	expectedRevision?: number;
 }
 
 interface RollbackResponse {
-  ok: true
-  version: number
+	ok: true;
+	version: number;
 }
 
 interface PublishedVersionsResponse {
-  versions: number[]
-  liveVersion: number | null
+	versions: number[];
+	liveVersion: number | null;
 }
 
 interface DeleteVersionResponse extends PublishedVersionsResponse {
-  ok: true
+	ok: true;
 }
 
 interface SessionResponse {
-  authenticated: boolean
+	authenticated: boolean;
 }
 
 interface ApiErrorPayload {
-  error?: string
+	error?: string;
 }
 
 function isApiRequest(input: RequestInfo): boolean {
-  if (typeof input === 'string') {
-    return input.startsWith('/api/')
-  }
+	if (typeof input === "string") {
+		return input.startsWith("/api/");
+	}
 
-  if (input instanceof URL) {
-    return input.pathname.startsWith('/api/')
-  }
+	if (input instanceof URL) {
+		return input.pathname.startsWith("/api/");
+	}
 
-  try {
-    const pathname = new URL(input.url).pathname
-    return pathname.startsWith('/api/')
-  } catch {
-    return false
-  }
+	try {
+		const pathname = new URL(input.url).pathname;
+		return pathname.startsWith("/api/");
+	} catch {
+		return false;
+	}
 }
 
-async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    credentials: 'include',
-    ...init,
-  })
+async function requestJson<T>(
+	input: RequestInfo,
+	init?: RequestInit,
+): Promise<T> {
+	const response = await fetch(input, {
+		credentials: "include",
+		...init,
+	});
 
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}`
-    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null
-    if (payload && typeof payload.error === 'string' && payload.error.length > 0) {
-      message = payload.error
-    } else if (response.status >= 500 && isApiRequest(input)) {
-      message = 'API server unavailable. Start `bun run dev:api` or `vercel dev`.'
-    }
+	if (!response.ok) {
+		let message = `Request failed with status ${response.status}`;
+		const payload = (await response
+			.json()
+			.catch(() => null)) as ApiErrorPayload | null;
+		if (
+			payload &&
+			typeof payload.error === "string" &&
+			payload.error.length > 0
+		) {
+			message = payload.error;
+		} else if (response.status >= 500 && isApiRequest(input)) {
+			message = import.meta.env.DEV
+				? "API server unavailable. Start `bun run dev:api` or `vercel dev`."
+				: "Service temporarily unavailable. Please try again later.";
+		}
 
-    const error = new Error(message)
-    ;(error as Error & { status?: number }).status = response.status
-    throw error
-  }
+		const error = new Error(message);
+		(error as Error & { status?: number }).status = response.status;
+		throw error;
+	}
 
-  return (await response.json()) as T
+	return (await response.json()) as T;
 }
 
 export async function login(password: string): Promise<void> {
-  await requestJson<{ ok: true }>('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  })
+	await requestJson<{ ok: true }>("/api/auth/login", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ password }),
+	});
 }
 
 export async function logout(): Promise<void> {
-  await requestJson<{ ok: true }>('/api/auth/logout', {
-    method: 'POST',
-  })
+	await requestJson<{ ok: true }>("/api/auth/logout", {
+		method: "POST",
+	});
 }
 
 export async function getSession(): Promise<SessionResponse> {
-  return requestJson<SessionResponse>('/api/auth/session')
+	return requestJson<SessionResponse>("/api/auth/session");
 }
 
 export async function getDraft(sceneId: string): Promise<SceneDraft> {
-  return requestJson<SceneDraft>(`/api/draft/${encodeURIComponent(sceneId)}`)
+	return requestJson<SceneDraft>(`/api/draft/${encodeURIComponent(sceneId)}`);
 }
 
 export async function saveDraft(
-  sceneId: string,
-  draft: SceneDraft,
-  expectedRevision: number
+	sceneId: string,
+	draft: SceneDraft,
+	expectedRevision: number,
 ): Promise<SaveDraftResponse> {
-  return requestJson<SaveDraftResponse>(`/api/draft/${encodeURIComponent(sceneId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ draft, expectedRevision }),
-  })
+	return requestJson<SaveDraftResponse>(
+		`/api/draft/${encodeURIComponent(sceneId)}`,
+		{
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ draft, expectedRevision }),
+		},
+	);
 }
 
 export async function publishDraft(
-  sceneId: string,
-  input: PublishDraftInput = {}
+	sceneId: string,
+	input: PublishDraftInput = {},
 ): Promise<PublishResponse> {
-  const body: PublishDraftInput = {}
-  if (typeof input.message === 'string') {
-    body.message = input.message
-  }
-  if (input.draft) {
-    body.draft = input.draft
-  }
-  if (typeof input.expectedRevision === 'number') {
-    body.expectedRevision = input.expectedRevision
-  }
+	const body: PublishDraftInput = {};
+	if (typeof input.message === "string") {
+		body.message = input.message;
+	}
+	if (input.draft) {
+		body.draft = input.draft;
+	}
+	if (typeof input.expectedRevision === "number") {
+		body.expectedRevision = input.expectedRevision;
+	}
 
-  return requestJson<PublishResponse>(`/api/publish/${encodeURIComponent(sceneId)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+	return requestJson<PublishResponse>(
+		`/api/publish/${encodeURIComponent(sceneId)}`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		},
+	);
 }
 
-export async function getPublishedVersions(sceneId: string): Promise<PublishedVersionsResponse> {
-  return requestJson<PublishedVersionsResponse>(`/api/publish/${encodeURIComponent(sceneId)}`)
+export async function getPublishedVersions(
+	sceneId: string,
+): Promise<PublishedVersionsResponse> {
+	return requestJson<PublishedVersionsResponse>(
+		`/api/publish/${encodeURIComponent(sceneId)}`,
+	);
 }
 
 export async function deletePublishedVersion(
-  sceneId: string,
-  version: number
+	sceneId: string,
+	version: number,
 ): Promise<DeleteVersionResponse> {
-  return requestJson<DeleteVersionResponse>(`/api/publish/${encodeURIComponent(sceneId)}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ version }),
-  })
+	return requestJson<DeleteVersionResponse>(
+		`/api/publish/${encodeURIComponent(sceneId)}`,
+		{
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ version }),
+		},
+	);
 }
 
-export async function getRelease(sceneId: string, version?: number): Promise<SceneDraft> {
-  const query = typeof version === 'number' ? `?version=${version}` : ''
-  return requestJson<SceneDraft>(`/api/release/${encodeURIComponent(sceneId)}${query}`)
+export async function getRelease(
+	sceneId: string,
+	version?: number,
+): Promise<SceneDraft> {
+	const query = typeof version === "number" ? `?version=${version}` : "";
+	return requestJson<SceneDraft>(
+		`/api/release/${encodeURIComponent(sceneId)}${query}`,
+	);
 }
 
-export async function rollbackRelease(sceneId: string, version: number): Promise<RollbackResponse> {
-  return requestJson<RollbackResponse>(`/api/rollback/${encodeURIComponent(sceneId)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ version }),
-  })
+export async function rollbackRelease(
+	sceneId: string,
+	version: number,
+): Promise<RollbackResponse> {
+	return requestJson<RollbackResponse>(
+		`/api/rollback/${encodeURIComponent(sceneId)}`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ version }),
+		},
+	);
 }
