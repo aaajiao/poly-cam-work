@@ -102,7 +102,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 | Constants | UPPER_SNAKE_CASE | `PRESET_SCENES`, `PERSIST_KEY` |
 | Types/Interfaces | PascalCase | `ScanScene`, `ClipPlaneState` |
 | Test files | `*.test.ts` / `*.test.tsx` | `store.test.ts`, `viewer.test.tsx` |
-| API routes | Vercel Functions convention | `export default async function handler(request: Request)` |
+| API routes | Vercel `fetch` web handler | `export default { fetch: handler }` |
 | Test IDs | kebab-case `data-testid` | `data-testid="property-panel"` |
 
 ### Components
@@ -133,7 +133,8 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - **PLY parsing**: always off-thread via `usePLYLoader` → `workers/ply-parser.worker.ts`.
 - **Annotations**: store-driven (`selectedAnnotationId`, `openAnnotationPanelIds`). Panels are screen-space aware.
 - **Draft flow**: local-first (IndexedDB images, browser storage). Upload to Vercel Blob only on publish.
-- **API routes**: Vercel Functions in `api/`. Auth via session cookie. Draft has revision conflict control.
+- **API routes**: Vercel Functions in `api/` using `fetch` web handler format (`export default { fetch: handler }`). Auth via session cookie. Draft has revision conflict control.
+- **Presentation mode**: defaults ON for unauthenticated visitors. Login → auto OFF, logout → auto ON, session refresh → OFF if authenticated. `cloudScenesLoaded` gates viewer rendering in production until API responds.
 
 ---
 
@@ -161,6 +162,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - **Clipping**: `CLIP_SCENE_HALF` and clipping plane world mapping must stay aligned.
 - **Cloud URLs**: filtered by `hasValidSceneAssetUrls` — keep `glbUrl`/`plyUrl` as valid HTTPS.
 - **Worker syntax**: `new Worker(new URL('...', import.meta.url), { type: 'module' })`.
+- **API imports**: relative imports in `api/` must use `.js` extensions (`from '../_lib/auth.js'`). Vercel's Node.js ESM requires explicit extensions; bun resolves without them locally but production breaks.
 
 ## Anti-Patterns (Do Not Introduce)
 
