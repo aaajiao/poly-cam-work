@@ -162,6 +162,7 @@ describe("viewerStore", () => {
 	});
 
 	it("setToolMode annotate opens annotationsPanelOpen", () => {
+		useViewerStore.setState({ isAuthenticated: true });
 		const { setToolMode, setAnnotationsPanelOpen } = useViewerStore.getState();
 		setAnnotationsPanelOpen(false);
 		expect(useViewerStore.getState().annotationsPanelOpen).toBe(false);
@@ -171,6 +172,7 @@ describe("viewerStore", () => {
 	});
 
 	it("setToolMode toggles annotate off and closes panel", () => {
+		useViewerStore.setState({ isAuthenticated: true });
 		const { setToolMode } = useViewerStore.getState();
 		setToolMode("annotate");
 		expect(useViewerStore.getState().annotationsPanelOpen).toBe(true);
@@ -180,6 +182,7 @@ describe("viewerStore", () => {
 	});
 
 	it("setToolMode measure does not affect annotationsPanelOpen", () => {
+		useViewerStore.setState({ isAuthenticated: true });
 		const { setToolMode } = useViewerStore.getState();
 		setToolMode("annotate");
 		expect(useViewerStore.getState().annotationsPanelOpen).toBe(true);
@@ -188,6 +191,7 @@ describe("viewerStore", () => {
 	});
 
 	it("annotationsVisible and annotationsPanelOpen are independent", () => {
+		useViewerStore.setState({ isAuthenticated: true });
 		const { setToolMode, toggleAnnotationsVisible } = useViewerStore.getState();
 		setToolMode("annotate");
 		expect(useViewerStore.getState().annotationsPanelOpen).toBe(true);
