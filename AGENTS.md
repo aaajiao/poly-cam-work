@@ -1,105 +1,139 @@
 # poly.cam.work
 
 Visualization platform and digital archive for the work of aaajiao.
-It renders GLB textured meshes + PLY point clouds and provides measurement, clipping, annotation, and rich-media workflows for documenting the intersection of labor, material production, and global trade.
+GLB textured meshes + PLY point clouds with measurement, clipping, annotation, and rich-media workflows.
 
 ## Stack
 
-Vite 6 + React 19 + TypeScript strict + bun  
-@react-three/fiber v9 + drei v9 + Three.js  
-zustand (persist) + shadcn/ui + Tailwind v4
+Vite 6 + React 19 + TypeScript strict + bun
+@react-three/fiber v9 + drei v9 + Three.js
+zustand (persist) + shadcn/ui (new-york) + Tailwind v4
 
 ---
 
-## Repository Map
+## Commands
 
-```text
-src/
-├── __tests__/       # unit + browser integration tests (Vitest)
-├── components/
-│   ├── viewer/      # R3F Canvas + GLB/PLY renderers (see viewer/AGENTS.md)
-│   ├── tools/       # 3D interaction tools (see tools/AGENTS.md)
-│   ├── sidebar/     # FileManager/PublishButton split modules, PropertyPanel, AnnotationManager
-│   ├── toolbar/     # Toolbar, ToolButtons, ViewModeToggle, lazy-loaded auth/publish entry
-│   ├── upload/      # DropZone + upload UI
-│   └── ui/          # shadcn + app-specific UI (VimeoEmbed, StatusBar, etc.)
-├── hooks/           # usePLYLoader, useFileUpload, useScreenshot
-├── lib/             # shared helpers + API clients (modelApi, publishApi, utils)
-├── storage/         # IndexedDB + Vercel Blob adapters for images/models
-├── store/           # zustand viewerStore + extracted sceneCatalog/draftPersistence helpers + presetScenes
-├── types/           # shared app types
-├── utils/           # pure helpers: colorMapping, measurement, vimeo, raycasting, screenshot
-└── workers/         # ply-parser.worker.ts (off-thread PLY parsing)
+```bash
+bun run build               # tsc -b && vite build (typecheck + production build)
+bun run lint                 # eslint .
+bun run dev                  # vite dev server (localhost:5173)
+bun run dev:api              # local API server (localhost:3000, no Vercel login needed)
 
-api/                 # Vercel Functions for auth/draft/media/models/publish/release/rollback
-e2e/                 # Playwright smoke E2E tests only
-public/              # static assets (source model files live in public/models)
-scripts/             # maintenance scripts (cleanup-orphan-assets)
-docs/                # planning and implementation notes
+# Tests — all layers
+bun run test                 # alias → test:vitest (unit + browser)
+bun run test:vitest          # unit + browser projects
+bun run test:vitest:unit     # unit only (jsdom)
+bun run test:vitest:browser  # browser integration only (Playwright-backed)
+bun run test:e2e             # Playwright smoke (e2e/smoke.test.ts)
+bun run test:all             # vitest + e2e
+
+# Single test file
+bun run test:vitest:unit -- src/__tests__/store.test.ts
+bun run test:vitest:browser -- src/__tests__/browser/viewer.test.tsx
+
+# Single test by name
+bun run test:vitest:unit -- -t "initializes with preset scenes"
+bun run test:vitest:browser -- -t "view mode toggle"
+
+# Watch mode
+bun run test:watch                             # all projects
+bun run test:watch -- --project unit           # unit only
+bun run test:watch -- --project browser        # browser only
 ```
 
+### Test layer selection
+
+| Changed | Run |
+|---------|-----|
+| Pure helpers, math, store logic | `test:vitest:unit` |
+| Sidebar, toolbar, annotation, publish UI | `test:vitest:browser` |
+| App shell boot, critical runtime smoke | `test:e2e` |
+
+Prefer browser Vitest over Playwright E2E for component behavior. See `docs/TESTING.md` for debugging tips.
+
 ---
 
-## Architecture & Data Flows
+## Code Style
 
-### 1) Rendering flow (3D core)
+### Formatting
 
-`SceneCanvas.tsx` is the entry point for all 3D runtime:
-- mounts viewers (`GLBViewer`, `PointCloudViewer`)
-- mounts tools (`MeasurementTool`, `ClippingPlaneController`, `AnnotationTool`, `AnnotationMarkers`, `AnnotationPanel`)
-- owns `OrbitControls` and binds `enabled={cameraControlsEnabled}`
+- **No Prettier**. ESLint handles TS/TSX linting. Biome handles CSS parsing (tailwind directives only).
+- Single quotes, no semicolons (dominant pattern in codebase).
+- 2-space indentation in most files.
+- Unused vars: prefix with `_` (eslint `argsIgnorePattern: ^_`).
 
-### 2) PLY flow (worker)
+### Imports
 
-`usePLYLoader` → `workers/ply-parser.worker.ts` (transferable Float32Arrays).  
-Never parse large PLY on main thread.
+Order: external libs → `@/` aliases → relative (`./`, `../`). Blank line between groups.
 
-### 3) Annotation interaction flow (current model)
+```typescript
+import { useCallback, useRef } from 'react'           // 1. External
+import type * as THREE from 'three'                    // 1. External (type-only)
 
-Store fields (in `viewerStore.ts`) drive behavior:
-- `selectedAnnotationId`: focused annotation
-- `openAnnotationPanelIds`: supports multiple opened floating panels
-- `cameraControlsEnabled`: temporary orbit lock during media resize
+import { useViewerStore } from '@/store/viewerStore'   // 2. Internal @/ alias
+import type { ScanScene } from '@/types'               // 2. Internal (type-only)
 
-Main interaction:
-1. Marker/list click toggles panel open state (`openAnnotationPanel` / `closeAnnotationPanel`)
-2. `AnnotationPanel.tsx` renders one floating panel per opened id
-3. Panel layout is screen-space aware (`worldToScreen` + clamp + `screenToWorld`)
-4. During camera motion, relayout is deferred; after settle, panel transitions with eased/randomized motion profile
-5. Media resize handles disable camera controls while dragging
+import { GLBViewer } from './GLBViewer'                // 3. Relative
+```
 
-### 4) Rich media flow
+Use `import type { ... }` for type-only imports. Path alias: `@/` → `src/`.
 
-- Images: local-first storage in IndexedDB (`localId`) during editing; upload to Blob happens during publish and then becomes remote URL (`url`)
-- Video: `VimeoEmbed` uses Vimeo oEmbed to derive aspect ratio and renders inline player (no fake overlay)
+### Types & Interfaces
 
-### 5) Draft + release flow (current model)
+- TypeScript `strict: true` everywhere (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`).
+- ESLint enforces `@typescript-eslint/no-explicit-any: 'error'` — never use `any`.
+- Never use `as any`, `@ts-ignore`, or `@ts-expect-error`.
+- Interfaces for data shapes. Type aliases for unions and string literals.
+- Shared types live in `src/types/index.ts`. Keep them serializable.
 
-- Auth session: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/session`
-- Draft API: `GET/PUT /api/draft/:sceneId` with revision conflict control
-- Publish API: `POST /api/publish/:sceneId` creates immutable release + updates live pointer
-- Release management: `GET /api/publish/:sceneId` lists versions, `DELETE /api/publish/:sceneId` deletes one version
-- Rollback API: `POST /api/rollback/:sceneId` moves live pointer and syncs draft baseline
-- Store helpers: `src/store/draftPersistence.ts` contains local draft import/export and publish-payload helpers
-- UI controls: `PublishButton` shows `saved/unsaved`, release dropdown, rollback click, and delete with confirmation; `Toolbar.tsx` lazy-loads `LoginDialog` and `PublishButton`
+```typescript
+export interface ScanScene { id: SceneId; name: string; glbUrl: string }
+export type ViewMode = 'mesh' | 'pointcloud' | 'both'
+export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
+```
 
-### 6) Model registry + cloud scene flow
+### Naming
 
-- Model registry API: `GET/POST /api/models` stores cloud scene metadata in Blob (`models/index.json`)
-- Model upload API: `POST /api/models/upload` issues client upload tokens with strict path/metadata checks
-- Frontend API client: `src/lib/modelApi.ts` powers list/create/replace model operations
-- Store integration: `src/store/sceneCatalog.ts` contains cloud/discovered scene catalog resolution helpers; `viewerStore.loadCloudScenes` and `syncPresetScenesToCloud` hydrate cloud scenes and keep active scene valid
-- Stale model/image cleanup: handled in registry replacement code and `scripts/cleanup-orphan-assets.ts`
+| Kind | Convention | Example |
+|------|-----------|---------|
+| Components | PascalCase, named export | `export function GLBViewer()` |
+| Hooks | `use` prefix, camelCase | `usePLYLoader`, `useActiveScene` |
+| Utils/helpers | camelCase file + function | `calculateDistance`, `formatBytes` |
+| Constants | UPPER_SNAKE_CASE | `PRESET_SCENES`, `PERSIST_KEY` |
+| Types/Interfaces | PascalCase | `ScanScene`, `ClipPlaneState` |
+| Test files | `*.test.ts` / `*.test.tsx` | `store.test.ts`, `viewer.test.tsx` |
+| API routes | Vercel Functions convention | `export default async function handler(request: Request)` |
+| Test IDs | kebab-case `data-testid` | `data-testid="property-panel"` |
 
-### 7) Official scene workflow (Maintainer)
+### Components
 
-Official scenes are repository-first. Maintainers add model assets to the codebase, then sync them to the cloud catalog.
+- Functional components only. Named exports (no default export except API handlers).
+- `data-testid` required on interactive elements used by tests.
+- shadcn components in `src/components/ui/`. Use `@/components/ui/button` etc.
+- zustand: single store (`viewerStore.ts`), selector pattern `(s) => s.field`.
 
-1. **Discovery**: `GET /api/models/discover` (dev-only) scans `public/models/` for GLB/PLY pairs.
-2. **Refresh**: `FileManager` uses `loadDiscoveredScenes` to find new local models.
-3. **Sync**: `syncDiscoveredScene` uploads local assets to Vercel Blob and registers them in the cloud catalog.
-4. **Authoring**: Once synced, the scene is available for annotation and publishing like any other cloud scene.
-5. **Separation**: Asset sync (model files) and scene-content publish (annotations) are separate workflows.
+### Error Handling
+
+- API routes: use `api/_lib/http.ts` helpers — `badRequest()`, `unauthorized()`, `notFound()`, `conflict()`, `jsonResponse()`.
+- Frontend fetch: channel through `requestJson<T>()` in `publishApi.ts` (handles credentials, JSON parse, error extraction).
+- No empty catch blocks. Use `catch { ... }` (no variable) or `catch (_e) { ... }` for intentional swallow.
+
+### Test Patterns
+
+- Unit: `describe`/`it` from vitest, jsdom environment.
+- Browser: `describe`/`test` from vitest, `render` from `vitest-browser-react`, `await expect.element(...)` for async assertions.
+- Store reset in `beforeEach`: `localStorage.removeItem('polycam-viewer-state')` + `useViewerStore.setState({...})`.
+- Mocks at file scope with `vi.mock(...)`, reseed in `beforeEach` after `vi.restoreAllMocks()`.
+
+---
+
+## Architecture (Key Flows)
+
+- **SceneCanvas.tsx**: entry point for all 3D — mounts viewers, tools, OrbitControls.
+- **PLY parsing**: always off-thread via `usePLYLoader` → `workers/ply-parser.worker.ts`.
+- **Annotations**: store-driven (`selectedAnnotationId`, `openAnnotationPanelIds`). Panels are screen-space aware.
+- **Draft flow**: local-first (IndexedDB images, browser storage). Upload to Vercel Blob only on publish.
+- **API routes**: Vercel Functions in `api/`. Auth via session cookie. Draft has revision conflict control.
 
 ---
 
@@ -107,138 +141,42 @@ Official scenes are repository-first. Maintainers add model assets to the codeba
 
 | Task | Primary Files |
 |------|---------------|
-| Add/update 3D tool | `src/components/tools/*` + registration in `src/components/viewer/SceneCanvas.tsx` |
-| Change annotation panel behavior | `src/components/tools/AnnotationPanel.tsx` |
-| Change marker click/open rules | `src/components/tools/AnnotationMarkers.tsx`, `src/components/sidebar/AnnotationManager.tsx` |
-| Change annotation state model | `src/store/viewerStore.ts` + `src/types/index.ts` |
-| Change PLY parsing/perf | `src/workers/ply-parser.worker.ts`, `src/hooks/usePLYLoader.ts` |
-| Change clipping behavior | `src/components/tools/ClippingPlane.tsx` |
-| Change screenshot behavior | `src/components/viewer/ScreenshotButton.tsx`, `src/hooks/useScreenshot.ts` |
-| Change Vimeo URL handling | `src/utils/vimeo.ts`, `src/components/ui/VimeoEmbed.tsx` |
-| Change cloud model loading/sync behavior | `src/store/sceneCatalog.ts`, `src/store/viewerStore.ts`, `src/lib/modelApi.ts` |
-| Change model registry or upload token logic | `api/models/index.ts`, `api/models/upload.ts` |
-| Change draft import/export or publish payload shaping | `src/store/draftPersistence.ts`, `src/store/viewerStore.ts`, `src/lib/publishApi.ts` |
-| Change publish workflow APIs | `api/*`, `api/_lib/*`, `src/lib/publishApi.ts` |
-| Change publish UI/labels/version menu | `src/components/sidebar/PublishButton.tsx`, `src/components/sidebar/PublishActionControls.tsx`, `src/components/sidebar/PublishVersionMenu.tsx`, `src/components/sidebar/LoginDialog.tsx` |
-| Change scene list/sidebar sync UI | `src/components/sidebar/FileManager.tsx`, `src/components/sidebar/FileManagerHeader.tsx`, `src/components/sidebar/FileManagerSceneList.tsx`, `src/components/sidebar/fileManagerSceneEntries.ts` |
-| Change lazy-loaded editor/auth UI boundaries | `src/components/toolbar/Toolbar.tsx`, `src/components/sidebar/Sidebar.tsx` |
-| Change orphaned blob cleanup behavior | `api/_lib/sceneAssetCleanup.ts`, `scripts/cleanup-orphan-assets.ts` |
-| Add/adjust browser integration test | `src/__tests__/browser/*.test.tsx`, especially `viewer.test.tsx`, `publishButton.test.tsx`, `toolbarLazyUi.test.tsx`, `sidebarLazyUi.test.tsx` |
-| Add/adjust E2E smoke test | `e2e/smoke.test.ts` |
+| 3D tool | `src/components/tools/*`, register in `src/components/viewer/SceneCanvas.tsx` |
+| Annotation behavior | `AnnotationPanel.tsx`, `AnnotationMarkers.tsx`, `AnnotationManager.tsx` |
+| Store / state | `src/store/viewerStore.ts`, `src/types/index.ts` |
+| PLY parsing | `src/workers/ply-parser.worker.ts`, `src/hooks/usePLYLoader.ts` |
+| Publish workflow | `api/publish/`, `api/_lib/*`, `src/lib/publishApi.ts` |
+| Publish UI | `src/components/sidebar/PublishButton.tsx`, `PublishActionControls.tsx`, `PublishVersionMenu.tsx` |
+| Scene catalog | `src/store/sceneCatalog.ts`, `src/lib/modelApi.ts` |
+| Cloud model upload | `api/models/upload.ts`, `api/models/index.ts` |
+| Browser tests | `src/__tests__/browser/*.test.tsx` |
+| Unit tests | `src/__tests__/*.test.ts` |
 
 ---
 
 ## Critical Invariants
 
-### Coordinate system
-
-PLY is Z-up, GLB is Y-up.
-
-In `PointCloudViewer.tsx`:
-```tsx
-<group rotation={[-Math.PI / 2, 0, 0]}>
-```
-
-Do not apply this transform to GLB path.
-
-### Canvas screenshot contract
-
-`preserveDrawingBuffer: true` must stay enabled in Canvas config, otherwise screenshot capture breaks.
-
-### Clipping consistency
-
-Tools and clipping constants must stay aligned (`CLIP_SCENE_HALF` vs clipping plane world mapping).
-
-### Cloud model URL hygiene
-
-Cloud scenes are filtered by `hasValidSceneAssetUrls` before runtime use.
-Keep model `glbUrl`/`plyUrl` as valid HTTP(S) URLs with non-placeholder hosts, or scenes will be excluded.
-
----
-
-## Test Strategy (Unified)
-
-Use a 3-layer test model and keep responsibilities strict.
-
-Before adding or debugging tests, read `docs/TESTING.md` for command selection, the repo's two Playwright paths, and local hang/stall troubleshooting.
-
-### Layer boundaries
-
-1. **Unit (Vitest + jsdom)**
-   - Pure functions, store transitions, parser/math logic
-   - No full UI journey expectations
-
-2. **Browser integration (Vitest browser project)**
-   - Component interactions and store integration through UI
-   - Primary place for annotation/sidebar/tool interaction behavior
-   - Includes lazy-loaded toolbar/sidebar resolution checks and publish UI interaction coverage
-
-3. **E2E (Playwright)**
-   - Keep minimal and high-value only
-   - Smoke-level workflows and app shell integrity
-   - Avoid duplicating component-level scenarios already covered by browser Vitest
-
-### Commands
-
-```bash
-bun run lint                # eslint checks
-bun run test                # alias to test:vitest
-bun run test:vitest         # unit + browser projects
-bun run test:vitest:unit    # unit only
-bun run test:vitest:browser # browser integration only
-bun run test:e2e            # Playwright smoke only (e2e/smoke.test.ts)
-bun run test:e2e:ui         # Playwright UI mode
-bun run test:all            # vitest + smoke e2e
-bun run cleanup:orphans     # delete unreferenced Blob assets (apply)
-bun run cleanup:orphans:dry # preview unreferenced Blob assets (dry run)
-bun run build               # typecheck + production build
-
-# Local API runtime (recommended)
-bun run dev:api
-
-# Vercel Functions runtime (alternative)
-vercel dev
-```
-
-### E2E policy (important)
-
-- E2E should cover only what must be validated in full app runtime.
-- Prefer browser Vitest for annotation/store/UI behavior validation.
-- Do not grow E2E suite for state transitions or component internals.
-- If a UI behavior can be proven in `bun run test:vitest:browser`, do that before reaching for Playwright CLI.
-- Treat `bun run test:e2e:ui` as a debugging tool, not the default test path; it stays interactive until stopped.
-
----
-
-## Conventions
-
-- Path alias: `@/` → `src/`
-- Tailwind v4 via `@tailwindcss/vite` (no tailwind.config.js)
-- shadcn components in `src/components/ui/`
-- Single zustand store (`viewerStore.ts`), serializable state only
-- `data-testid` required on interactive UI used by tests
-- Worker syntax: `new Worker(new URL('...', import.meta.url), { type: 'module' })`
-- Cloud model IDs are normalized to lowercase slug form (prefixed `cloud-`) in `/api/models`
-
----
+- **Coordinate system**: PLY is Z-up, GLB is Y-up. PLY gets `rotation={[-Math.PI / 2, 0, 0]}`. Never apply to GLB.
+- **Canvas**: `preserveDrawingBuffer: true` must stay on — screenshot capture depends on it.
+- **Clipping**: `CLIP_SCENE_HALF` and clipping plane world mapping must stay aligned.
+- **Cloud URLs**: filtered by `hasValidSceneAssetUrls` — keep `glbUrl`/`plyUrl` as valid HTTPS.
+- **Worker syntax**: `new Worker(new URL('...', import.meta.url), { type: 'module' })`.
 
 ## Anti-Patterns (Do Not Introduce)
 
 - `as any`, `@ts-ignore`, `@ts-expect-error`
 - Three.js objects in persisted zustand state
 - Main-thread parsing for large PLY files
-- Expanding E2E to cover scenarios already in browser Vitest
+- Expanding E2E to cover scenarios browser Vitest can prove
 - Removing `preserveDrawingBuffer` from Canvas
-- Breaking clipping material-side restore behavior
-- Overwriting dirty local draft state by auto-loading remote draft on refresh
-- Uploading local images immediately during annotation editing (must upload on publish path)
-- Bypassing `/api/models/upload` validation path for cloud model uploads
+- Auto-loading remote draft over dirty local state
+- Uploading images during annotation editing (must upload on publish path)
+- Bypassing `/api/models/upload` validation for cloud uploads
 
----
+## Environment
 
-## Environment Notes (Shared macOS + Linux workspace)
-
-- Linux side (agent runtime) owns dependency install and command execution.
-- macOS side accesses dev server through forwarded localhost port.
-- Standard local URL: `http://localhost:5173`.
-- Publish workflow env vars: `POLYCAM_BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET` (`BLOB_READ_WRITE_TOKEN` remains a legacy fallback).
+- **bun** as package manager and script runner
+- Path alias: `@/` → `src/`
+- Tailwind v4 via `@tailwindcss/vite` (no `tailwind.config.js`)
+- Env vars: `POLYCAM_BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET`
+- Dev server: `localhost:5173` (frontend), `localhost:3000` (API proxy target)
