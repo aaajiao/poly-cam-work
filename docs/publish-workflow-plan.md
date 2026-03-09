@@ -204,7 +204,7 @@ interface AnnotationImage {
 - 迁移成功后清理本地数据
 
 ### PR 6: 部署验证
-- Vercel 环境变量配置（`BLOB_READ_WRITE_TOKEN`、`ADMIN_PASSWORD`、`AUTH_SECRET`）
+- Vercel 环境变量配置（`POLYCAM_BLOB_READ_WRITE_TOKEN`、`ADMIN_PASSWORD`、`AUTH_SECRET`）
 - 端到端冒烟测试
 - AGENTS.md 更新（补充部署/发布相关文档）
 
@@ -214,9 +214,11 @@ interface AnnotationImage {
 
 | 变量名 | 用途 | 设置位置 |
 |---|---|---|
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写 token | Vercel Dashboard → Storage → Blob |
+| `POLYCAM_BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写 token（推荐） | Vercel Dashboard → Storage → Blob |
 | `ADMIN_PASSWORD` | 编辑者登录密码 | Vercel Dashboard → Settings → Environment Variables |
 | `AUTH_SECRET` | Cookie 签名密钥（随机 32+ 字符） | Vercel Dashboard → Settings → Environment Variables |
+
+兼容说明：旧的 `BLOB_READ_WRITE_TOKEN` 仍可作为回退变量名使用。
 
 ---
 

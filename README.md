@@ -51,9 +51,10 @@ docs/         Planning and implementation docs
 
 Create a local env file from `.env.example` and set:
 
-- `BLOB_READ_WRITE_TOKEN`: Vercel Blob read/write token
+- `POLYCAM_BLOB_READ_WRITE_TOKEN`: preferred Vercel Blob read/write token name
 - `ADMIN_PASSWORD`: editor login password
 - `AUTH_SECRET`: cookie signing secret (32+ chars)
+- Legacy fallback: `BLOB_READ_WRITE_TOKEN` is still accepted if already configured
 
 ## Local Development
 

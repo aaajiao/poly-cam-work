@@ -241,4 +241,4 @@ vercel dev
 - Linux side (agent runtime) owns dependency install and command execution.
 - macOS side accesses dev server through forwarded localhost port.
 - Standard local URL: `http://localhost:5173`.
-- Publish workflow env vars: `BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET`.
+- Publish workflow env vars: `POLYCAM_BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET` (`BLOB_READ_WRITE_TOKEN` remains a legacy fallback).
