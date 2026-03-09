@@ -14,7 +14,9 @@ vi.mock("@vercel/blob/client", () => ({
 	handleUpload: mocks.handleUpload,
 }));
 
-import handler from "../../api/media/upload";
+import handlerModule from "../../api/media/upload";
+
+const handler = handlerModule.fetch;
 
 const originalBlobToken = process.env[BLOB_READ_WRITE_TOKEN_ENV_NAME];
 

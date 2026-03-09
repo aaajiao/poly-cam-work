@@ -1,7 +1,7 @@
 import { clearSessionCookieHeader } from "../_lib/auth.js";
 import { jsonResponse, methodNotAllowed } from "../_lib/http.js";
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (request.method !== "POST") {
 		return methodNotAllowed(["POST"]);
 	}
@@ -10,3 +10,5 @@ export default async function handler(request: Request) {
 		"Set-Cookie": clearSessionCookieHeader(request),
 	});
 }
+
+export default { fetch: handler };

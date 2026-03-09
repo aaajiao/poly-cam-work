@@ -36,7 +36,7 @@ function releasePath(sceneId: string, version: number) {
 	return `scenes/${sceneId}/releases/${version}.json`;
 }
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (request.method !== "POST") {
 		return methodNotAllowed(["POST"]);
 	}
@@ -87,3 +87,5 @@ export default async function handler(request: Request) {
 
 	return jsonResponse({ ok: true, version });
 }
+
+export default { fetch: handler };

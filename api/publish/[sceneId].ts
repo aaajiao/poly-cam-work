@@ -116,7 +116,7 @@ async function listReleaseVersions(sceneId: string): Promise<number[]> {
 	return Array.from(new Set(versions)).sort((a, b) => b - a);
 }
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (
 		request.method !== "GET" &&
 		request.method !== "POST" &&
@@ -251,3 +251,5 @@ export default async function handler(request: Request) {
 
 	return jsonResponse({ ok: true, version: nextVersion });
 }
+
+export default { fetch: handler };

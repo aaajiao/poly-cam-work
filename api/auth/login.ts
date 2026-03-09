@@ -8,7 +8,7 @@ interface LoginBody {
 	password?: string;
 }
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (request.method !== "POST") {
 		return methodNotAllowed(["POST"]);
 	}
@@ -27,3 +27,5 @@ export default async function handler(request: Request) {
 		"Set-Cookie": createSessionCookieHeader(request),
 	});
 }
+
+export default { fetch: handler };

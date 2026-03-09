@@ -47,7 +47,7 @@ function parseClientPayload(payload: string | null | undefined): {
 	return { sceneId, annotationId };
 }
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (request.method !== "POST") {
 		return methodNotAllowed(["POST"]);
 	}
@@ -91,3 +91,5 @@ export default async function handler(request: Request) {
 		},
 	});
 }
+
+export default { fetch: handler };

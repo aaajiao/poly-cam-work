@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import path from "node:path";
 import { discoverScenes } from "../_lib/discovery.js";
 
-export default function handler(request: Request): Response {
+function handler(request: Request): Response {
 	if (request.method !== "GET") {
 		return new Response(JSON.stringify({ error: "Method not allowed" }), {
 			status: 405,
@@ -28,3 +28,5 @@ export default function handler(request: Request): Response {
 		headers: { "Content-Type": "application/json" },
 	});
 }
+
+export default { fetch: handler };

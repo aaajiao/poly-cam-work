@@ -7,7 +7,7 @@ import {
 import path from "node:path";
 
 type ApiHandlerModule = {
-	default: (request: Request) => Response | Promise<Response>;
+	default: { fetch: (request: Request) => Response | Promise<Response> };
 };
 
 type Route = {
@@ -154,7 +154,7 @@ createServer(async (req, res) => {
 	try {
 		const request = await toRequest(req);
 		const module = await route.load();
-		const response = await module.default(request);
+		const response = await module.default.fetch(request);
 		await writeResponse(res, response);
 	} catch (error) {
 		console.error("[api-dev] route error", pathname, error);

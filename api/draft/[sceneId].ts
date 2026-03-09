@@ -38,7 +38,7 @@ function createEmptyDraft(sceneId: string): SceneDraft {
 	};
 }
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (request.method !== "GET" && request.method !== "PUT") {
 		return methodNotAllowed(["GET", "PUT"]);
 	}
@@ -94,3 +94,5 @@ export default async function handler(request: Request) {
 
 	return jsonResponse({ ok: true, revision: nextRevision });
 }
+
+export default { fetch: handler };

@@ -44,7 +44,7 @@ function isReplaceModelsBody(value: unknown): value is ReplaceModelsBody {
 	return candidate.replace === true && Array.isArray(candidate.models);
 }
 
-export default async function handler(request: Request) {
+async function handler(request: Request) {
 	if (request.method !== "GET" && request.method !== "POST") {
 		return methodNotAllowed(["GET", "POST"]);
 	}
@@ -180,3 +180,5 @@ export default async function handler(request: Request) {
 
 	return jsonResponse({ ok: true, model });
 }
+
+export default { fetch: handler };
