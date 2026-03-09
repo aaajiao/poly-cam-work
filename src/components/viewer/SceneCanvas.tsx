@@ -187,11 +187,12 @@ export function SceneCanvas() {
 
 	useEffect(() => {
 		if (!import.meta.env.DEV) return;
+		if (presentationMode) return;
 		const host = document.getElementById("fps-toolbar-slot");
 		if (host instanceof HTMLElement) {
 			setStatsHost(host);
 		}
-	}, []);
+	}, [presentationMode]);
 
 	const handlePointerMissed = useCallback(() => {
 		if (toolMode !== "annotate" && selectedAnnotationId) {
