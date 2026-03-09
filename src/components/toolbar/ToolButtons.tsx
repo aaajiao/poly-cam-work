@@ -23,7 +23,6 @@ export function ToolButtons() {
 		(s) => s.toggleAnnotationsVisible,
 	);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
-	const isAuthenticated = useViewerStore((s) => s.isAuthenticated);
 
 	return (
 		<TooltipProvider delayDuration={300}>
@@ -32,37 +31,32 @@ export function ToolButtons() {
 					className="flex items-center bg-panel border border-subtle rounded-md overflow-hidden"
 					data-testid="tool-buttons"
 				>
-					{TOOLS.map((tool) => {
-						const needsAuth = tool.value === "annotate";
-						const isDisabled =
-							presentationMode || (needsAuth && !isAuthenticated);
-						return (
-							<Tooltip key={tool.value}>
-								<TooltipTrigger asChild>
-									<button
-										type="button"
-										data-testid={`tool-${tool.value}`}
-										disabled={isDisabled}
-										onClick={() => setToolMode(tool.value)}
-										className={cn(
-											"ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
-											isDisabled &&
-												"cursor-not-allowed text-faint hover:bg-transparent hover:text-faint",
-											toolMode === tool.value
-												? "border-r border-accent-soft bg-accent-soft text-accent"
-												: "text-dim hover:text-soft hover:bg-elevated",
-										)}
-									>
-										{tool.icon}
-										<span className="hidden md:inline">{tool.label}</span>
-									</button>
-								</TooltipTrigger>
-								<TooltipContent side="bottom" className="text-xs">
-									{tool.label}
-								</TooltipContent>
-							</Tooltip>
-						);
-					})}
+					{TOOLS.map((tool) => (
+						<Tooltip key={tool.value}>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									data-testid={`tool-${tool.value}`}
+									disabled={presentationMode}
+									onClick={() => setToolMode(tool.value)}
+									className={cn(
+										"ui-hover-emphasis flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
+										presentationMode &&
+											"cursor-not-allowed text-faint hover:bg-transparent hover:text-faint",
+										toolMode === tool.value
+											? "border-r border-accent-soft bg-accent-soft text-accent"
+											: "text-dim hover:text-soft hover:bg-elevated",
+									)}
+								>
+									{tool.icon}
+									<span className="hidden md:inline">{tool.label}</span>
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" className="text-xs">
+								{tool.label}
+							</TooltipContent>
+						</Tooltip>
+					))}
 				</div>
 
 				<Tooltip>

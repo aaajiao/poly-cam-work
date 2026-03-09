@@ -57,6 +57,7 @@ function AnnotationInputDialog() {
 		(s) => s.pendingAnnotationInput,
 	);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
+	const isAuthenticated = useViewerStore((s) => s.isAuthenticated);
 	const setPendingAnnotationInput = useViewerStore(
 		(s) => s.setPendingAnnotationInput,
 	);
@@ -114,7 +115,8 @@ function AnnotationInputDialog() {
 		setInputText("");
 	}, [setPendingAnnotationInput]);
 
-	if (presentationMode || !pendingAnnotationInput) return null;
+	if (presentationMode || !isAuthenticated || !pendingAnnotationInput)
+		return null;
 
 	const clampedLeft = Math.min(
 		Math.max(pendingAnnotationInput.screenPos.x + 10, 8),

@@ -243,9 +243,6 @@ export const useViewerStore = create<ViewerState>()(
 					if (state.presentationMode && toolMode !== "orbit") {
 						return state;
 					}
-					if (toolMode === "annotate" && !state.isAuthenticated) {
-						return state;
-					}
 
 					const togglingOff =
 						toolMode !== "orbit" && toolMode === state.toolMode;

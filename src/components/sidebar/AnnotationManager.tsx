@@ -15,6 +15,8 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 		(s) => s.updateAnnotationContent,
 	);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
+	const isAuthenticated = useViewerStore((s) => s.isAuthenticated);
+	const canEdit = isAuthenticated && !presentationMode;
 
 	const [localTitle, setLocalTitle] = useState(annotation.title);
 	const [localDesc, setLocalDesc] = useState(annotation.description);
@@ -54,10 +56,10 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 
 	const saveLinks = useCallback(
 		(links: AnnotationLink[]) => {
-			if (presentationMode) return;
+			if (!canEdit) return;
 			updateAnnotationContent(annotation.id, { links });
 		},
-		[annotation.id, presentationMode, updateAnnotationContent],
+		[annotation.id, canEdit, updateAnnotationContent],
 	);
 
 	const handleLinkChange = useCallback(
@@ -96,7 +98,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 					value={localTitle}
 					onChange={(e) => setLocalTitle(e.target.value.slice(0, 100))}
 					onBlur={() => {
-						if (presentationMode) return;
+						if (!canEdit) return;
 						updateAnnotationContent(annotation.id, { title: localTitle });
 					}}
 					maxLength={100}
@@ -114,7 +116,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 					value={localDesc}
 					onChange={(e) => setLocalDesc(e.target.value.slice(0, 2000))}
 					onBlur={() => {
-						if (presentationMode) return;
+						if (!canEdit) return;
 						updateAnnotationContent(annotation.id, { description: localDesc });
 					}}
 					maxLength={2000}
@@ -133,7 +135,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 					annotationId={annotation.id}
 					images={annotation.images}
 					onImagesChange={(images) => {
-						if (presentationMode) return;
+						if (!canEdit) return;
 						updateAnnotationContent(annotation.id, { images });
 					}}
 				/>
@@ -145,7 +147,7 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 					value={videoInput}
 					onChange={(e) => setVideoInput(e.target.value)}
 					onBlur={() => {
-						if (presentationMode) return;
+						if (!canEdit) return;
 						if (!videoInput || isValidVimeoUrl(videoInput)) {
 							updateAnnotationContent(annotation.id, {
 								videoUrl: videoInput || null,
@@ -246,6 +248,7 @@ export function AnnotationManager() {
 	const annotations = useViewerStore((s) => s.annotations);
 	const activeSceneId = useViewerStore((s) => s.activeSceneId);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
+	const isAuthenticated = useViewerStore((s) => s.isAuthenticated);
 	const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId);
 	const openAnnotationPanelIds = useViewerStore(
 		(s) => s.openAnnotationPanelIds,
@@ -258,6 +261,8 @@ export function AnnotationManager() {
 	const setAnnotationsPanelOpen = useViewerStore(
 		(s) => s.setAnnotationsPanelOpen,
 	);
+
+	const canEdit = isAuthenticated && !presentationMode;
 
 	const sceneAnnotations = annotations.filter(
 		(a) => a.sceneId === activeSceneId,
@@ -324,13 +329,13 @@ export function AnnotationManager() {
 				<>
 					{sceneAnnotations.length === 0 && (
 						<p className="text-faint text-xs text-center py-3">
-							{presentationMode ? (
-								"No annotations yet."
-							) : (
+							{canEdit ? (
 								<>
 									No annotations yet. Press{" "}
 									<kbd className="rounded bg-field px-1">A</kbd> to add markers.
 								</>
+							) : (
+								"No annotations yet."
 							)}
 						</p>
 					)}
@@ -387,7 +392,7 @@ export function AnnotationManager() {
 											<MediaIndicators annotation={annotation} />
 										</button>
 
-										{!presentationMode && (
+										{canEdit && (
 											<button
 												type="button"
 												data-testid={`annotation-delete-${annotation.id}`}
@@ -407,7 +412,7 @@ export function AnnotationManager() {
 						</div>
 					)}
 
-					{selectedAnnotation && !presentationMode && (
+					{selectedAnnotation && canEdit && (
 						<div
 							className="mt-3 border-t border-subtle"
 							data-testid="annotation-editor"
