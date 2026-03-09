@@ -168,6 +168,7 @@ function AnnotationInputDialog() {
 
 export function SceneCanvas() {
 	const activeScene = useActiveScene();
+	const cloudScenesLoaded = useViewerStore((s) => s.cloudScenesLoaded);
 	const viewMode = useViewerStore((s) => s.viewMode);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
 	const isLoading = useViewerStore((s) => s.isLoading);
@@ -179,6 +180,10 @@ export function SceneCanvas() {
 	const selectAnnotation = useViewerStore((s) => s.selectAnnotation);
 	const [statsHost, setStatsHost] = useState<HTMLElement | null>(null);
 	const [gizmoInteractionActive, setGizmoInteractionActive] = useState(false);
+
+	// In production, wait for cloud scene URLs before rendering viewers
+	// to avoid loading local /models/ paths that don't exist on Vercel
+	const sceneReady = import.meta.env.DEV || cloudScenesLoaded;
 
 	useEffect(() => {
 		if (!import.meta.env.DEV) return;
@@ -226,10 +231,13 @@ export function SceneCanvas() {
 				<Environment preset="city" />
 
 				<Suspense fallback={<LoadingFallback />}>
-					{activeScene && (viewMode === "mesh" || viewMode === "both") && (
-						<GLBViewer url={activeScene.glbUrl} />
-					)}
 					{activeScene &&
+						sceneReady &&
+						(viewMode === "mesh" || viewMode === "both") && (
+							<GLBViewer url={activeScene.glbUrl} />
+						)}
+					{activeScene &&
+						sceneReady &&
 						(viewMode === "pointcloud" || viewMode === "both") && (
 							<PointCloudViewer url={activeScene.plyUrl} />
 						)}
