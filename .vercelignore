@@ -8,3 +8,4 @@ coverage
 glb
 ply
 api/discover
+api/dev-server.ts
