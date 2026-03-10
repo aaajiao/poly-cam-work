@@ -11,6 +11,22 @@ interface SceneBounds {
 	center: [number, number, number];
 }
 
+export function getPointCloudSceneBounds(
+	geometry: THREE.BufferGeometry,
+): SceneBounds | null {
+	if (!geometry.boundingSphere) {
+		geometry.computeBoundingSphere();
+	}
+
+	if (!geometry.boundingSphere) return null;
+
+	const { center, radius } = geometry.boundingSphere;
+	return {
+		radius,
+		center: [center.x, center.z, -center.y],
+	};
+}
+
 interface ScanRevealPointCloudViewerProps {
 	url: string;
 	uniforms: ScanRevealUniforms;
@@ -36,12 +52,10 @@ export function ScanRevealPointCloudViewer({
 	}, [data]);
 
 	useEffect(() => {
-		if (!geometry?.boundingSphere || !onBoundsReady) return;
-		const { center, radius } = geometry.boundingSphere;
-		onBoundsReady({
-			radius,
-			center: [center.x, center.z, -center.y],
-		});
+		if (!geometry || !onBoundsReady) return;
+		const bounds = getPointCloudSceneBounds(geometry);
+		if (!bounds) return;
+		onBoundsReady(bounds);
 	}, [geometry, onBoundsReady]);
 
 	const material = useMemo(
