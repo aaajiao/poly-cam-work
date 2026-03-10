@@ -29,11 +29,21 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 	const introPresetStatus = useViewerStore((s) => s.introPresetStatus);
 	const introPreset = useViewerStore((s) => s.introPreset);
 	const introPresetError = useViewerStore((s) => s.introPresetError);
-	const introContinueVisible = useViewerStore((s) => s.introContinueVisible);
 	const continueIntroScan = useViewerStore((s) => s.continueIntroScan);
 
 	const ready =
 		!!activeSceneId && !isLoading && (import.meta.env.DEV || cloudScenesLoaded);
+
+	const isSaving = introPresetStatus === "saving";
+	const hasSavedIntroPreset =
+		introPreset?.sceneId === activeSceneId && introPreset.enabled;
+	const isAwaitingIntroContinue =
+		compact &&
+		!isAuthenticated &&
+		hasSavedIntroPreset &&
+		isScanRevealVisible &&
+		!isScanning &&
+		!hasCompletedScan;
 
 	const icon = isScanning ? (
 		<Square size={14} />
@@ -42,15 +52,6 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 	) : (
 		<Play size={14} />
 	);
-	const isSaving = introPresetStatus === "saving";
-	const hasSavedIntroPreset =
-		introPreset?.sceneId === activeSceneId && introPreset.enabled;
-	const isAwaitingIntroContinue =
-		compact &&
-		!isAuthenticated &&
-		hasSavedIntroPreset &&
-		(introContinueVisible ||
-			(isScanRevealVisible && !isScanning && !hasCompletedScan));
 
 	const label = isScanning ? "Stop" : hasCompletedScan ? "Replay" : "Scan";
 	const tooltip = isScanning
