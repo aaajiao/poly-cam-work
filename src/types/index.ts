@@ -181,6 +181,8 @@ export interface IntroPreset {
 		openIds: string[];
 		triggeredIds: string[];
 		activeId: string | null;
+		panelOffsets?: Record<string, { x: number; y: number }>;
+		mediaSizes?: Record<string, { width?: number; height?: number }>;
 	};
 	ui: {
 		ctaLabel?: string;

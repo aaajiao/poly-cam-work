@@ -93,6 +93,8 @@ interface ViewerState {
 	selectedAnnotationId: string | null;
 	openAnnotationPanelIds: string[];
 	hoveredAnnotationId: string | null;
+	annotationPanelOffsets: Record<string, { x: number; y: number }>;
+	annotationMediaSizes: Record<string, { width?: number; height?: number }>;
 	annotationsVisible: boolean;
 	annotationsPanelOpen: boolean;
 	sidebarOpen: boolean;
@@ -140,6 +142,14 @@ interface ViewerState {
 	closeAnnotationPanel: (id: string) => void;
 	toggleAnnotationPanel: (id: string) => void;
 	clearAnnotationPanels: () => void;
+	setAnnotationPanelOffset: (
+		annotationId: string,
+		offset: { x: number; y: number },
+	) => void;
+	setAnnotationMediaSize: (
+		key: string,
+		size: { width?: number; height?: number },
+	) => void;
 	toggleAnnotationsVisible: () => void;
 	setAnnotationsPanelOpen: (open: boolean) => void;
 	setSidebarOpen: (open: boolean) => void;
@@ -225,6 +235,8 @@ export const useViewerStore = create<ViewerState>()(
 			selectedAnnotationId: null,
 			openAnnotationPanelIds: [],
 			hoveredAnnotationId: null,
+			annotationPanelOffsets: {},
+			annotationMediaSizes: {},
 			annotationsVisible: true,
 			annotationsPanelOpen: false,
 			sidebarOpen: false,
@@ -262,6 +274,8 @@ export const useViewerStore = create<ViewerState>()(
 					selectedAnnotationId: null,
 					openAnnotationPanelIds: [],
 					hoveredAnnotationId: null,
+					annotationPanelOffsets: {},
+					annotationMediaSizes: {},
 					introContinueVisible: false,
 					introPresetStatus: "idle",
 					introPresetError: null,
@@ -423,6 +437,20 @@ export const useViewerStore = create<ViewerState>()(
 				})),
 			clearAnnotationPanels: () =>
 				set({ openAnnotationPanelIds: [], hoveredAnnotationId: null }),
+			setAnnotationPanelOffset: (annotationId, offset) =>
+				set((state) => ({
+					annotationPanelOffsets: {
+						...state.annotationPanelOffsets,
+						[annotationId]: offset,
+					},
+				})),
+			setAnnotationMediaSize: (key, size) =>
+				set((state) => ({
+					annotationMediaSizes: {
+						...state.annotationMediaSizes,
+						[key]: size,
+					},
+				})),
 			toggleAnnotationsVisible: () =>
 				set((state) => ({ annotationsVisible: !state.annotationsVisible })),
 			setAnnotationsPanelOpen: (annotationsPanelOpen) =>
@@ -1428,6 +1456,8 @@ export const useViewerStore = create<ViewerState>()(
 						openIds: get().openAnnotationPanelIds,
 						triggeredIds: scan.triggeredAnnotationIds,
 						activeId: scan.activeAnnotationId ?? get().selectedAnnotationId,
+						panelOffsets: { ...get().annotationPanelOffsets },
+						mediaSizes: { ...get().annotationMediaSizes },
 					},
 					ui: {
 						ctaLabel: existing?.ui.ctaLabel ?? "Continue Scan",
@@ -1496,6 +1526,8 @@ export const useViewerStore = create<ViewerState>()(
 						openIds: [],
 						triggeredIds: [],
 						activeId: null,
+						panelOffsets: {},
+						mediaSizes: {},
 					},
 					ui: {
 						ctaLabel: existing?.ui.ctaLabel ?? "Continue Scan",
@@ -1537,7 +1569,11 @@ export const useViewerStore = create<ViewerState>()(
 				if (!preset) return;
 
 				useScanStore.getState().resumeScanFromPreset(preset);
-				set({ introContinueVisible: false });
+				set({
+					introContinueVisible: false,
+					annotationPanelOffsets: preset.annotations.panelOffsets ?? {},
+					annotationMediaSizes: preset.annotations.mediaSizes ?? {},
+				});
 			},
 			downloadLocalDraft: async (sceneId) => {
 				const sceneDraftAnnotations = sceneAnnotations(

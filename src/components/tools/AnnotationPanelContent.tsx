@@ -23,6 +23,7 @@ interface ResizableMediaProps {
 	maxHeight?: number;
 	maintainAspectRatio?: boolean;
 	showHandleAlways?: boolean;
+	onSizeChange?: (size: { width?: number; height?: number }) => void;
 }
 
 function ResizableMedia({
@@ -35,6 +36,7 @@ function ResizableMedia({
 	maxHeight = 400,
 	maintainAspectRatio = false,
 	showHandleAlways = false,
+	onSizeChange,
 }: ResizableMediaProps) {
 	const setCameraControlsEnabled = useViewerStore(
 		(s) => s.setCameraControlsEnabled,
@@ -51,6 +53,10 @@ function ResizableMedia({
 		height: defaultHeight ?? 0,
 	});
 	const detachListenersRef = useRef<(() => void) | null>(null);
+	const sizeRef = useRef(size);
+	sizeRef.current = size;
+	const onSizeChangeRef = useRef(onSizeChange);
+	onSizeChangeRef.current = onSizeChange;
 
 	useEffect(() => {
 		if (hasUserResizedRef.current) return;
@@ -115,6 +121,7 @@ function ResizableMedia({
 		const handleMouseUp = () => {
 			isDragging.current = false;
 			setCameraControlsEnabled(true);
+			onSizeChangeRef.current?.({ ...sizeRef.current });
 			window.removeEventListener("mousemove", handleMouseMove);
 			window.removeEventListener("mouseup", handleMouseUp);
 			window.removeEventListener("blur", handleMouseUp);
@@ -343,6 +350,15 @@ export function AnnotationPanelContent({
 	primaryImageAspectRatio,
 	onPrimaryAspectRatioChange,
 }: AnnotationPanelContentProps) {
+	const setAnnotationMediaSize = useViewerStore(
+		(s) => s.setAnnotationMediaSize,
+	);
+	const storedImageSize = useViewerStore(
+		(s) => s.annotationMediaSizes[`${annotation.id}:image`],
+	);
+	const storedVideoSize = useViewerStore(
+		(s) => s.annotationMediaSizes[`${annotation.id}:video`],
+	);
 	const vimeoId = annotation.videoUrl
 		? extractVimeoId(annotation.videoUrl)
 		: null;
@@ -385,14 +401,21 @@ export function AnnotationPanelContent({
 			{annotation.images.length > 0 && (
 				<div data-testid="annotation-panel-image-media">
 					<ResizableMedia
-						defaultWidth={singleImage ? defaultImageWidth : 320}
-						defaultHeight={singleImage ? undefined : 180}
+						defaultWidth={
+							storedImageSize?.width ?? (singleImage ? defaultImageWidth : 320)
+						}
+						defaultHeight={
+							storedImageSize?.height ?? (singleImage ? undefined : 180)
+						}
 						minWidth={singleImage ? minImageWidth : 220}
 						maxWidth={560}
 						minHeight={120}
 						maxHeight={400}
 						maintainAspectRatio={singleImage}
 						showHandleAlways
+						onSizeChange={(size) =>
+							setAnnotationMediaSize(`${annotation.id}:image`, size)
+						}
 					>
 						<ImageThumbnails
 							images={annotation.images}
@@ -405,11 +428,14 @@ export function AnnotationPanelContent({
 			{vimeoId && (
 				<div data-testid="annotation-panel-video-media">
 					<ResizableMedia
-						defaultWidth={280}
+						defaultWidth={storedVideoSize?.width ?? 280}
 						minWidth={180}
 						maxWidth={520}
 						maintainAspectRatio
 						showHandleAlways
+						onSizeChange={(size) =>
+							setAnnotationMediaSize(`${annotation.id}:video`, size)
+						}
 					>
 						<VimeoEmbed
 							videoId={vimeoId}

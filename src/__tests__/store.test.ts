@@ -26,6 +26,8 @@ describe("viewerStore", () => {
 			measurements: [],
 			annotations: [],
 			openAnnotationPanelIds: [],
+			annotationPanelOffsets: {},
+			annotationMediaSizes: {},
 			clipPlane: { enabled: false, axis: "y", position: 0.5, flipped: false },
 			colorMapMode: "original",
 			pointSize: 0.02,
@@ -201,6 +203,8 @@ describe("viewerStore", () => {
 			viewMode: "both",
 			openAnnotationPanelIds: ["ann-1"],
 			selectedAnnotationId: "ann-1",
+			annotationPanelOffsets: { "ann-1": { x: 30, y: -20 } },
+			annotationMediaSizes: { "ann-1:image": { width: 350 } },
 		});
 		useScanStore.setState({
 			scanT: 0.25,
@@ -239,6 +243,8 @@ describe("viewerStore", () => {
 					openIds: ["ann-1"],
 					triggeredIds: ["ann-1"],
 					activeId: "ann-1",
+					panelOffsets: { "ann-1": { x: 30, y: -20 } },
+					mediaSizes: { "ann-1:image": { width: 350 } },
 				},
 			}),
 		);
@@ -319,6 +325,8 @@ describe("viewerStore", () => {
 					openIds: ["ann-1"],
 					triggeredIds: ["ann-1"],
 					activeId: "ann-1",
+					panelOffsets: { "ann-1": { x: 50, y: -10 } },
+					mediaSizes: { "ann-1:image": { width: 400, height: 250 } },
 				},
 				ui: { ctaLabel: "Continue Scan" },
 				createdAt: 1,
@@ -336,6 +344,12 @@ describe("viewerStore", () => {
 		expect(scanState.scanRadius).toBe(18);
 		expect(scanState.triggeredAnnotationIds).toEqual(["ann-1"]);
 		expect(useViewerStore.getState().introContinueVisible).toBe(false);
+		expect(useViewerStore.getState().annotationPanelOffsets).toEqual({
+			"ann-1": { x: 50, y: -10 },
+		});
+		expect(useViewerStore.getState().annotationMediaSizes).toEqual({
+			"ann-1:image": { width: 400, height: 250 },
+		});
 	});
 
 	it("loadIntroPreset falls back to local captured preset when no live release exists", async () => {

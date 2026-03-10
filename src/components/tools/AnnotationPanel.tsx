@@ -115,6 +115,12 @@ function AnnotationFloatingPanel({
 		(s) => s.setCameraControlsEnabled,
 	);
 	const setHoveredAnnotation = useViewerStore((s) => s.setHoveredAnnotation);
+	const storedPanelOffset = useViewerStore(
+		(s) => s.annotationPanelOffsets[annotation.id],
+	);
+	const setAnnotationPanelOffset = useViewerStore(
+		(s) => s.setAnnotationPanelOffset,
+	);
 	const [entered, setEntered] = useState(false);
 	const [isPanelDragging, setIsPanelDragging] = useState(false);
 	const [primaryImageAspectRatio, setPrimaryImageAspectRatio] = useState(4 / 3);
@@ -151,10 +157,14 @@ function AnnotationFloatingPanel({
 		};
 	}, [annotation.id]);
 
-	const dragOffsetRef = useRef<ScreenOffset>({
-		x: panelStyleProfile.initialOffsetX,
-		y: panelStyleProfile.initialOffsetY,
-	});
+	const dragOffsetRef = useRef<ScreenOffset>(
+		storedPanelOffset
+			? { x: storedPanelOffset.x, y: storedPanelOffset.y }
+			: {
+					x: panelStyleProfile.initialOffsetX,
+					y: panelStyleProfile.initialOffsetY,
+				},
+	);
 	const isPanelDraggingRef = useRef(false);
 	const didDragRef = useRef(false);
 	const dragPointerIdRef = useRef<number | null>(null);
@@ -469,6 +479,9 @@ function AnnotationFloatingPanel({
 
 				if (didDragRef.current) {
 					suppressClickUntilRef.current = performance.now() + 180;
+					setAnnotationPanelOffset(annotation.id, {
+						...dragOffsetRef.current,
+					});
 				}
 
 				const handleElement = dragHandleElementRef.current;
@@ -518,6 +531,7 @@ function AnnotationFloatingPanel({
 			annotation.id,
 			applyDraggedLayoutImmediately,
 			onBringToFront,
+			setAnnotationPanelOffset,
 			setHoveredAnnotation,
 			setCameraControlsEnabled,
 		],
@@ -559,6 +573,16 @@ function AnnotationFloatingPanel({
 		cameraMovingRef.current = false;
 		cameraStillTimeRef.current = 0;
 	}, [applyLayoutImmediate, camera]);
+
+	// Sync stored panel offset from store (preset restore while already mounted)
+	useEffect(() => {
+		if (!storedPanelOffset) return;
+		dragOffsetRef.current = {
+			x: storedPanelOffset.x,
+			y: storedPanelOffset.y,
+		};
+		applyLayoutImmediate();
+	}, [storedPanelOffset, applyLayoutImmediate]);
 
 	useEffect(() => {
 		pendingRelayoutRef.current = true;

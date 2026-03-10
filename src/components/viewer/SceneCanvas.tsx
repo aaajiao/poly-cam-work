@@ -147,6 +147,10 @@ function IntroPresetController({ sceneReady }: { sceneReady: boolean }) {
 
 				setViewMode(introPreset.viewer.viewMode);
 				clearAnnotationPanels();
+				useViewerStore.setState({
+					annotationPanelOffsets: introPreset.annotations.panelOffsets ?? {},
+					annotationMediaSizes: introPreset.annotations.mediaSizes ?? {},
+				});
 				selectAnnotation(introPreset.annotations.activeId);
 				for (const id of introPreset.annotations.openIds) {
 					openAnnotationPanel(id);
