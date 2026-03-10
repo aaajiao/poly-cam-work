@@ -4,15 +4,16 @@ All tools render inside `<Canvas>` in SceneCanvas.tsx. Activated by `toolMode` f
 
 ## Files
 
-| File | Tool Mode | Activation |
-|------|-----------|------------|
-| `MeasurementTool.tsx` | `measure` | Click two points → distance line + label |
-| `ClippingPlane.tsx` | always (via `clipPlane.enabled`) | Sidebar slider controls position/axis |
-| `AnnotationTool.tsx` | `annotate` | Click surface → input dialog → persistent label |
-| `AnnotationLabel.tsx` | — | Individual label component (drei `<Html>`) |
-| `AnnotationMarkers.tsx` | — | Container: InstancedMesh (far LOD) + Html markers (close LOD), 2-tier LOD |
-| `AnnotationMarker.tsx` | — | Individual close-LOD marker (drei Html, click to select) |
-| `AnnotationPanel.tsx` | — | 3D floating content panel (drei Html, shows rich content) |
+| File | Role | Activation |
+|------|------|------------|
+| `MeasurementTool.tsx` | Click two points → distance line + label | `toolMode === 'measure'` |
+| `ClippingPlane.tsx` | Cross-section plane with DoubleSide fix | `clipPlane.enabled` (always available) |
+| `AnnotationTool.tsx` | Click surface → placement dialog → persistent annotation | `toolMode === 'annotate'` |
+| `AnnotationMarkers.tsx` | Container: InstancedMesh (far LOD) + Html markers (close LOD) | Always when annotations exist |
+| `AnnotationMarker.tsx` | Individual close-LOD marker (drei Html, click to select) | Managed by AnnotationMarkers |
+| `AnnotationPanel.tsx` | 3D floating content panel (1069L, drei Html, rich content) | `openAnnotationPanelIds` |
+| `AnnotationPanelContent.tsx` | Panel content editor: title, description, images, video, links | Nested in AnnotationPanel |
+| `AnnotationLabel.tsx` | Individual label component (drei `<Html>`) | Per annotation |
 
 ## Tool Registration Pattern
 
@@ -37,6 +38,15 @@ All tools that need click-to-3D use the same pattern:
 Shared utilities in `src/utils/raycasting.ts`:
 - `updatePointsThreshold(raycaster, camera)` — sets `raycaster.params.Points.threshold = 0.01 + dist * 0.005` each frame
 - `raycastScene(raycaster, scene, camera)` — calls threshold update + traverses scene + returns intersections
+
+## Annotation Architecture
+
+Annotations are **store-driven** with screen-space awareness:
+- `annotations[]` in viewerStore (global, filtered by `sceneId`)
+- `openAnnotationPanelIds[]` tracks which panels are visible
+- `AnnotationPanel` uses `annotationPanelLayout.ts` for collision-free positioning
+- Images stored locally (IndexedDB) during editing; uploaded to Vercel Blob only on publish
+- Rich content: title, description, images[], videoUrl (Vimeo), links[]
 
 ## ClippingPlane: DoubleSide Fix
 

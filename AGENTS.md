@@ -9,6 +9,35 @@ Vite 6 + React 19 + TypeScript strict + bun
 @react-three/fiber v9 + drei v9 + Three.js
 zustand (persist) + shadcn/ui (new-york) + Tailwind v4
 
+## Structure
+
+```
+poly.cam/
+├── src/
+│   ├── components/
+│   │   ├── sidebar/       # Scene management, publish, annotations list (13 files)
+│   │   ├── toolbar/       # Tool buttons, view mode, scan controls
+│   │   ├── tools/         # 3D tools: measurement, clipping, annotations (R3F context)
+│   │   ├── ui/            # shadcn + custom: ImageUpload, StatusBar, ErrorBoundary
+│   │   ├── viewer/        # R3F canvas, GLB/PLY viewers, scan reveal (R3F context)
+│   │   └── Layout.tsx
+│   ├── store/             # zustand: viewerStore (1973L hub), scanStore, sceneCatalog, draftPersistence
+│   ├── hooks/             # usePLYLoader, useScanEngine, useScanAnnotationTrigger
+│   ├── lib/               # API clients: publishApi, modelApi, introApi
+│   ├── storage/           # imageStorage (IndexedDB), vercelBlobImageStorage, vercelBlobModelStorage
+│   ├── utils/             # raycasting, colorMapping, measurement, annotationPanelLayout
+│   ├── shaders/           # scanRevealMesh, scanRevealPoints (GLSL via onBeforeCompile)
+│   ├── workers/           # ply-parser.worker.ts (off-thread PLY parsing)
+│   ├── types/             # All shared types (226L, serializable)
+│   └── __tests__/         # Unit (26 files, jsdom) + browser/ (8 files, Playwright)
+├── api/                   # Vercel Functions: auth, draft, publish, release, rollback, intro, models, media
+│   └── _lib/              # Shared: auth, http, blobStore, modelRegistry, discovery (9 files)
+├── e2e/                   # Playwright smoke (app boot only)
+├── docs/                  # Architecture, testing, manifesto
+├── public/models/         # Official scene GLB/PLY assets
+└── scripts/               # cleanup-orphan-assets.ts
+```
+
 ---
 
 ## Commands
