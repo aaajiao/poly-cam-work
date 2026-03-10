@@ -42,7 +42,7 @@ export function useScanAnnotationTrigger() {
 				}
 			}
 
-			if (!state.isScanning && prev.isScanning) {
+			if (!state.isScanRevealVisible && prev.isScanRevealVisible) {
 				for (const t of timersRef.current) clearTimeout(t);
 				timersRef.current = [];
 				const store = useViewerStore.getState();

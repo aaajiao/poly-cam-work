@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as introApi from "@/lib/introApi";
 import * as modelApi from "@/lib/modelApi";
 import * as publishApi from "@/lib/publishApi";
 import { vercelBlobModelStorage } from "@/storage/vercelBlobModelStorage";
+import { useScanStore } from "@/store/scanStore";
 import {
 	resolveActiveSceneFromCatalog,
 	resolveOfficialSceneSyncDiff,
@@ -33,6 +35,12 @@ describe("viewerStore", () => {
 			isLoading: false,
 			loadingProgress: 0,
 			loadingMessage: "",
+			runtimeCamera: null,
+			introPreset: null,
+			introPresetStatus: "idle",
+			introPresetError: null,
+			introContinueVisible: false,
+			introLoadRequestId: 0,
 			sceneMutationVersion: {},
 			draftRevisionByScene: {},
 			draftRevisionSourceByScene: {},
@@ -41,6 +49,20 @@ describe("viewerStore", () => {
 			publishedVersionsByScene: {},
 			loadRequestVersionByScene: {},
 			officialSceneSyncOverridesByScene: {},
+		});
+
+		useScanStore.setState({
+			isScanning: false,
+			isScanRevealVisible: false,
+			scanPhase: "idle",
+			scanT: 0,
+			hasCompletedScan: false,
+			scanOrigin: [0, 0, 0],
+			scanRadius: 0,
+			maxRadius: 50,
+			duration: 15,
+			triggeredAnnotationIds: [],
+			activeAnnotationId: null,
 		});
 	});
 
@@ -150,6 +172,269 @@ describe("viewerStore", () => {
 		const state = useViewerStore.getState();
 		expect(state.isAuthenticated).toBe(false);
 		expect(state.presentationMode).toBe(true);
+	});
+
+	it("pauseScan preserves reveal state for intro authoring", () => {
+		useScanStore.getState().startScan(60, 12);
+		useScanStore.getState().setScanProgress(0.4, 24, "expansion");
+		useScanStore.getState().triggerAnnotation("ann-1");
+		useScanStore.getState().setActiveAnnotation("ann-1");
+
+		useScanStore.getState().pauseScan();
+
+		const state = useScanStore.getState();
+		expect(state.isScanning).toBe(false);
+		expect(state.isScanRevealVisible).toBe(true);
+		expect(state.scanT).toBe(0.4);
+		expect(state.scanRadius).toBe(24);
+		expect(state.triggeredAnnotationIds).toEqual(["ann-1"]);
+		expect(state.activeAnnotationId).toBe("ann-1");
+	});
+
+	it("captureIntroPreset serializes current runtime state", async () => {
+		useViewerStore.setState({
+			runtimeCamera: {
+				position: [4, 5, 6],
+				target: [1, 2, 3],
+				fov: 42,
+			},
+			viewMode: "both",
+			openAnnotationPanelIds: ["ann-1"],
+			selectedAnnotationId: "ann-1",
+		});
+		useScanStore.setState({
+			scanT: 0.25,
+			scanRadius: 12,
+			scanOrigin: [7, 8, 9],
+			maxRadius: 30,
+			duration: 9,
+			scanPhase: "expansion",
+			triggeredAnnotationIds: ["ann-1"],
+			activeAnnotationId: "ann-1",
+		});
+
+		const saveSpy = vi
+			.spyOn(introApi, "saveIntroDraft")
+			.mockImplementation(async (_sceneId, preset) => preset);
+
+		const preset = await useViewerStore.getState().captureIntroPreset("scan-a");
+
+		expect(saveSpy).toHaveBeenCalledWith(
+			"scan-a",
+			expect.objectContaining({
+				sceneId: "scan-a",
+				enabled: true,
+				camera: {
+					position: [4, 5, 6],
+					target: [1, 2, 3],
+					fov: 42,
+				},
+				viewer: { viewMode: "both" },
+				scan: expect.objectContaining({
+					progress: 0.25,
+					radius: 12,
+					origin: [7, 8, 9],
+				}),
+				annotations: {
+					openIds: ["ann-1"],
+					triggeredIds: ["ann-1"],
+					activeId: "ann-1",
+				},
+			}),
+		);
+		expect(preset.enabled).toBe(true);
+		expect(useViewerStore.getState().introPreset?.sceneId).toBe("scan-a");
+		expect(useViewerStore.getState().draftDirtyByScene["scan-a"]).toBe(true);
+	});
+
+	it("clearIntroPreset marks the scene dirty for publish", async () => {
+		useViewerStore.setState({
+			introPreset: {
+				version: 1,
+				sceneId: "scan-a",
+				enabled: true,
+				camera: {
+					position: [0, 5, 15],
+					target: [0, 0, 0],
+					fov: 50,
+				},
+				viewer: { viewMode: "mesh" },
+				scan: {
+					progress: 0.5,
+					radius: 18,
+					phase: "expansion",
+					origin: [1, 2, 3],
+					maxRadius: 40,
+					duration: 10,
+				},
+				annotations: {
+					openIds: [],
+					triggeredIds: [],
+					activeId: null,
+				},
+				ui: { ctaLabel: "Continue Scan" },
+				createdAt: 1,
+				updatedAt: 2,
+			},
+			runtimeCamera: {
+				position: [0, 5, 15],
+				target: [0, 0, 0],
+				fov: 50,
+			},
+		});
+
+		const saveSpy = vi
+			.spyOn(introApi, "saveIntroDraft")
+			.mockImplementation(async (_sceneId, preset) => preset);
+
+		const preset = await useViewerStore.getState().clearIntroPreset("scan-a");
+
+		expect(saveSpy).toHaveBeenCalled();
+		expect(preset.enabled).toBe(false);
+		expect(useViewerStore.getState().introPreset).toBeNull();
+		expect(useViewerStore.getState().draftDirtyByScene["scan-a"]).toBe(true);
+	});
+
+	it("continueIntroScan resumes from the loaded intro preset", () => {
+		useViewerStore.setState({
+			introPreset: {
+				version: 1,
+				sceneId: "scan-a",
+				enabled: true,
+				camera: {
+					position: [0, 5, 15],
+					target: [0, 0, 0],
+					fov: 50,
+				},
+				viewer: { viewMode: "mesh" },
+				scan: {
+					progress: 0.5,
+					radius: 18,
+					phase: "expansion",
+					origin: [1, 2, 3],
+					maxRadius: 40,
+					duration: 10,
+				},
+				annotations: {
+					openIds: ["ann-1"],
+					triggeredIds: ["ann-1"],
+					activeId: "ann-1",
+				},
+				ui: { ctaLabel: "Continue Scan" },
+				createdAt: 1,
+				updatedAt: 2,
+			},
+			introContinueVisible: true,
+		});
+
+		useViewerStore.getState().continueIntroScan();
+
+		const scanState = useScanStore.getState();
+		expect(scanState.isScanning).toBe(true);
+		expect(scanState.isScanRevealVisible).toBe(true);
+		expect(scanState.scanT).toBe(0.5);
+		expect(scanState.scanRadius).toBe(18);
+		expect(scanState.triggeredAnnotationIds).toEqual(["ann-1"]);
+		expect(useViewerStore.getState().introContinueVisible).toBe(false);
+	});
+
+	it("loadIntroPreset falls back to local captured preset when no live release exists", async () => {
+		const localPreset = {
+			version: 1 as const,
+			sceneId: "scan-a",
+			enabled: true,
+			camera: {
+				position: [1, 2, 3] as [number, number, number],
+				target: [0, 0, 0] as [number, number, number],
+				fov: 50,
+			},
+			viewer: { viewMode: "mesh" as const },
+			scan: {
+				progress: 0.5,
+				radius: 10,
+				phase: "expansion" as const,
+				origin: [0, 0, 0] as [number, number, number],
+				maxRadius: 20,
+				duration: 15,
+			},
+			annotations: {
+				openIds: [],
+				triggeredIds: [],
+				activeId: null,
+			},
+			ui: { ctaLabel: "Continue Scan" },
+			createdAt: 1,
+			updatedAt: 2,
+		};
+
+		useViewerStore.setState({ introPreset: localPreset });
+		vi.spyOn(introApi, "getIntroRelease").mockRejectedValue(
+			Object.assign(new Error("Intro preset not found"), { status: 404 }),
+		);
+
+		const loaded = await useViewerStore
+			.getState()
+			.loadIntroPreset("scan-a", "live");
+
+		expect(loaded).toEqual(localPreset);
+		expect(useViewerStore.getState().introPreset).toEqual(localPreset);
+		expect(useViewerStore.getState().introPresetStatus).toBe("idle");
+	});
+
+	it("loadIntroPreset also falls back to local preset on unauthorized live lookup", async () => {
+		const localPreset = {
+			version: 1 as const,
+			sceneId: "scan-a",
+			enabled: true,
+			camera: {
+				position: [2, 3, 4] as [number, number, number],
+				target: [0, 0, 0] as [number, number, number],
+				fov: 45,
+			},
+			viewer: { viewMode: "both" as const },
+			scan: {
+				progress: 0.3,
+				radius: 8,
+				phase: "expansion" as const,
+				origin: [0, 1, 0] as [number, number, number],
+				maxRadius: 18,
+				duration: 12,
+			},
+			annotations: {
+				openIds: [],
+				triggeredIds: [],
+				activeId: null,
+			},
+			ui: { ctaLabel: "Continue Scan" },
+			createdAt: 10,
+			updatedAt: 11,
+		};
+
+		useViewerStore.setState({ introPreset: localPreset });
+		vi.spyOn(introApi, "getIntroRelease").mockRejectedValue(
+			Object.assign(new Error("Unauthorized"), { status: 401 }),
+		);
+
+		const loaded = await useViewerStore
+			.getState()
+			.loadIntroPreset("scan-a", "live");
+
+		expect(loaded).toEqual(localPreset);
+		expect(useViewerStore.getState().introPreset).toEqual(localPreset);
+		expect(useViewerStore.getState().introPresetStatus).toBe("idle");
+	});
+
+	it("persists activeSceneId for homepage refresh continuity", () => {
+		useViewerStore.getState().setActiveScene("scan-c");
+
+		const persistedRaw = localStorage.getItem("polycam-viewer-state");
+		expect(persistedRaw).not.toBeNull();
+
+		const persisted = JSON.parse(persistedRaw as string) as {
+			state: { activeSceneId?: string };
+		};
+
+		expect(persisted.state.activeSceneId).toBe("scan-c");
 	});
 
 	it("setToolMode ignores non-orbit requests during presentation mode", () => {

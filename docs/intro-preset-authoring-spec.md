@@ -2,157 +2,231 @@
 
 > Status: Draft
 > Date: 2026-03-10
+> Purpose: Turn the intro preset idea into an implementation-ready spec aligned with the current codebase.
 
 ---
 
-## 零、结论先行
+## 0. One-Sentence Definition
 
-首访体验不做一整段 timeline 录制，而做一个**作者捕捉的首访状态（Intro Preset）**。
+Intro Preset is a separately stored, author-captured homepage entry state for one scene release.
 
-- 作者登录后，手动调整模型角度、扫描进度、节点打开状态。
-- 在满意的瞬间点击 **Capture Intro**。
-- 系统将当前状态序列化为一个**单独的 JSON 文件**并存入 Vercel Blob。
-- 访客进入网站时，不再看到默认相机和完整模型，而是先恢复这个 preset。
-- 用户点击 `Continue Scan` 后，再从这个 preset 的扫描进度继续完成后续 reveal。
+It is:
 
-**关键原则**：
+- a frozen authored state
+- stored as its own JSON asset in Blob
+- loaded only for visitor entry
+- version-bound to the published scene release
 
-- 这是一个 **authored state**，不是程序推导出的通用首访效果。
-- 这是一个 **separate asset**，不是塞进现有 `SceneDraft` 主体里的字段。
-- 这是一个 **homepage-load artifact**，与注释草稿、发布正文分离，但与发布版本绑定。
+It is not:
+
+- part of `SceneDraft.annotations`
+- part of `ScanMetadata`
+- a timeline recording system
+- an automatic camera director
 
 ---
 
-## 一、为什么要单独存一个文件
+## 1. Product Decision
 
-当前系统里已经有三类东西：
+We do not build a full recorded opening timeline.
 
-1. **场景资源**：`glbUrl` / `plyUrl`
-2. **内容数据**：`SceneDraft.annotations`
-3. **运行时视觉状态**：camera、scan progress、open panels、triggered ids
+We build a single authored opening tableau:
 
-Intro Preset 属于第 3 类。
+1. editor logs in
+2. editor adjusts camera, view mode, scan progress, and panel state
+3. editor clicks `Capture Intro`
+4. system serializes the current runtime state into a dedicated JSON file
+5. visitor loads the scene and sees that state first
+6. visitor clicks `Continue Scan` to resume from the captured scan state
 
-它有两个特征：
+This is the smallest implementation that preserves curatorial intent while fitting the current architecture.
 
-- 它服务的是**首访载入体验**，不是注释内容本身。
-- 它是一个**单独可替换、可重做、可禁用**的开场状态。
+Important clarification:
 
-所以它不应该混进：
+- the capture of this "best keyframe" or opening state only exists after login
+- it is an authenticated authoring action, not a visitor-side capability
+- before login, the system may only consume an already-published intro preset; it must not create or overwrite one
 
-- `ScanMetadata`（技术元数据，不是策展状态）
-- `SceneDraft.annotations`（内容正文，不是入口态）
+---
 
-### 设计判断
+## 2. Why The Previous Draft Still Felt Unclear
 
-Intro Preset 应该是：
+The previous version already defined the data and the storage strategy well.
+
+What was still ambiguous was the technical ownership split.
+
+It mixed four different concerns in one flow:
+
+1. domain data shape
+2. Blob persistence
+3. runtime restoration
+4. UI entry points
+
+For implementation, these must be separated explicitly.
+
+---
+
+## 3. Core Architecture Decision
+
+### 3.1 Intro Preset is not a Hook
+
+`IntroPreset` itself is a domain object and a persisted asset.
+
+It belongs to:
+
+- type definitions
+- API handlers
+- Blob path conventions
+- publish/release versioning
+
+### 3.2 Intro Preset runtime orchestration should use Hooks
+
+The current system already uses hooks to orchestrate viewer-side behavior:
+
+- `src/hooks/useScanEngine.ts`
+- `src/hooks/useScanAnnotationTrigger.ts`
+- `src/hooks/usePLYLoader.ts`
+
+So the runtime layer for intro preset should also be hook-driven.
+
+Specifically, hooks are the right place for:
+
+- capturing the current camera + store state
+- applying preset state after scene mount and camera reset
+- resuming scan from a frozen preset state
+- coordinating R3F lifecycle with Zustand stores
+
+### 3.3 Final split
+
+Use this split and do not collapse these responsibilities together:
 
 ```text
-scene assets      ← glb / ply
-scene content     ← draft / release annotations
-intro preset      ← homepage-load state (separate JSON)
+IntroPreset type/schema           -> domain layer
+intro blob read/write/versioning  -> API + persistence layer
+capture/apply/resume logic        -> hooks + store actions
+buttons / CTA / editor affordance -> UI layer
 ```
 
-这样做的好处：
+---
 
-- **结构清晰**：首访逻辑和正文内容解耦
-- **缓存友好**：intro preset 可单独读取、单独失效
-- **迭代灵活**：作者可以只重录 intro，不必修改 annotation 内容
-- **版本明确**：可以和发布版本一一对应，不会漂移
+## 4. Existing Code Anchors
+
+This spec must map onto the current codebase, not invent a parallel system.
+
+### 4.1 Stores
+
+- `src/store/scanStore.ts`
+  - owns `isScanning`, `scanPhase`, `scanT`, `scanRadius`, `scanOrigin`, `maxRadius`, `duration`, `triggeredAnnotationIds`, `activeAnnotationId`
+  - currently exposes `startScan()`, `stopScan()`, `resetScan()`, `setScanProgress()`, `triggerAnnotation()`, `setActiveAnnotation()`
+
+- `src/store/viewerStore.ts`
+  - owns `viewMode`, `selectedAnnotationId`, `openAnnotationPanelIds`, `presentationMode`, `isAuthenticated`, `cloudScenesLoaded`
+  - already contains the publish/draft loading chain and scene boot behavior
+
+### 4.2 Viewer lifecycle
+
+- `src/components/viewer/SceneCanvas.tsx`
+  - `CameraController` resets the camera on scene change
+  - `sceneReady` is currently gated by `cloudScenesLoaded`
+  - `ScanOrchestrator` only mounts when `isScanning === true`
+  - normal viewers mount only when `isScanning === false`
+
+This matters because a paused partial scan cannot be restored correctly by only writing store state. The rendering path must also support a non-running but already-revealed scan snapshot.
+
+### 4.3 Scan runtime
+
+- `src/components/viewer/ScanOrchestrator.tsx`
+- `src/hooks/useScanEngine.ts`
+- `src/hooks/useScanAnnotationTrigger.ts`
+
+These files already form the scan orchestration layer. Intro preset should extend this layer, not bypass it.
+
+### 4.4 App boot and release loading
+
+- `src/App.tsx`
+  - refreshes auth session
+  - loads cloud scenes
+  - loads draft/release for the active scene
+
+Intro preset loading should attach to the same active-scene boot path.
+
+### 4.5 Publish chain
+
+- `src/lib/publishApi.ts`
+- `api/draft/[sceneId].ts`
+- `api/release/[sceneId].ts`
+- `api/publish/[sceneId].ts`
+
+Intro preset versioning must plug into the existing publish flow rather than inventing a separate publish pipeline.
 
 ---
 
-## 二、非目标（Non-Goals）
+## 5. Scope And Non-Goals
 
-本阶段明确**不做**：
+### 5.1 In scope for MVP
 
-### 2.1 不做 Timeline Recording
+- separate intro preset JSON asset
+- intro draft + intro release Blob storage
+- authenticated author can capture current intro state
+- publish copies intro draft into the matching release version
+- visitor loads the matching intro preset for the live release
+- visitor sees `Continue Scan`
+- scan resumes from the preset state instead of restarting from 0
 
-不录：
+### 5.2 Explicitly out of scope
 
-- 每一帧 camera
-- 每一帧 scanT
-- 每一帧 annotation 事件
-- 完整播放轨道 / 插值 / 关键帧系统
-
-原因：
-
-- 当前没有 Camera Director
-- 当前没有 playback timeline schema
-- 当前的价值重点在“作者选中的开场瞬间”，不是一整段电影
-
-### 2.2 不做自动智能构图
-
-不根据 bounds 自动生成“最佳角度”。
-
-原因：
-
-- 作品之间差异很大
-- 首访构图本质上是策展决策，不是几何推导
-
-### 2.3 不做节点自动导演系统
-
-不做“首访自动播放多个节点的定时叙事链”。
-
-MVP 只支持：
-
-- 0 个节点打开
-- 1 个 hero 节点打开
-- 可选多个 `triggeredAnnotationIds` 已点亮
+- timeline recording
+- keyframe playback
+- automatic best camera framing
+- multi-node auto-directed story chains
+- separate intro version pointer independent from main release
+- multiple intro presets per scene
+- device-specific intro variants
 
 ---
 
-## 三、Blob 对象结构
+## 6. Blob Contract
 
-Intro Preset 必须进 Vercel Blob，但与现有 draft/release 结构分开。
-
-### 3.1 建议路径
+### 6.1 Paths
 
 ```text
-scenes/{sceneId}/draft.json                          ← 现有正文草稿
-scenes/{sceneId}/releases/{version}.json             ← 现有正文发布快照
-scenes/{sceneId}/live.json                           ← 现有 live pointer
+scenes/{sceneId}/draft.json
+scenes/{sceneId}/releases/{version}.json
+scenes/{sceneId}/live.json
 
-scenes/{sceneId}/intro/draft.json                    ← 新增：intro 草稿
-scenes/{sceneId}/intro/releases/{version}.json       ← 新增：与正文发布版本对应的 intro 快照
+scenes/{sceneId}/intro/draft.json
+scenes/{sceneId}/intro/releases/{version}.json
 ```
 
-### 3.2 为什么不用单独的 intro live pointer
+### 6.2 Version rule
 
-不建议再建：
+There is no `scenes/{sceneId}/intro/live.json`.
 
-```text
-scenes/{sceneId}/intro/live.json
-```
+The intro preset version is always derived from the main scene live version.
 
-原因：
+Visitor load contract:
 
-- intro 的“live 版本”应该天然跟正文 `live.json` 对齐
-- 访客加载 release N 时，也应该加载 intro release N
-- 避免正文是 version 7，intro 却误用 version 5
+1. read `scenes/{sceneId}/live.json`
+2. resolve `version = N`
+3. read `scenes/{sceneId}/releases/{N}.json`
+4. read `scenes/{sceneId}/intro/releases/{N}.json`
+5. if intro release does not exist, fall back to default viewer
 
-### 3.3 发布时的行为
+### 6.3 Publish contract
 
-发布 scene draft 为 release `N` 时：
+When publishing scene release `N`:
 
-1. 正文写入 `scenes/{sceneId}/releases/{N}.json`
-2. 当前 intro 草稿写入 `scenes/{sceneId}/intro/releases/{N}.json`
-3. `live.json` 仍只维护正文版本号
+1. write `scenes/{sceneId}/releases/{N}.json`
+2. copy current `scenes/{sceneId}/intro/draft.json` to `scenes/{sceneId}/intro/releases/{N}.json` if it exists
+3. update `scenes/{sceneId}/live.json` to `N`
 
-访客读取时：
-
-1. 先读 `live.json` → 得到 `version = N`
-2. 再读正文 release `N`
-3. 再读 intro release `N`
-4. 若 intro 不存在，则 fallback 到默认 viewer
+This guarantees the content release and intro entry state cannot drift apart.
 
 ---
 
-## 四、数据结构
+## 7. Data Model
 
-Intro Preset 是一个**冻结状态**，不是 timeline。
-
-### 4.1 核心类型
+### 7.1 Canonical type
 
 ```ts
 export interface IntroPreset {
@@ -172,12 +246,12 @@ export interface IntroPreset {
   }
 
   scan: {
-    progress: number          // 0..1, 例如 0.25
-    radius: number            // 对应当前 scanRadius
+    progress: number
+    radius: number
     phase: 'origin' | 'expansion' | 'complete'
     origin: [number, number, number]
     maxRadius: number
-    duration: number          // 后续 Continue Scan 用的总时长
+    duration: number
   }
 
   annotations: {
@@ -187,7 +261,7 @@ export interface IntroPreset {
   }
 
   ui: {
-    ctaLabel?: string         // 默认 'Continue Scan'
+    ctaLabel?: string
   }
 
   createdAt: number
@@ -195,287 +269,476 @@ export interface IntroPreset {
 }
 ```
 
-### 4.2 为什么既存 `progress` 又存 `radius`
+### 7.2 Required invariants
 
-都要存。
+- `sceneId` must match the route scene id
+- `scan.progress` is normalized `0..1`
+- `scan.radius` is stored in addition to `scan.progress`
+- `annotations.activeId` must either be `null` or appear in `triggeredIds`
+- `annotations.openIds` should be a subset of triggered annotation ids for MVP
 
-- `progress` 用于后续 resume / UI 计算
-- `radius` 用于恢复时立即渲染正确 shader 状态
+### 7.3 Why store both `progress` and `radius`
 
-两者可以互校验，但不要只存一个。
+- `progress` is needed for resume semantics and CTA logic
+- `radius` is needed to restore the visible reveal state immediately
 
-### 4.3 为什么要存 `triggeredIds`
-
-因为首访状态不只是“画面停在 25%”。
-
-它还包含：
-
-- 哪些节点已经被 scan 激活
-- 哪些面板已打开
-- 哪个节点是当前焦点
-
-否则访客会看到“局部扫描态”，但 marker / panel 状态不一致。
+Do not derive one from the other at load time.
 
 ---
 
-## 五、Authoring Workflow
+## 8. Responsibility Split
 
-### 5.1 入口
+This section is the execution contract.
 
-仅登录用户可见。
+### 8.1 Domain layer
 
-建议提供一组简单动作：
+Owns the shape and serialization of intro preset.
+
+Primary file:
+
+- `src/types/index.ts`
+
+Add:
+
+- `IntroPreset`
+
+Optional helpers if needed:
+
+- normalize/validate intro preset payload
+
+### 8.2 Persistence layer
+
+Owns Blob paths and HTTP read/write behavior.
+
+Primary files:
+
+- `api/intro/[sceneId].ts` (new)
+- `api/publish/[sceneId].ts`
+- `src/lib/publishApi.ts` or `src/lib/introApi.ts`
+
+Required behavior:
+
+- authenticated `GET /api/intro/:sceneId` returns intro draft
+- authenticated `PUT /api/intro/:sceneId` writes intro draft
+- public `GET /api/intro/:sceneId?version=N` returns intro release `N`
+- publish copies intro draft into intro release `N`
+
+### 8.3 Runtime store layer
+
+Owns scan-state semantics, not network persistence.
+
+Primary file:
+
+- `src/store/scanStore.ts`
+
+Required additions:
+
+- `pauseScan()`
+- `applyIntroScanSnapshot(preset: IntroPreset)`
+- `resumeScanFromPreset(preset: IntroPreset)`
+
+Semantics:
+
+- `pauseScan()` freezes current scan state without clearing progress or triggered ids
+- `applyIntroScanSnapshot()` restores the frozen visible state but does not start time progression
+- `resumeScanFromPreset()` continues from the saved progress instead of resetting to 0
+
+Important: the existing `stopScan()` currently clears progress and triggered ids. That behavior should remain destructive and should not be reused for intro capture or intro apply.
+
+### 8.4 Runtime hook layer
+
+Owns orchestration across camera, R3F lifecycle, and stores.
+
+Recommended hooks:
+
+- `useCaptureIntroPreset()`
+- `useIntroPresetLoader(sceneId, version)`
+- `useApplyIntroPreset()`
+
+Responsibilities:
+
+- `useCaptureIntroPreset()` reads camera + controls target + store state and produces an `IntroPreset`
+- `useIntroPresetLoader()` loads the matching intro release for the active scene and live version
+- `useApplyIntroPreset()` runs after scene mount and after default camera reset, then applies camera, view mode, scan snapshot, and panel state in the correct order
+
+### 8.5 UI layer
+
+Owns buttons and visitor CTA.
+
+Likely files:
+
+- toolbar or sidebar controls for authoring
+- presentation overlay for visitor CTA
+
+Required controls:
+
+- authenticated editor: `Capture Intro`, `Clear Intro`
+- visitor: `Continue Scan`
+
+---
+
+## 9. Hook Strategy
+
+Yes, hooks are the right structure here, but only for runtime orchestration.
+
+### 9.1 Why hooks fit this system
+
+Because the current system already expresses viewer behavior through hooks plus store subscriptions:
+
+- per-frame scan progression uses `useFrame`
+- scan side effects subscribe to Zustand state
+- viewer mount order matters
+- camera access requires R3F context
+
+Intro preset has exactly the same constraints.
+
+### 9.2 What must not become a hook
+
+Do not hide persistence or versioning inside runtime hooks.
+
+These stay outside hooks:
+
+- Blob path conventions
+- release copying
+- request/response schemas
+- release/version coupling
+
+### 9.3 Runtime sequence constraint
+
+`useApplyIntroPreset()` cannot simply run on first render.
+
+It must wait for:
+
+1. active scene resolved
+2. scene assets mounted
+3. default `CameraController` reset completed
+4. intro release payload available
+
+Only then should it apply:
+
+1. camera position + target
+2. `viewMode`
+3. scan snapshot
+4. annotation focus/panel state
+
+---
+
+## 10. Critical Rendering Decision
+
+This is the most important technical clarification in the document.
+
+### 10.1 Problem
+
+Current rendering only mounts scan reveal viewers when `isScanning === true` in `src/components/viewer/SceneCanvas.tsx`.
+
+That means a visitor cannot see a paused partial reveal while the scan is not actively running.
+
+### 10.2 Required change
+
+We need a rendering state that supports:
+
+- scan reveal visuals active
+- scan time progression inactive
+
+In other words, visual reveal state and "engine currently running" state must stop being treated as the same boolean.
+
+### 10.3 Implementation rule
+
+Do one of the following, but choose one explicitly and keep it consistent:
+
+#### Option A - recommended
+
+Introduce a derived render condition such as:
+
+```ts
+const scanRevealActive = isScanning || hasIntroSnapshotApplied
+```
+
+Then mount scan reveal viewers when `scanRevealActive === true`, while only advancing time when `isScanning === true`.
+
+#### Option B - acceptable but less clear
+
+Extend `scanStore` with a dedicated mode flag such as:
+
+```ts
+scanPresentationMode: 'off' | 'frozen' | 'running'
+```
+
+For MVP, Option A is simpler and better aligned with the current code.
+
+### 10.4 Consequence for `useScanEngine`
+
+`useScanEngine.ts` currently clears uniforms when `isScanning` becomes false.
+
+That behavior must be split:
+
+- stopping a scan should still clear uniforms
+- applying a frozen intro snapshot should set uniforms to the preset values and keep them visible
+- pausing should not erase the visible reveal state
+
+---
+
+## 11. Authoring Workflow
+
+### 11.1 MVP editor controls
+
+Authenticated editor sees:
 
 - `Start Scan`
 - `Pause Scan`
 - `Capture Intro`
 - `Clear Intro`
 
-其中关键动作不是“录制”，而是：
+### 11.2 Authoring sequence
 
-## `Capture Current Intro State`
+1. login
+2. enter edit mode as usual
+3. move camera to desired composition
+4. choose desired `viewMode`
+5. start scan
+6. pause at the desired reveal state
+7. optionally open one hero annotation panel
+8. click `Capture Intro`
+9. current state is serialized and written to `intro/draft.json`
 
-### 5.2 操作流程
+Authoring precondition:
 
-1. 作者进入编辑模式
-2. 手动调整 camera 到满意角度
-3. 开始扫描
-4. 在某个进度点击暂停 / 停止在当前帧
-5. 手动打开 0~1 个 hero annotation panel
-6. 点击 `Capture Intro`
-7. 系统读取当前运行时状态并写入 `intro/draft.json`
+- `Capture Intro` and any "record best keyframe" behavior are only available when `isAuthenticated === true`
+- unauthenticated users never enter intro authoring mode
+- visitor-side experience is playback-only
 
-### 5.3 Capture 时要读取的现有资源
+### 11.3 Capture source of truth
 
-来自当前系统的已有状态：
+Read these values from existing runtime state:
 
-- `camera.position`
+- camera position
 - `OrbitControls.target`
+- `camera.fov`
 - `useViewerStore().viewMode`
+- `useViewerStore().openAnnotationPanelIds`
+- `useViewerStore().selectedAnnotationId`
 - `useScanStore().scanT`
 - `useScanStore().scanRadius`
 - `useScanStore().scanOrigin`
 - `useScanStore().maxRadius`
 - `useScanStore().duration`
+- `useScanStore().scanPhase`
 - `useScanStore().triggeredAnnotationIds`
 - `useScanStore().activeAnnotationId`
-- `useViewerStore().openAnnotationPanelIds`
 
-也就是说，这不是新造数据，而是把**现有运行时状态冻结成 JSON**。
+This is a freeze of current runtime state, not a separately authored schema.
+
+### 11.4 Clear behavior
+
+`Clear Intro` should remove intro draft state for the scene.
+
+For MVP, that can mean either:
+
+- deleting `intro/draft.json`, or
+- writing `{ enabled: false }` while preserving timestamps
+
+Choose one implementation and keep the API explicit. Recommended: preserve the file and set `enabled: false` so the editor can distinguish "draft intentionally disabled" from "never authored".
 
 ---
 
-## 六、访客端播放流程
+## 12. Visitor Playback Workflow
 
-### 6.1 访客首访加载流程
+### 12.1 Load order
+
+Visitor boot sequence:
 
 ```text
-Page Load
-  ↓
-loadCloudScenes()
-  ↓
-sceneReady = true
-  ↓
-load current live release
-  ↓
-load matching intro preset release
-  ↓
-if intro preset exists:
-  apply intro preset
-else:
-  fallback to current default viewer
+App boot
+  -> refresh auth session
+  -> load cloud scenes
+  -> resolve active scene
+  -> load release / draft content as today
+  -> read live version
+  -> load matching intro release
+  -> wait for scene mount + camera reset
+  -> apply intro preset if present and enabled
+  -> show Continue Scan CTA
 ```
 
-### 6.2 Apply Intro Preset 的顺序（关键）
+### 12.2 Apply order
 
-当前 `CameraController` 会在 scene change 时强制 reset：
+Apply in this order only:
 
-- `camera.position.set(0, 5, 15)`
-- `camera.lookAt(0, 0, 0)`
+1. camera position and target
+2. viewer `viewMode`
+3. scan snapshot and reveal uniforms
+4. open panel ids and active annotation
+5. CTA visibility
 
-所以 intro preset 恢复必须遵守：
+Do not open panels before the scene and markers exist.
 
-1. scene 资源完成挂载
-2. 默认 camera reset 完成
-3. 再应用 intro preset 的 camera / target / viewMode / scan state / open panels
+### 12.3 Fallback
 
-否则作者构图会被默认相机覆盖。
+If no intro preset exists, or it is disabled:
 
-### 6.3 访客端看到什么
+- fall back to the current default viewer
+- do not auto-scan
+- do not show `Continue Scan`
 
-用户进入后先看到：
-
-- 作者选定角度
-- 作者选定的部分扫描进度
-- 作者选定的 hero panel（可选）
-- CTA：`Continue Scan`
-
-这不是自动播一段动画，而是一个被策展过的 opening tableau。
+This remains the recommended MVP fallback.
 
 ---
 
-## 七、Continue Scan 行为
+## 13. Continue Scan Semantics
 
-### 7.1 这不是 Replay
+### 13.1 Continue is not replay
 
-`Replay` 是从 0 重新开始。
+`Continue Scan` means:
 
-`Continue Scan` 应该是：
+- continue from saved `scan.progress`
+- keep `triggeredAnnotationIds`
+- keep the same `scanOrigin`, `maxRadius`, and `duration`
 
-- 从 intro preset 的 `scan.progress` 继续往后扫
-- 保留已经触发的 annotation ids
-- 继续使用当前 `duration` / `maxRadius`
+`Replay` means:
 
-### 7.2 需要的新能力
+- clear state and restart from 0
 
-当前 scan 更偏向：
+These are separate actions and must stay separate in UI text and store logic.
 
-- `startScan()` → 从 0 开始
+### 13.2 Required store behavior
 
-要支持 intro preset，需要新增类似：
+`resumeScanFromPreset(preset)` must:
 
-```ts
-resumeScanFromPreset(preset: IntroPreset)
-```
+- restore `scanT`
+- restore `scanRadius`
+- restore `scanOrigin`
+- restore `maxRadius`
+- restore `duration`
+- restore `triggeredAnnotationIds`
+- restore `activeAnnotationId`
+- mark the scan as running
+- continue progression from saved progress rather than from 0
 
-它需要：
+### 13.3 Annotation behavior during continue
 
-- 初始化 `scanT`
-- 初始化 `scanRadius`
-- 初始化 `scanOrigin`
-- 初始化 `triggeredAnnotationIds`
-- 初始化 `activeAnnotationId`
-- 将 `isScanning` 设为 `true`
-- 从 preset progress 继续推进，而不是从 0 起步
+When resuming:
 
-### 7.3 Continue 与 Replay 的语义区分
-
-- `Continue Scan`：从 preset 继续
-- `Replay`：从 0 重新扫一遍
-
-两者不能共用一个词。
+- already triggered annotations stay triggered
+- already open hero panel can remain open for the first frame
+- new triggers only occur for annotations not already in `triggeredIds`
 
 ---
 
-## 八、API 设计建议
+## 14. API Contract
 
-### 8.1 新增 API
+### 14.1 Endpoints
 
 ```text
-GET  /api/intro/:sceneId              ← 读 intro 草稿（登录）
-PUT  /api/intro/:sceneId              ← 写 intro 草稿（登录）
-GET  /api/intro/:sceneId?version=N    ← 读 intro release（公开）
+GET  /api/intro/:sceneId            -> authenticated editor reads intro draft
+PUT  /api/intro/:sceneId            -> authenticated editor writes intro draft
+GET  /api/intro/:sceneId?version=N  -> public reader fetches intro release N
 ```
 
-### 8.2 不新增单独 publish API
+### 14.2 API rules
 
-不需要 `/api/intro/publish/:sceneId`。
+- `GET` without `version` returns draft and requires auth
+- `GET` with `version` returns release and is public
+- `PUT` requires auth
+- no unauthenticated route may create, update, clear, or version intro preset state
+- publish remains under `/api/publish/:sceneId`
+- do not add `/api/intro/publish/:sceneId`
 
-更合理的是：
+### 14.3 File responsibility map
 
-- `POST /api/publish/:sceneId`
-  - 发布正文 release N 时
-  - 同时复制当前 `intro/draft.json` → `intro/releases/N.json`
-
-这样 intro 和正文天然同步。
-
----
-
-## 九、MVP 范围
-
-### 9.1 必做
-
-- intro preset 独立 JSON 结构
-- Blob 中独立存储
-- 作者可 Capture 当前状态
-- 发布时生成 versioned intro preset
-- 访客首访恢复 intro preset
-- CTA：`Continue Scan`
-- 从 preset progress 恢复扫描
-
-### 9.2 可选但不必首版就做
-
-- 每个 scene 多个 intro presets
-- introPreset editor 历史记录
-- introPreset 禁用/启用切换
-- per-device intro variants（mobile / desktop）
-
-### 9.3 明确延期
-
-- timeline recording
-- camera keyframe playback
-- 多段自动节点叙事
-- 摄影机自动运镜（P3 Camera Director）
+- `api/intro/[sceneId].ts` owns intro read/write behavior
+- `api/publish/[sceneId].ts` owns copying intro draft into release `N`
+- `src/lib/introApi.ts` or `src/lib/publishApi.ts` owns client helpers
 
 ---
 
-## 十、Fallback 策略
+## 15. File-Level Implementation Plan
 
-如果某个 scene 没有 intro preset：
+### Phase A - Domain and persistence
 
-### fallback 1（推荐）
-- 直接进入当前默认 viewer
-- 不自动扫描
+#### Files
 
-### fallback 2（后续可选）
-- 使用程序化 partial scan 作为通用 fallback
+- `src/types/index.ts`
+- `api/intro/[sceneId].ts`
+- `api/publish/[sceneId].ts`
+- `src/lib/introApi.ts` or `src/lib/publishApi.ts`
 
-MVP 阶段建议先用 fallback 1，避免引入两个首访逻辑并存。
+#### Deliverables
+
+- `IntroPreset` type added
+- intro draft and intro release Blob paths supported
+- editor can read/write intro draft
+- publish copies intro draft into intro release `N`
+
+#### Acceptance
+
+- authenticated `GET /api/intro/:sceneId` returns a stable draft payload
+- public `GET /api/intro/:sceneId?version=N` returns release `N`
+- publishing scene release `N` also creates intro release `N`
+
+### Phase B - Authoring
+
+#### Files
+
+- authoring UI control location
+- hook for capture logic
+- `src/store/scanStore.ts`
+
+#### Deliverables
+
+- `pauseScan()` implemented
+- editor can capture current intro state
+- editor can clear/disable intro state
+
+#### Acceptance
+
+- capture reflects current camera angle exactly
+- capture preserves current scan progress and current open panel ids
+- capture does not mutate scene annotations or release content
+
+### Phase C - Visitor playback
+
+#### Files
+
+- `src/App.tsx`
+- `src/components/viewer/SceneCanvas.tsx`
+- scan orchestration hooks/components
+
+#### Deliverables
+
+- matching intro release is loaded for the current live version
+- intro preset applies after scene mount and camera reset
+- `Continue Scan` resumes from preset progress
+
+#### Acceptance
+
+- visitor sees the authored opening state on page load
+- clicking `Continue Scan` resumes from captured progress, not from 0
+- scenes without intro preset continue to use the current default viewer path
 
 ---
 
-## 十一、与当前系统的关系
+## 16. Engineering Rules
 
-### 已有系统复用
-
-- `scanStore`：扫描进度与 reveal 状态
-- `viewerStore`：面板打开状态 / viewMode
-- `ScanControls`：Scan / Stop / Replay UI 基础
-- `draft` / `publish` / `release`：Blob 持久化主链路
-
-### 新增但轻量的内容
-
-- `IntroPreset` 类型
-- intro draft / release blob 文件
-- capture 当前状态的 authoring action
-- apply preset / continue preset 的 visitor logic
-
-这意味着它是**建立在现有资源之上的扩展**，不是另起一套系统。
+- keep intro preset separate from `SceneDraft`
+- do not add timeline semantics to the schema
+- do not create a second publish pipeline
+- do not tie intro versioning to local persisted Zustand state
+- do not bypass current scene boot and publish flow
+- do not implement intro playback by ad hoc direct mutation from random components; keep the restore logic centralized
 
 ---
 
-## 十二、推荐实施顺序
+## 17. Final Implementation Summary
 
-### Phase A — Data & Persistence
+Intro preset should be implemented as:
 
-1. 定义 `IntroPreset` 类型
-2. 增加 intro draft / release Blob 路径
-3. 增加 `GET/PUT /api/intro/:sceneId`
-4. 在 publish 时一并复制 intro preset 到 release version
+- a separate Blob-backed JSON asset
+- version-locked to the normal scene release
+- restored through hook-driven runtime orchestration
+- resumed through explicit scan store actions
 
-### Phase B — Authoring
+The key technical rule is:
 
-1. 登录态下加入 `Capture Intro`
-2. 从当前 camera + scan + panel 状态生成 preset
-3. 存到 intro draft
+**The persisted intro preset is a data asset, but the act of capturing, applying, and resuming it belongs to hooks plus store actions.**
 
-### Phase C — Playback
-
-1. 访客端加载 release 对应 intro preset
-2. sceneReady 后恢复 preset
-3. 提供 `Continue Scan`
-4. 从 preset progress 继续 reveal
-
----
-
-## 十三、一句话定义
-
-Intro Preset 不是一段录制视频，也不是一套 timeline 系统。
-
-它是：
-
-**一个由作者捕捉、独立存储在 Blob 中、专门用于首页载入的首访状态文件。**
-
-它与正文结构分离，但与发布版本绑定。
-
-这就是当前最合适、最可控、也最符合现有系统资源的方案。
+That is the architecture this repo can execute cleanly.

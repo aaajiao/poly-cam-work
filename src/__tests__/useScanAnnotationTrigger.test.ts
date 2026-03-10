@@ -60,6 +60,7 @@ function resetStores() {
 	});
 	useScanStore.setState({
 		isScanning: false,
+		isScanRevealVisible: false,
 		scanPhase: "idle",
 		scanT: 0,
 		scanOrigin: [0, 0, 0],
@@ -118,6 +119,7 @@ describe("useScanAnnotationTrigger", () => {
 		});
 		useScanStore.setState({
 			isScanning: true,
+			isScanRevealVisible: true,
 			scanPhase: "expansion",
 			scanOrigin: [0, 0, 0],
 			scanRadius: 1.5,
@@ -157,6 +159,7 @@ describe("useScanAnnotationTrigger", () => {
 		});
 		useScanStore.setState({
 			isScanning: true,
+			isScanRevealVisible: true,
 			scanPhase: "expansion",
 			scanOrigin: [0, 0, 0],
 			scanRadius: 4,

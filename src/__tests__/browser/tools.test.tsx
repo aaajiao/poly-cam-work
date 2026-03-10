@@ -17,10 +17,15 @@ function resetStore() {
 		cameraControlsEnabled: true,
 		cloudScenesLoaded: true,
 		isLoading: false,
+		isAuthenticated: false,
+		introPreset: null,
+		introPresetStatus: "idle",
+		introPresetError: null,
 		clipPlane: { enabled: false, axis: "y", position: 0.5, flipped: false },
 	});
 	useScanStore.setState({
 		isScanning: false,
+		isScanRevealVisible: false,
 		scanPhase: "idle",
 		scanT: 0,
 		hasCompletedScan: false,
@@ -146,5 +151,58 @@ describe("browser toolbar tools", () => {
 
 		expect(useViewerStore.getState().toolMode).toBe("orbit");
 		expect(useViewerStore.getState().clipPlane.enabled).toBe(false);
+	});
+
+	test("capture intro button stays disabled after a preset exists", async () => {
+		useViewerStore.setState({
+			isAuthenticated: true,
+			introPreset: {
+				version: 1,
+				sceneId: "scan-a",
+				enabled: true,
+				camera: {
+					position: [0, 5, 15],
+					target: [0, 0, 0],
+					fov: 50,
+				},
+				viewer: { viewMode: "mesh" },
+				scan: {
+					progress: 0,
+					radius: 0,
+					phase: "origin",
+					origin: [0, 0, 0],
+					maxRadius: 50,
+					duration: 15,
+				},
+				annotations: {
+					openIds: [],
+					triggeredIds: [],
+					activeId: null,
+				},
+				ui: { ctaLabel: "Continue Scan" },
+				createdAt: 1,
+				updatedAt: 2,
+			},
+		});
+
+		const screen = await render(<Toolbar />);
+
+		await expect
+			.element(screen.getByTestId("capture-intro-btn"))
+			.toBeDisabled();
+		await expect.element(screen.getByTestId("clear-intro-btn")).toBeEnabled();
+	});
+
+	test("intro capture errors are shown in the toolbar", async () => {
+		useViewerStore.setState({
+			isAuthenticated: true,
+			introPresetError: "Failed to capture intro preset",
+		});
+
+		const screen = await render(<Toolbar />);
+
+		await expect
+			.element(screen.getByTestId("intro-preset-error"))
+			.toHaveTextContent("Failed to capture intro preset");
 	});
 });

@@ -40,6 +40,16 @@ export function useScanEngine() {
 			);
 		};
 
+		const applySnapshot = (state: ReturnType<typeof useScanStore.getState>) => {
+			progressRef.current = state.scanT;
+			elapsedRef.current = state.scanT * state.duration;
+			durationRef.current = state.duration;
+			maxRadiusRef.current = state.maxRadius;
+			uniformsRef.current.uScanRadius.value = state.scanRadius;
+			uniformsRef.current.uScanTime.value = elapsedRef.current;
+			uniformsRef.current.uOriginFlash.value = 0;
+		};
+
 		const unsub = useScanStore.subscribe((state) => {
 			scanStateRef.current.isScanning = state.isScanning;
 			scanStateRef.current.maxRadius = state.maxRadius;
@@ -47,18 +57,16 @@ export function useScanEngine() {
 
 			syncOrigin(state.scanOrigin);
 
-			if (state.isScanning) {
-				maxRadiusRef.current = state.maxRadius;
-				durationRef.current = state.duration;
-			}
-
-			if (!state.isScanning) {
+			if (!state.isScanRevealVisible) {
 				progressRef.current = 0;
 				elapsedRef.current = 0;
 				uniformsRef.current.uScanRadius.value = 0;
 				uniformsRef.current.uScanTime.value = 0;
 				uniformsRef.current.uOriginFlash.value = 0;
+				return;
 			}
+
+			applySnapshot(state);
 		});
 
 		const initial = useScanStore.getState();
@@ -66,9 +74,8 @@ export function useScanEngine() {
 		scanStateRef.current.maxRadius = initial.maxRadius;
 		scanStateRef.current.duration = initial.duration;
 		syncOrigin(initial.scanOrigin);
-		if (initial.isScanning) {
-			maxRadiusRef.current = initial.maxRadius;
-			durationRef.current = initial.duration;
+		if (initial.isScanRevealVisible) {
+			applySnapshot(initial);
 		}
 
 		return unsub;

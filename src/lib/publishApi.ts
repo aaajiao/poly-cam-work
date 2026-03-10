@@ -55,7 +55,7 @@ function isApiRequest(input: RequestInfo): boolean {
 	}
 }
 
-async function requestJson<T>(
+export async function requestJson<T>(
 	input: RequestInfo,
 	init?: RequestInit,
 ): Promise<T> {

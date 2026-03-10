@@ -1,15 +1,18 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import * as introApi from "@/lib/introApi";
 import * as modelApi from "@/lib/modelApi";
 import * as publishApi from "@/lib/publishApi";
 import { imageStorage } from "@/storage/imageStorage";
 import { vercelBlobImageStorage } from "@/storage/vercelBlobImageStorage";
 import { vercelBlobModelStorage } from "@/storage/vercelBlobModelStorage";
+import { useScanStore } from "@/store/scanStore";
 import type {
 	Annotation,
 	AnnotationImage,
 	ClipPlaneState,
 	ColorMapMode,
+	IntroPreset,
 	Measurement,
 	OfficialSceneSyncStatus,
 	PendingAnnotationInput,
@@ -56,6 +59,7 @@ const PERSIST_KEY = "polycam-viewer-state";
 
 type DraftStatus = "idle" | "loading" | "saving" | "error" | "conflict";
 type DraftRevisionSource = "draft" | "release";
+type IntroPresetStatus = "idle" | "loading" | "saving" | "error";
 
 function bumpSceneMutationVersion(
 	versions: Record<string, number>,
@@ -157,6 +161,12 @@ interface ViewerState {
 		sceneId: string,
 		status: OfficialSceneSyncStatus,
 	) => void;
+	runtimeCamera: IntroPreset["camera"] | null;
+	introPreset: IntroPreset | null;
+	introPresetStatus: IntroPresetStatus;
+	introPresetError: string | null;
+	introContinueVisible: boolean;
+	introLoadRequestId: number;
 	clearOfficialSceneSyncStatus: (sceneId: string) => void;
 	markOfficialSceneSyncSuccess: (scene: ScanScene) => void;
 	syncDiscoveredScene: (sceneId: string) => Promise<void>;
@@ -170,6 +180,16 @@ interface ViewerState {
 	login: (password: string) => Promise<void>;
 	logout: () => Promise<void>;
 	refreshAuthSession: () => Promise<void>;
+	setRuntimeCamera: (camera: IntroPreset["camera"]) => void;
+	loadIntroPreset: (
+		sceneId: string,
+		version?: number | "live",
+	) => Promise<IntroPreset | null>;
+	captureIntroPreset: (sceneId: string) => Promise<IntroPreset>;
+	clearIntroPreset: (sceneId: string) => Promise<IntroPreset>;
+	clearLoadedIntroPreset: () => void;
+	setIntroContinueVisible: (visible: boolean) => void;
+	continueIntroScan: () => void;
 	downloadLocalDraft: (sceneId: string) => Promise<void>;
 	importLocalDraftFile: (sceneId: string, file: File) => Promise<void>;
 	importLocalData: (sceneId: string) => Promise<void>;
@@ -214,6 +234,12 @@ export const useViewerStore = create<ViewerState>()(
 			isLoading: false,
 			loadingProgress: 0,
 			loadingMessage: "",
+			runtimeCamera: null,
+			introPreset: null,
+			introPresetStatus: "idle",
+			introPresetError: null,
+			introContinueVisible: false,
+			introLoadRequestId: 0,
 
 			draftStatus: "idle",
 			draftError: null,
@@ -236,6 +262,9 @@ export const useViewerStore = create<ViewerState>()(
 					selectedAnnotationId: null,
 					openAnnotationPanelIds: [],
 					hoveredAnnotationId: null,
+					introContinueVisible: false,
+					introPresetStatus: "idle",
+					introPresetError: null,
 				}),
 			setViewMode: (viewMode) => set({ viewMode }),
 			setToolMode: (toolMode) =>
@@ -420,6 +449,16 @@ export const useViewerStore = create<ViewerState>()(
 
 			setLoading: (isLoading, loadingProgress = 0, loadingMessage = "") =>
 				set({ isLoading, loadingProgress, loadingMessage }),
+			setRuntimeCamera: (runtimeCamera) => set({ runtimeCamera }),
+			clearLoadedIntroPreset: () =>
+				set({
+					introPreset: null,
+					introPresetStatus: "idle",
+					introPresetError: null,
+					introContinueVisible: false,
+				}),
+			setIntroContinueVisible: (introContinueVisible) =>
+				set({ introContinueVisible }),
 
 			addUploadedScene: (scene) =>
 				set((state) => ({
@@ -1299,6 +1338,207 @@ export const useViewerStore = create<ViewerState>()(
 					set({ isAuthenticated: false });
 				}
 			},
+			loadIntroPreset: async (sceneId, version = "live") => {
+				const requestId = get().introLoadRequestId + 1;
+				const localPreset =
+					get().introPreset?.sceneId === sceneId && get().introPreset?.enabled
+						? get().introPreset
+						: null;
+				set({
+					introPresetStatus: "loading",
+					introPresetError: null,
+					introContinueVisible: false,
+					introLoadRequestId: requestId,
+				});
+
+				try {
+					const preset = await introApi.getIntroRelease(sceneId, version);
+					if (get().introLoadRequestId !== requestId) return null;
+					set({
+						introPreset: preset.enabled ? preset : null,
+						introPresetStatus: "idle",
+						introPresetError: null,
+						introContinueVisible: false,
+					});
+					return preset.enabled ? preset : null;
+				} catch (error) {
+					if (get().introLoadRequestId !== requestId) return null;
+					const status = (error as Error & { status?: number }).status;
+					if (status === 401 || status === 404) {
+						if (localPreset) {
+							set({
+								introPreset: localPreset,
+								introPresetStatus: "idle",
+								introPresetError: null,
+								introContinueVisible: false,
+							});
+							return localPreset;
+						}
+
+						set({
+							introPreset: null,
+							introPresetStatus: "idle",
+							introPresetError: null,
+							introContinueVisible: false,
+						});
+						return null;
+					}
+
+					set({
+						introPreset: null,
+						introPresetStatus: "error",
+						introPresetError:
+							error instanceof Error
+								? error.message
+								: "Failed to load intro preset",
+						introContinueVisible: false,
+					});
+					throw error;
+				}
+			},
+			captureIntroPreset: async (sceneId) => {
+				const runtimeCamera = get().runtimeCamera;
+				if (!runtimeCamera) {
+					throw new Error(
+						"Camera state unavailable. Try moving the scene once before capturing intro.",
+					);
+				}
+
+				const scan = useScanStore.getState();
+				const existing =
+					get().introPreset?.sceneId === sceneId ? get().introPreset : null;
+				const now = Date.now();
+				const preset: IntroPreset = {
+					version: 1,
+					sceneId,
+					enabled: true,
+					camera: runtimeCamera,
+					viewer: {
+						viewMode: get().viewMode,
+					},
+					scan: {
+						progress: scan.scanT,
+						radius: scan.scanRadius,
+						phase: scan.scanPhase === "idle" ? "origin" : scan.scanPhase,
+						origin: scan.scanOrigin,
+						maxRadius: scan.maxRadius,
+						duration: scan.duration,
+					},
+					annotations: {
+						openIds: get().openAnnotationPanelIds,
+						triggeredIds: scan.triggeredAnnotationIds,
+						activeId: scan.activeAnnotationId ?? get().selectedAnnotationId,
+					},
+					ui: {
+						ctaLabel: existing?.ui.ctaLabel ?? "Continue Scan",
+					},
+					createdAt: existing?.createdAt ?? now,
+					updatedAt: now,
+				};
+
+				set({ introPresetStatus: "saving", introPresetError: null });
+
+				try {
+					const saved = await introApi.saveIntroDraft(sceneId, preset);
+					set({
+						introPreset: saved,
+						introPresetStatus: "idle",
+						introPresetError: null,
+					});
+					set((state) => ({
+						draftDirtyByScene: {
+							...state.draftDirtyByScene,
+							[sceneId]: true,
+						},
+					}));
+					return saved;
+				} catch (error) {
+					set({
+						introPresetStatus: "error",
+						introPresetError:
+							error instanceof Error
+								? error.message
+								: "Failed to capture intro preset",
+					});
+					throw error;
+				}
+			},
+			clearIntroPreset: async (sceneId) => {
+				const runtimeCamera = get().runtimeCamera;
+				const existing =
+					get().introPreset?.sceneId === sceneId ? get().introPreset : null;
+				const scan = useScanStore.getState();
+				const now = Date.now();
+				const disabledPreset: IntroPreset = {
+					version: 1,
+					sceneId,
+					enabled: false,
+					camera: existing?.camera ??
+						runtimeCamera ?? {
+							position: [0, 5, 15],
+							target: [0, 0, 0],
+							fov: 50,
+						},
+					viewer: {
+						viewMode: existing?.viewer.viewMode ?? get().viewMode,
+					},
+					scan: {
+						progress: existing?.scan.progress ?? scan.scanT,
+						radius: existing?.scan.radius ?? scan.scanRadius,
+						phase:
+							existing?.scan.phase ??
+							(scan.scanPhase === "idle" ? "origin" : scan.scanPhase),
+						origin: existing?.scan.origin ?? scan.scanOrigin,
+						maxRadius: existing?.scan.maxRadius ?? scan.maxRadius,
+						duration: existing?.scan.duration ?? scan.duration,
+					},
+					annotations: existing?.annotations ?? {
+						openIds: [],
+						triggeredIds: [],
+						activeId: null,
+					},
+					ui: {
+						ctaLabel: existing?.ui.ctaLabel ?? "Continue Scan",
+					},
+					createdAt: existing?.createdAt ?? now,
+					updatedAt: now,
+				};
+
+				set({ introPresetStatus: "saving", introPresetError: null });
+
+				try {
+					const saved = await introApi.saveIntroDraft(sceneId, disabledPreset);
+					set({
+						introPreset: null,
+						introPresetStatus: "idle",
+						introPresetError: null,
+						introContinueVisible: false,
+					});
+					set((state) => ({
+						draftDirtyByScene: {
+							...state.draftDirtyByScene,
+							[sceneId]: true,
+						},
+					}));
+					return saved;
+				} catch (error) {
+					set({
+						introPresetStatus: "error",
+						introPresetError:
+							error instanceof Error
+								? error.message
+								: "Failed to clear intro preset",
+					});
+					throw error;
+				}
+			},
+			continueIntroScan: () => {
+				const preset = get().introPreset;
+				if (!preset) return;
+
+				useScanStore.getState().resumeScanFromPreset(preset);
+				set({ introContinueVisible: false });
+			},
 			downloadLocalDraft: async (sceneId) => {
 				const sceneDraftAnnotations = sceneAnnotations(
 					get().annotations,
@@ -1573,7 +1813,7 @@ export const useViewerStore = create<ViewerState>()(
 		}),
 		{
 			name: "polycam-viewer-state",
-			version: 7,
+			version: 9,
 			migrate: (persistedState: unknown, version: number) => {
 				const state = persistedState as Record<string, unknown>;
 				if (version === 0) {
@@ -1701,7 +1941,9 @@ export const useViewerStore = create<ViewerState>()(
 				discoveredScenes: state.discoveredScenes,
 				officialSceneSyncOverridesByScene:
 					state.officialSceneSyncOverridesByScene,
+				activeSceneId: state.activeSceneId,
 				annotations: state.annotations,
+				introPreset: state.introPreset,
 				draftRevisionByScene: state.draftRevisionByScene,
 				draftRevisionSourceByScene: state.draftRevisionSourceByScene,
 				draftDirtyByScene: state.draftDirtyByScene,

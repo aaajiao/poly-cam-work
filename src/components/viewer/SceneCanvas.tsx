@@ -1,5 +1,5 @@
 import { Environment, OrbitControls, Stats } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
 	type RefObject,
 	Suspense,
@@ -47,6 +47,135 @@ function CameraController() {
 			(controls as { target: THREE.Vector3 }).target.set(0, 0, 0);
 		}
 	}, [activeScene, camera, controls]);
+
+	return null;
+}
+
+function RuntimeCameraSync() {
+	const { camera, controls } = useThree();
+	const setRuntimeCamera = useViewerStore((s) => s.setRuntimeCamera);
+	const lastSnapshotRef = useRef("");
+
+	useFrame(() => {
+		const target =
+			controls && "target" in controls
+				? [
+						(controls as { target: THREE.Vector3 }).target.x,
+						(controls as { target: THREE.Vector3 }).target.y,
+						(controls as { target: THREE.Vector3 }).target.z,
+					]
+				: [0, 0, 0];
+		const snapshot = {
+			position: [camera.position.x, camera.position.y, camera.position.z] as [
+				number,
+				number,
+				number,
+			],
+			target: target as [number, number, number],
+			fov: "fov" in camera ? camera.fov : 50,
+		};
+		const nextKey = JSON.stringify([
+			...snapshot.position.map((value) => Number(value.toFixed(4))),
+			...snapshot.target.map((value) => Number(value.toFixed(4))),
+			Number(snapshot.fov?.toFixed(2) ?? 50),
+		]);
+
+		if (nextKey === lastSnapshotRef.current) return;
+
+		lastSnapshotRef.current = nextKey;
+		setRuntimeCamera(snapshot);
+	});
+
+	return null;
+}
+
+function IntroPresetController({ sceneReady }: { sceneReady: boolean }) {
+	const { camera, controls } = useThree();
+	const activeScene = useActiveScene();
+	const isAuthenticated = useViewerStore((s) => s.isAuthenticated);
+	const introPreset = useViewerStore((s) => s.introPreset);
+	const setViewMode = useViewerStore((s) => s.setViewMode);
+	const clearAnnotationPanels = useViewerStore((s) => s.clearAnnotationPanels);
+	const openAnnotationPanel = useViewerStore((s) => s.openAnnotationPanel);
+	const selectAnnotation = useViewerStore((s) => s.selectAnnotation);
+	const setIntroContinueVisible = useViewerStore(
+		(s) => s.setIntroContinueVisible,
+	);
+	const appliedKeyRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		if (!activeScene) {
+			appliedKeyRef.current = null;
+		}
+	}, [activeScene]);
+
+	useEffect(() => {
+		if (isAuthenticated) {
+			setIntroContinueVisible(false);
+		}
+	}, [isAuthenticated, setIntroContinueVisible]);
+
+	useEffect(() => {
+		if (!sceneReady || !activeScene || isAuthenticated || !introPreset) return;
+		if (introPreset.sceneId !== activeScene.id) return;
+
+		const applyKey = `${activeScene.id}:${introPreset.updatedAt}`;
+		if (appliedKeyRef.current === applyKey) return;
+
+		let cancelled = false;
+		let innerFrame = 0;
+		const outerFrame = requestAnimationFrame(() => {
+			innerFrame = requestAnimationFrame(() => {
+				if (cancelled) return;
+
+				camera.position.set(...introPreset.camera.position);
+				if ("fov" in camera && typeof introPreset.camera.fov === "number") {
+					camera.fov = introPreset.camera.fov;
+					camera.updateProjectionMatrix();
+				}
+
+				if (controls && "target" in controls) {
+					(controls as { target: THREE.Vector3 }).target.set(
+						...introPreset.camera.target,
+					);
+					if ("update" in controls && typeof controls.update === "function") {
+						controls.update();
+					}
+				} else {
+					camera.lookAt(...introPreset.camera.target);
+				}
+
+				setViewMode(introPreset.viewer.viewMode);
+				clearAnnotationPanels();
+				selectAnnotation(introPreset.annotations.activeId);
+				for (const id of introPreset.annotations.openIds) {
+					openAnnotationPanel(id);
+				}
+
+				useScanStore.getState().applyIntroScanSnapshot(introPreset);
+				setIntroContinueVisible(true);
+				appliedKeyRef.current = applyKey;
+			});
+		});
+
+		return () => {
+			cancelled = true;
+			cancelAnimationFrame(outerFrame);
+			cancelAnimationFrame(innerFrame);
+		};
+	}, [
+		activeScene,
+		camera,
+		clearAnnotationPanels,
+		controls,
+		introPreset,
+		isAuthenticated,
+		openAnnotationPanel,
+		sceneReady,
+		selectAnnotation,
+		setIntroContinueVisible,
+		setViewMode,
+	]);
 
 	return null;
 }
@@ -182,7 +311,7 @@ export function SceneCanvas() {
 	const cameraControlsEnabled = useViewerStore((s) => s.cameraControlsEnabled);
 	const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId);
 	const selectAnnotation = useViewerStore((s) => s.selectAnnotation);
-	const isScanning = useScanStore((s) => s.isScanning);
+	const isScanRevealVisible = useScanStore((s) => s.isScanRevealVisible);
 	const [statsHost, setStatsHost] = useState<HTMLElement | null>(null);
 	const [gizmoInteractionActive, setGizmoInteractionActive] = useState(false);
 
@@ -253,7 +382,7 @@ export function SceneCanvas() {
 
 				<Environment preset="city" />
 
-				{activeScene && sceneReady && isScanning && (
+				{activeScene && sceneReady && isScanRevealVisible && (
 					<ScanOrchestrator
 						glbUrl={activeScene.glbUrl}
 						plyUrl={activeScene.plyUrl}
@@ -263,13 +392,13 @@ export function SceneCanvas() {
 				<Suspense fallback={<LoadingFallback />}>
 					{activeScene &&
 						sceneReady &&
-						!isScanning &&
+						!isScanRevealVisible &&
 						(viewMode === "mesh" || viewMode === "both") && (
 							<GLBViewer url={activeScene.glbUrl} />
 						)}
 					{activeScene &&
 						sceneReady &&
-						!isScanning &&
+						!isScanRevealVisible &&
 						(viewMode === "pointcloud" || viewMode === "both") && (
 							<PointCloudViewer url={activeScene.plyUrl} />
 						)}
@@ -287,6 +416,8 @@ export function SceneCanvas() {
 				/>
 
 				<CameraController />
+				<RuntimeCameraSync />
+				<IntroPresetController sceneReady={sceneReady} />
 
 				<MeasurementTool />
 				<ClippingPlaneController />

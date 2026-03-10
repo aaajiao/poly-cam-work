@@ -71,6 +71,10 @@ const routes: Route[] = [
 		load: () => import("./draft/[sceneId]"),
 	},
 	{
+		pattern: /^\/api\/intro\/[^/]+\/?$/,
+		load: () => import("./intro/[sceneId]"),
+	},
+	{
 		pattern: /^\/api\/publish\/[^/]+\/?$/,
 		load: () => import("./publish/[sceneId]"),
 	},

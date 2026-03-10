@@ -1,10 +1,13 @@
 import { create } from "zustand";
 
+import type { IntroPreset } from "@/types";
+
 export type ScanPhase = "idle" | "origin" | "expansion" | "complete";
 
 interface ScanState {
 	// Lifecycle
 	isScanning: boolean;
+	isScanRevealVisible: boolean;
 	scanPhase: ScanPhase;
 	scanT: number; // normalized 0→1 progress
 	hasCompletedScan: boolean;
@@ -21,8 +24,11 @@ interface ScanState {
 
 	// Actions
 	startScan: (maxRadius?: number, duration?: number) => void;
+	pauseScan: () => void;
 	stopScan: () => void;
 	resetScan: () => void;
+	applyIntroScanSnapshot: (preset: IntroPreset) => void;
+	resumeScanFromPreset: (preset: IntroPreset) => void;
 	setScanProgress: (
 		scanT: number,
 		scanRadius: number,
@@ -37,6 +43,7 @@ const DEFAULT_DURATION = 15;
 
 export const useScanStore = create<ScanState>()((set) => ({
 	isScanning: false,
+	isScanRevealVisible: false,
 	scanPhase: "idle",
 	scanT: 0,
 	hasCompletedScan: false,
@@ -52,6 +59,7 @@ export const useScanStore = create<ScanState>()((set) => ({
 	startScan: (maxRadius, duration) =>
 		set({
 			isScanning: true,
+			isScanRevealVisible: true,
 			scanPhase: "origin",
 			scanT: 0,
 			hasCompletedScan: false,
@@ -62,9 +70,18 @@ export const useScanStore = create<ScanState>()((set) => ({
 			activeAnnotationId: null,
 		}),
 
+	pauseScan: () =>
+		set((state) => ({
+			isScanning: false,
+			isScanRevealVisible: state.isScanRevealVisible || state.scanT > 0,
+			hasCompletedScan:
+				state.hasCompletedScan || state.scanPhase === "complete",
+		})),
+
 	stopScan: () =>
 		set((state) => ({
 			isScanning: false,
+			isScanRevealVisible: false,
 			scanPhase: "idle",
 			scanT: 0,
 			hasCompletedScan:
@@ -77,6 +94,7 @@ export const useScanStore = create<ScanState>()((set) => ({
 	resetScan: () =>
 		set({
 			isScanning: false,
+			isScanRevealVisible: false,
 			scanPhase: "idle",
 			scanT: 0,
 			hasCompletedScan: false,
@@ -85,11 +103,42 @@ export const useScanStore = create<ScanState>()((set) => ({
 			activeAnnotationId: null,
 		}),
 
+	applyIntroScanSnapshot: (preset) =>
+		set({
+			isScanning: false,
+			isScanRevealVisible: true,
+			scanPhase: preset.scan.phase,
+			scanT: preset.scan.progress,
+			hasCompletedScan: preset.scan.phase === "complete",
+			scanOrigin: preset.scan.origin,
+			scanRadius: preset.scan.radius,
+			maxRadius: preset.scan.maxRadius,
+			duration: preset.scan.duration,
+			triggeredAnnotationIds: [...preset.annotations.triggeredIds],
+			activeAnnotationId: preset.annotations.activeId,
+		}),
+
+	resumeScanFromPreset: (preset) =>
+		set({
+			isScanning: true,
+			isScanRevealVisible: true,
+			scanPhase: preset.scan.phase,
+			scanT: preset.scan.progress,
+			hasCompletedScan: preset.scan.phase === "complete",
+			scanOrigin: preset.scan.origin,
+			scanRadius: preset.scan.radius,
+			maxRadius: preset.scan.maxRadius,
+			duration: preset.scan.duration,
+			triggeredAnnotationIds: [...preset.annotations.triggeredIds],
+			activeAnnotationId: preset.annotations.activeId,
+		}),
+
 	setScanProgress: (scanT, scanRadius, phase) =>
 		set((state) => ({
 			scanT,
 			scanRadius,
 			scanPhase: phase,
+			isScanRevealVisible: true,
 			hasCompletedScan: phase === "complete" ? true : state.hasCompletedScan,
 		})),
 

@@ -1,4 +1,4 @@
-import type { LivePointer, SceneDraft } from "../../src/types";
+import type { IntroPreset, LivePointer, SceneDraft } from "../../src/types";
 import { requireAuth } from "../_lib/auth.js";
 import {
 	deleteBlobByPathname,
@@ -47,6 +47,14 @@ function livePath(sceneId: string) {
 
 function releasePath(sceneId: string, version: number) {
 	return `scenes/${sceneId}/releases/${version}.json`;
+}
+
+function introDraftPath(sceneId: string) {
+	return `scenes/${sceneId}/intro/draft.json`;
+}
+
+function introReleasePath(sceneId: string, version: number) {
+	return `scenes/${sceneId}/intro/releases/${version}.json`;
 }
 
 function releasesPrefix(sceneId: string) {
@@ -154,6 +162,7 @@ async function handler(request: Request) {
 		}
 
 		const targetReleasePath = releasePath(sceneId, version);
+		const targetIntroReleasePath = introReleasePath(sceneId, version);
 		const releaseToDelete = await readJsonBlob<SceneDraft>(targetReleasePath);
 		if (!releaseToDelete) {
 			return notFound("Release not found");
@@ -165,6 +174,8 @@ async function handler(request: Request) {
 		if (!deleted) {
 			return notFound("Release not found");
 		}
+
+		await deleteBlobByPathname(targetIntroReleasePath).catch(() => false);
 
 		const versions = await listReleaseVersions(sceneId);
 		const live = await readJsonBlob<LivePointer>(livePath(sceneId));
@@ -235,8 +246,15 @@ async function handler(request: Request) {
 		publishedBy: "admin",
 		message: typeof body?.message === "string" ? body.message : undefined,
 	};
+	const introDraft = await readJsonBlob<IntroPreset>(introDraftPath(sceneId));
 
 	await writeImmutableJsonBlob(releasePath(sceneId, nextVersion), release);
+	if (introDraft) {
+		await writeImmutableJsonBlob(
+			introReleasePath(sceneId, nextVersion),
+			introDraft,
+		);
+	}
 	await writeJsonBlob(livePath(sceneId), { version: nextVersion });
 
 	try {
