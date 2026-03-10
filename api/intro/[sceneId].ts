@@ -147,6 +147,24 @@ function normalizeIntroPreset(
 			? candidate.updatedAt
 			: createdAt;
 
+	const panelOffsets =
+		candidate.annotations.panelOffsets &&
+		typeof candidate.annotations.panelOffsets === "object"
+			? (candidate.annotations.panelOffsets as Record<
+					string,
+					{ x: number; y: number }
+				>)
+			: undefined;
+
+	const mediaSizes =
+		candidate.annotations.mediaSizes &&
+		typeof candidate.annotations.mediaSizes === "object"
+			? (candidate.annotations.mediaSizes as Record<
+					string,
+					{ width?: number; height?: number }
+				>)
+			: undefined;
+
 	return {
 		version: 1,
 		sceneId,
@@ -179,6 +197,8 @@ function normalizeIntroPreset(
 				(id): id is string => typeof id === "string",
 			),
 			activeId: candidate.annotations.activeId ?? null,
+			...(panelOffsets && { panelOffsets }),
+			...(mediaSizes && { mediaSizes }),
 		},
 		ui: {
 			ctaLabel:

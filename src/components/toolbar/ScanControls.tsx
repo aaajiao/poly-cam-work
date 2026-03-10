@@ -26,6 +26,9 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 	const isAuthenticated = useViewerStore((s) => s.isAuthenticated);
 	const captureIntroPreset = useViewerStore((s) => s.captureIntroPreset);
 	const clearIntroPreset = useViewerStore((s) => s.clearIntroPreset);
+	const clearLoadedIntroPreset = useViewerStore(
+		(s) => s.clearLoadedIntroPreset,
+	);
 	const introPresetStatus = useViewerStore((s) => s.introPresetStatus);
 	const introPreset = useViewerStore((s) => s.introPreset);
 	const introPresetError = useViewerStore((s) => s.introPresetError);
@@ -72,6 +75,7 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 			store.stopScan();
 			return;
 		}
+		clearLoadedIntroPreset();
 		store.startScan(50, 15);
 	};
 
@@ -168,7 +172,7 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 											void handleCapture();
 										}}
 										className={cn(
-											"ui-hover-emphasis flex items-center justify-center h-8 w-8 rounded-md border border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft disabled:opacity-50",
+											"ui-hover-emphasis flex items-center justify-center h-8 w-8 rounded-md border border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft disabled:pointer-events-none disabled:opacity-50",
 											hasSavedIntroPreset &&
 												"border-accent-soft bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent",
 										)}
