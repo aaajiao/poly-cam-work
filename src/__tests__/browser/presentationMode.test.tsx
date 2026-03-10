@@ -58,7 +58,7 @@ describe("browser presentation mode layout", () => {
 			.not.toBeInTheDocument();
 	});
 
-	test("continue scan CTA appears when introContinueVisible is true", async () => {
+	test("scan trigger button handles intro continuation", async () => {
 		const screen = await render(
 			<Layout>
 				<div>Content</div>
@@ -68,12 +68,39 @@ describe("browser presentation mode layout", () => {
 		useViewerStore.setState({
 			presentationMode: true,
 			introContinueVisible: true,
+			introPreset: {
+				version: 1,
+				sceneId: "test",
+				enabled: true,
+				camera: { position: [0, 0, 0], target: [0, 0, 0], fov: 50 },
+				viewer: { viewMode: "mesh" },
+				scan: {
+					progress: 0,
+					radius: 0,
+					phase: "origin",
+					origin: [0, 0, 0],
+					maxRadius: 0,
+					duration: 0,
+				},
+				annotations: { openIds: [], triggeredIds: [], activeId: null },
+				ui: { ctaLabel: "Continue" },
+				createdAt: 0,
+				updatedAt: 0,
+			},
 		});
 
-		const cta = screen.getByTestId("continue-scan-cta");
-		await expect.element(cta).toBeVisible();
-		await expect.element(cta).toHaveClass("rounded-full");
-		await expect.element(cta).toHaveClass("bg-panel");
+		const btn = screen.getByTestId("scan-trigger-btn");
+		await expect.element(btn).toBeVisible();
+		await expect
+			.element(btn)
+			.toHaveClass("shadow-[0_0_10px_rgba(255,255,255,0.2)]");
+		expect(
+			document.querySelector('[data-testid="continue-scan-cta"]'),
+		).toBeNull();
+
+		await btn.click();
+
+		expect(useViewerStore.getState().introContinueVisible).toBe(false);
 	});
 
 	test("escape exits presentation mode without clearing open annotation panels", async () => {

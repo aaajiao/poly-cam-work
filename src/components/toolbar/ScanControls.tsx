@@ -16,7 +16,6 @@ interface ScanControlsProps {
 
 export function ScanControls({ compact = false }: ScanControlsProps) {
 	const isScanning = useScanStore((s) => s.isScanning);
-	const isScanRevealVisible = useScanStore((s) => s.isScanRevealVisible);
 	const hasCompletedScan = useScanStore((s) => s.hasCompletedScan);
 	const pauseScan = useScanStore((s) => s.pauseScan);
 
@@ -29,21 +28,11 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 	const introPresetStatus = useViewerStore((s) => s.introPresetStatus);
 	const introPreset = useViewerStore((s) => s.introPreset);
 	const introPresetError = useViewerStore((s) => s.introPresetError);
+	const introContinueVisible = useViewerStore((s) => s.introContinueVisible);
 	const continueIntroScan = useViewerStore((s) => s.continueIntroScan);
 
 	const ready =
 		!!activeSceneId && !isLoading && (import.meta.env.DEV || cloudScenesLoaded);
-
-	const isSaving = introPresetStatus === "saving";
-	const hasSavedIntroPreset =
-		introPreset?.sceneId === activeSceneId && introPreset.enabled;
-	const isAwaitingIntroContinue =
-		compact &&
-		!isAuthenticated &&
-		hasSavedIntroPreset &&
-		isScanRevealVisible &&
-		!isScanning &&
-		!hasCompletedScan;
 
 	const icon = isScanning ? (
 		<Square size={14} />
@@ -58,12 +47,12 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 		? "Stop scan"
 		: hasCompletedScan
 			? "Replay scan"
-			: isAwaitingIntroContinue
+			: compact && introContinueVisible
 				? "Continue scan"
 				: "Start scan";
 
 	const handleClick = () => {
-		if (isAwaitingIntroContinue) {
+		if (compact && introContinueVisible) {
 			continueIntroScan();
 			return;
 		}
@@ -99,6 +88,10 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 		}
 	};
 
+	const isSaving = introPresetStatus === "saving";
+	const hasSavedIntroPreset =
+		introPreset?.sceneId === activeSceneId && introPreset.enabled;
+
 	return (
 		<div className="flex flex-col items-start gap-1">
 			<TooltipProvider delayDuration={300}>
@@ -122,8 +115,8 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 											? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
 											: hasCompletedScan
 												? "border-accent-soft bg-accent-soft text-accent hover:bg-accent-soft"
-												: isAwaitingIntroContinue
-													? "h-10 w-10 border-accent-soft bg-[color:color-mix(in_oklab,var(--accent)_18%,var(--panel))] text-accent opacity-100 shadow-[0_12px_32px_color-mix(in_oklab,var(--accent)_20%,transparent)] ring-1 ring-[color:color-mix(in_oklab,var(--accent)_24%,transparent)] hover:border-strong hover:bg-[color:color-mix(in_oklab,var(--accent)_24%,var(--panel))] hover:text-strong"
+												: compact && introContinueVisible
+													? "border-strong bg-elevated text-strong shadow-[0_0_10px_rgba(255,255,255,0.2)] hover:bg-elevated hover:text-strong hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
 													: "border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"),
 								)}
 							>

@@ -22,9 +22,6 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
 	const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
 	const setPresentationMode = useViewerStore((s) => s.setPresentationMode);
-	const introContinueVisible = useViewerStore((s) => s.introContinueVisible);
-	const continueIntroScan = useViewerStore((s) => s.continueIntroScan);
-
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Escape" || !presentationMode) return;
@@ -105,18 +102,6 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
 									</TooltipContent>
 								</Tooltip>
 							</TooltipProvider>
-						</div>
-					)}
-					{presentationMode && introContinueVisible && (
-						<div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-							<Button
-								onClick={continueIntroScan}
-								data-testid="continue-scan-cta"
-								variant="ghost"
-								className="pointer-events-auto h-9 rounded-full border border-subtle bg-panel px-4 text-sm font-medium text-dim opacity-75 backdrop-blur-sm transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100 shadow-sm animate-in fade-in slide-in-from-bottom-4"
-							>
-								Continue Scan
-							</Button>
 						</div>
 					)}
 				</main>
