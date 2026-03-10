@@ -5,16 +5,14 @@ import { useScanStore } from "@/store/scanStore";
 import { useViewerStore } from "@/store/viewerStore";
 
 import { ScanRevealGLBViewer } from "./ScanRevealGLBViewer";
+import { ScanRevealPointCloudViewer } from "./ScanRevealPointCloudViewer";
 
 interface ScanOrchestratorProps {
 	glbUrl: string;
 	plyUrl: string;
 }
 
-export function ScanOrchestrator({
-	glbUrl,
-	plyUrl: _plyUrl,
-}: ScanOrchestratorProps) {
+export function ScanOrchestrator({ glbUrl, plyUrl }: ScanOrchestratorProps) {
 	const { uniformsRef } = useScanEngine();
 	const viewMode = useViewerStore((s) => s.viewMode);
 	const boundsApplied = useRef(false);
@@ -38,6 +36,12 @@ export function ScanOrchestrator({
 					url={glbUrl}
 					uniforms={uniformsRef.current}
 					onBoundsReady={handleBoundsReady}
+				/>
+			)}
+			{(viewMode === "pointcloud" || viewMode === "both") && (
+				<ScanRevealPointCloudViewer
+					url={plyUrl}
+					uniforms={uniformsRef.current}
 				/>
 			)}
 		</Suspense>

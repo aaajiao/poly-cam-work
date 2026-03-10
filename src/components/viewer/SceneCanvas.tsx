@@ -317,6 +317,32 @@ export function SceneCanvas() {
 			/>
 
 			<AnnotationInputDialog />
+
+			{import.meta.env.DEV && (
+				<button
+					type="button"
+					onClick={() => {
+						const store = useScanStore.getState();
+						if (store.isScanning) store.stopScan();
+						else store.startScan(50, 15);
+					}}
+					style={{
+						position: "fixed",
+						bottom: 16,
+						right: 16,
+						zIndex: 9999,
+						padding: "8px 16px",
+						background: isScanning ? "#ff4444" : "#00fff0",
+						color: "#000",
+						border: "none",
+						borderRadius: 6,
+						fontWeight: 700,
+						cursor: "pointer",
+					}}
+				>
+					{isScanning ? "STOP SCAN" : "START SCAN"}
+				</button>
+			)}
 		</div>
 	);
 }

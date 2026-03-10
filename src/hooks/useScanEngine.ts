@@ -47,7 +47,7 @@ export function useScanEngine() {
 
 			syncOrigin(state.scanOrigin);
 
-			if (state.isScanning && progressRef.current === 0) {
+			if (state.isScanning) {
 				maxRadiusRef.current = state.maxRadius;
 				durationRef.current = state.duration;
 			}
