@@ -95,6 +95,8 @@ interface AnnotationFloatingPanelProps {
 	isLinkHighlighted: boolean;
 	zIndex: number;
 	onBringToFront: () => void;
+	isClosing?: boolean;
+	onCloseComplete?: (id: string) => void;
 }
 
 function AnnotationFloatingPanel({
@@ -105,6 +107,8 @@ function AnnotationFloatingPanel({
 	isLinkHighlighted,
 	zIndex,
 	onBringToFront,
+	isClosing,
+	onCloseComplete,
 }: AnnotationFloatingPanelProps) {
 	const { camera, size } = useThree();
 	const setCameraControlsEnabled = useViewerStore(
@@ -566,13 +570,33 @@ function AnnotationFloatingPanel({
 		void annotation.id;
 	}, [annotation.id]);
 
+	const closingPhaseRef = useRef<"none" | "content" | "line">("none");
+	const closeContentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
+
 	useEffect(() => {
+		if (isClosing) {
+			setEntered(true);
+			lineProgressRef.current = 1;
+			syncPanelPositionAndLine();
+			requestAnimationFrame(() => {
+				closingPhaseRef.current = "content";
+				setEntered(false);
+				closeContentTimerRef.current = setTimeout(() => {
+					closingPhaseRef.current = "line";
+				}, 500);
+			});
+			return () => {
+				if (closeContentTimerRef.current)
+					clearTimeout(closeContentTimerRef.current);
+			};
+		}
 		setEntered(false);
 		lineProgressRef.current = 0;
 		void annotation.id;
-		const timeout = setTimeout(() => setEntered(true), 40);
-		return () => clearTimeout(timeout);
-	}, [annotation.id]);
+		return undefined;
+	}, [annotation.id, isClosing, syncPanelPositionAndLine]);
 
 	useEffect(() => {
 		void onBringToFront;
@@ -720,7 +744,47 @@ function AnnotationFloatingPanel({
 		}
 
 		const { panelPos, midPos } = panelLayoutRef.current;
+		if (closingPhaseRef.current === "line") {
+			lineProgressRef.current = Math.max(
+				lineProgressRef.current - delta / 0.5,
+				0,
+			);
+			const ct = lineProgressRef.current;
+			const closeEnd = currentEndRef.current.copy(markerPos).lerp(panelPos, ct);
+			const closeMid = currentMidRef.current.copy(markerPos).lerp(midPos, ct);
+			lineRef.current?.setPoints(markerPos, closeEnd, closeMid);
+			glowRef.current?.setPoints(markerPos, closeEnd, closeMid);
+			setLineOpacity(lineRef.current, ct);
+			setLineOpacity(glowRef.current, baseGlowOpacity * ct);
+			if (ct <= 0 && onCloseComplete) {
+				onCloseComplete(annotation.id);
+			}
+			return;
+		}
+
 		const hasLineEntryAnimation = lineProgressRef.current < 1;
+
+		if (
+			hasLineEntryAnimation &&
+			!entered &&
+			closingPhaseRef.current === "none"
+		) {
+			panelGroupRef.current?.position.copy(panelPos);
+			lineProgressRef.current = Math.min(
+				lineProgressRef.current + delta / 0.5,
+				1,
+			);
+			const lt = lineProgressRef.current;
+			const entryEnd = currentEndRef.current.copy(markerPos).lerp(panelPos, lt);
+			const entryMid = currentMidRef.current.copy(markerPos).lerp(midPos, lt);
+			lineRef.current?.setPoints(markerPos, entryEnd, entryMid);
+			glowRef.current?.setPoints(markerPos, entryEnd, entryMid);
+			if (lt >= 1) {
+				setEntered(true);
+			}
+			return;
+		}
+
 		const pulseWave = Math.sin(
 			state.clock.elapsedTime * linkPulseProfile.speed + linkPulseProfile.phase,
 		);
@@ -740,31 +804,11 @@ function AnnotationFloatingPanel({
 		setLineWidth(glowRef.current, baseGlowWidth * pulseFactor);
 		setLineOpacity(glowRef.current, baseGlowOpacity * glowPulseFactor);
 
-		if (layoutChanged || hasLineEntryAnimation) {
+		if (layoutChanged) {
 			panelGroupRef.current?.position.copy(panelPos);
-		}
-
-		if (!layoutChanged && !hasLineEntryAnimation) {
-			return;
-		}
-
-		if (!hasLineEntryAnimation) {
 			lineRef.current?.setPoints(markerPos, panelPos, midPos);
 			glowRef.current?.setPoints(markerPos, panelPos, midPos);
-			return;
 		}
-
-		lineProgressRef.current = Math.min(
-			lineProgressRef.current + delta / 0.3,
-			1,
-		);
-
-		const t = lineProgressRef.current;
-		const currentEnd = currentEndRef.current.copy(markerPos).lerp(panelPos, t);
-		const currentMid = currentMidRef.current.copy(markerPos).lerp(midPos, t);
-
-		lineRef.current?.setPoints(markerPos, currentEnd, currentMid);
-		glowRef.current?.setPoints(markerPos, currentEnd, currentMid);
 	});
 
 	const { panelPos, midPos } = panelLayoutRef.current;
@@ -805,7 +849,7 @@ function AnnotationFloatingPanel({
 								: `scale(0.85) rotate(${panelStyleProfile.tiltDeg * 0.8}deg)`,
 							opacity: entered ? 1 : 0,
 							transition:
-								"transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms cubic-bezier(0.16, 1, 0.3, 1)",
+								"transform 500ms cubic-bezier(0.16, 1, 0.3, 1), opacity 500ms cubic-bezier(0.16, 1, 0.3, 1)",
 							transformOrigin: "bottom left",
 							zIndex,
 						}}
@@ -876,6 +920,8 @@ export function AnnotationPanel() {
 	const [panelZIndexById, setPanelZIndexById] = useState<
 		Record<string, number>
 	>({});
+	const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
+	const prevOpenIdsRef = useRef<string[]>([]);
 
 	const sceneAnnotations = useMemo(
 		() =>
@@ -891,6 +937,29 @@ export function AnnotationPanel() {
 		return map;
 	}, [sceneAnnotations]);
 
+	useEffect(() => {
+		const currentIds = new Set(openAnnotationPanelIds);
+		const removed = prevOpenIdsRef.current.filter((id) => !currentIds.has(id));
+		if (removed.length > 0) {
+			setExitingIds((prev) => {
+				const next = new Set(prev);
+				for (const id of removed) {
+					if (annotationMap.has(id)) next.add(id);
+				}
+				return next;
+			});
+		}
+		prevOpenIdsRef.current = [...openAnnotationPanelIds];
+	}, [openAnnotationPanelIds, annotationMap]);
+
+	const handleCloseComplete = (id: string) => {
+		setExitingIds((prev) => {
+			const next = new Set(prev);
+			next.delete(id);
+			return next;
+		});
+	};
+
 	const openAnnotations = useMemo(
 		() =>
 			openAnnotationPanelIds
@@ -899,6 +968,16 @@ export function AnnotationPanel() {
 					(annotation): annotation is Annotation => annotation !== undefined,
 				),
 		[openAnnotationPanelIds, annotationMap],
+	);
+
+	const exitingAnnotations = useMemo(
+		() =>
+			[...exitingIds]
+				.map((id) => annotationMap.get(id))
+				.filter(
+					(annotation): annotation is Annotation => annotation !== undefined,
+				),
+		[exitingIds, annotationMap],
 	);
 
 	useEffect(() => {
@@ -951,7 +1030,8 @@ export function AnnotationPanel() {
 		return () => window.removeEventListener("keydown", handleKey);
 	}, [clearAnnotationPanels, presentationMode, selectAnnotation]);
 
-	if (openAnnotations.length === 0) return null;
+	if (openAnnotations.length === 0 && exitingAnnotations.length === 0)
+		return null;
 
 	return (
 		<>
@@ -965,6 +1045,20 @@ export function AnnotationPanel() {
 					isLinkHighlighted={hoveredAnnotationId === annotation.id}
 					zIndex={panelZIndexById[annotation.id] ?? index + 1}
 					onBringToFront={() => bringPanelToFront(annotation.id)}
+				/>
+			))}
+			{exitingAnnotations.map((annotation) => (
+				<AnnotationFloatingPanel
+					key={`exit-${annotation.id}`}
+					annotation={annotation}
+					envelope={envelope}
+					panelIndex={0}
+					panelCount={1}
+					isLinkHighlighted={false}
+					zIndex={0}
+					onBringToFront={() => {}}
+					isClosing
+					onCloseComplete={handleCloseComplete}
 				/>
 			))}
 		</>
