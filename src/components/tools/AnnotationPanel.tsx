@@ -585,7 +585,7 @@ function AnnotationFloatingPanel({
 				setEntered(false);
 				closeContentTimerRef.current = setTimeout(() => {
 					closingPhaseRef.current = "line";
-				}, 500);
+				}, 510);
 			});
 			return () => {
 				if (closeContentTimerRef.current)
@@ -843,13 +843,14 @@ function AnnotationFloatingPanel({
 						data-testid={`annotation-panel-${annotation.id}`}
 						className={cn(vimeoId ? "w-fit max-w-[42rem]" : "max-w-xs")}
 						style={{
-							pointerEvents: "auto",
+							pointerEvents: entered ? "auto" : "none",
 							transform: entered
 								? `scale(1) rotate(${isPanelDragging ? panelStyleProfile.tiltDeg * 0.35 : panelStyleProfile.tiltDeg}deg)`
-								: `scale(0.85) rotate(${panelStyleProfile.tiltDeg * 0.8}deg)`,
+								: `scale(${isClosing ? 0.92 : 0.85}) rotate(${panelStyleProfile.tiltDeg * 0.8}deg)`,
 							opacity: entered ? 1 : 0,
-							transition:
-								"transform 500ms cubic-bezier(0.16, 1, 0.3, 1), opacity 500ms cubic-bezier(0.16, 1, 0.3, 1)",
+							transition: isClosing
+								? "transform 500ms cubic-bezier(0.4, 0, 1, 1), opacity 500ms cubic-bezier(0.4, 0, 1, 1)"
+								: "transform 500ms cubic-bezier(0.16, 1, 0.3, 1), opacity 500ms cubic-bezier(0.16, 1, 0.3, 1)",
 							transformOrigin: "bottom left",
 							zIndex,
 						}}
