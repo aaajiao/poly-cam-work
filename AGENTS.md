@@ -160,7 +160,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 
 - **SceneCanvas.tsx**: entry point for all 3D — mounts viewers, tools, OrbitControls.
 - **PLY parsing**: always off-thread via `usePLYLoader` → `workers/ply-parser.worker.ts`.
-- **Annotations**: store-driven (`selectedAnnotationId`, `openAnnotationPanelIds`). Panels are screen-space aware.
+- **Annotations**: store-driven (`selectedAnnotationId`, `openAnnotationPanelIds`). Panels are screen-space aware. Panel drag offsets and media resize dimensions are synced to `annotationPanelOffsets` / `annotationMediaSizes` in viewerStore, captured into `IntroPreset.annotations.panelOffsets` / `.mediaSizes`, and restored on preset apply.
 - **Draft flow**: local-first (IndexedDB images, browser storage). Upload to Vercel Blob only on publish.
 - **API routes**: Vercel Functions in `api/` using `fetch` web handler format (`export default { fetch: handler }`). Auth via session cookie. Draft has revision conflict control.
 - **Presentation mode**: defaults ON for unauthenticated visitors. Login → auto OFF, logout → auto ON, session refresh → OFF if authenticated. `cloudScenesLoaded` gates viewer rendering in production until API responds.

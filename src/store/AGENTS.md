@@ -15,7 +15,7 @@
 |--------|-----------|
 | Scene catalog | `scenes`, `publishedScenes`, `discoveredScenes`, `uploadedScenes`, `activeSceneId` |
 | Viewer UI | `viewMode`, `toolMode`, `sidebarOpen`, `presentationMode`, `cameraControlsEnabled` |
-| Annotations | `annotations[]` (all scenes), `selectedAnnotationId`, `openAnnotationPanelIds[]`, `hoveredAnnotationId` |
+| Annotations | `annotations[]` (all scenes), `selectedAnnotationId`, `openAnnotationPanelIds[]`, `hoveredAnnotationId`, `annotationPanelOffsets`, `annotationMediaSizes` |
 | Clipping/Render | `clipPlane`, `colorMapMode`, `pointSize` |
 | Draft workflow | `draftStatus`, `draftRevisionByScene`, `draftDirtyByScene`, `publishedVersionByScene` |
 | Auth | `isAuthenticated`, `presentationMode` (linked: login→OFF, logout→ON) |
@@ -28,7 +28,7 @@
 
 **Persisted** (13 fields): `discoveredScenes`, `officialSceneSyncOverridesByScene`, `activeSceneId`, `annotations`, `introPreset`, `draftRevisionByScene`, `draftRevisionSourceByScene`, `draftDirtyByScene`, `sceneMutationVersion`, `colorMapMode`, `pointSize`, `viewMode`, `annotationsVisible`
 
-**NOT persisted**: `scenes`, `publishedScenes`, `uploadedScenes`, `measurements`, `toolMode`, `sidebarOpen`, `isAuthenticated`, `draftStatus`, loading state, `runtimeCamera`
+**NOT persisted**: `scenes`, `publishedScenes`, `uploadedScenes`, `measurements`, `toolMode`, `sidebarOpen`, `isAuthenticated`, `draftStatus`, loading state, `runtimeCamera`, `annotationPanelOffsets`, `annotationMediaSizes`
 
 ## Cross-Store Dependencies
 
