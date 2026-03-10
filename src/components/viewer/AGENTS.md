@@ -9,7 +9,10 @@ Main 3D rendering layer. Everything here runs inside `<Canvas>` (R3F context req
 | `SceneCanvas.tsx` | Top-level Canvas: lighting, controls, tools, loading overlay. **Entry point for all 3D.** |
 | `GLBViewer.tsx` | Loads GLB via `useGLTF`, renders `<primitive>`. Stores `_originalSide` on materials for clipping restore. Disposes geometry on unmount. |
 | `PointCloudViewer.tsx` | Loads PLY via `usePLYLoader` (WebWorker), renders `<points>`. Applies coordinate transform. Saves `originalColorsRef` for color mapping restore. |
-| `ScreenshotButton.tsx` | Null-render component: bridges `useScreenshot` (needs useThree) to `window.__takeScreenshot` for Toolbar access. |
+| `PresentationGizmo.tsx` | Viewport orientation gizmo with opacity fade in presentation mode. Uses `useFrame` + `THREE.MathUtils.damp`. |
+| `ScanRevealGLBViewer.tsx` | **Scan mode only.** Wraps GLB loading + injects scan-wave shader via `onBeforeCompile`. Replaces `GLBViewer` when scanning. |
+| `ScanRevealPointCloudViewer.tsx` | **Scan mode only.** Wraps PLY loading + custom `ShaderMaterial` for point activation. Replaces `PointCloudViewer` when scanning. |
+| `ScanOrchestrator.tsx` | **Scan mode only.** Null-render component that mounts `useScanOrchestrator` hook (engine + trigger + camera director). |
 
 ## Coordinate Transform (CRITICAL)
 
@@ -21,20 +24,37 @@ PLY = Z-up. GLB = Y-up. Transform on PLY group:
 
 `PLY(x, y, z)` → `Scene(x, z, -y)`. Do NOT apply this to GLB.
 
-## Canvas Config (CRITICAL)
-
-```tsx
-gl={{ preserveDrawingBuffer: true }}  // Screenshot depends on this — cannot be changed after creation
-```
+Both scan reveal viewers inherit this convention. Scan distance calculations use world-space coordinates (post-transform), so GLB and PLY are already in the same Y-up space.
 
 ## Inside vs Outside Canvas
 
 | Inside Canvas (R3F context) | Outside Canvas (DOM) |
 |------------------------------|----------------------|
 | GLBViewer, PointCloudViewer | LoadingOverlay |
-| MeasurementTool, ClippingPlane, AnnotationTool | Toolbar, Sidebar |
-| OrbitControls, GizmoHelper, Stats | DropZone, ErrorBoundary |
-| ScreenshotCapture, CameraController | StatusBar |
+| ScanRevealGLBViewer, ScanRevealPointCloudViewer | Toolbar, Sidebar |
+| MeasurementTool, ClippingPlane, AnnotationTool | DropZone, ErrorBoundary |
+| OrbitControls, GizmoHelper, Stats | StatusBar |
+| ScanOrchestrator, CameraController | |
+
+## Scan Reveal Integration Pattern
+
+SceneCanvas conditionally swaps normal viewers for scan-enhanced viewers based on `scanStore.isScanning`:
+
+```tsx
+{isScanning
+  ? <ScanRevealGLBViewer url={...} />
+  : <GLBViewer url={...} />}
+
+{isScanning
+  ? <ScanRevealPointCloudViewer url={...} />
+  : <PointCloudViewer url={...} />}
+
+{isScanning && <ScanOrchestrator />}
+```
+
+**Non-invasive principle**: GLBViewer and PointCloudViewer are never modified. Scan reveal components are parallel implementations that share the same data sources (useGLTF, usePLYLoader) but apply custom materials. When scan mode is off, the rendering path is identical to the original.
+
+See `docs/scan-reveal-architecture.md` for full system design.
 
 ## Adding a New Viewer
 

@@ -110,7 +110,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - Functional components only. Named exports (no default export except API handlers).
 - `data-testid` required on interactive elements used by tests.
 - shadcn components in `src/components/ui/`. Use `@/components/ui/button` etc.
-- zustand: single store (`viewerStore.ts`), selector pattern `(s) => s.field`.
+- zustand: main store (`viewerStore.ts`) + scan store (`scanStore.ts`), selector pattern `(s) => s.field`.
 
 ### Error Handling
 
@@ -135,6 +135,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - **Draft flow**: local-first (IndexedDB images, browser storage). Upload to Vercel Blob only on publish.
 - **API routes**: Vercel Functions in `api/` using `fetch` web handler format (`export default { fetch: handler }`). Auth via session cookie. Draft has revision conflict control.
 - **Presentation mode**: defaults ON for unauthenticated visitors. Login → auto OFF, logout → auto ON, session refresh → OFF if authenticated. `cloudScenesLoaded` gates viewer rendering in production until API responds.
+- **Scan reveal system**: non-invasive overlay that replaces viewers with shader-enhanced variants during scan mode. Driven by independent `scanStore`. See `docs/scan-reveal-architecture.md` for full design.
 
 ---
 
@@ -150,6 +151,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 | Publish UI | `src/components/sidebar/PublishButton.tsx`, `PublishActionControls.tsx`, `PublishVersionMenu.tsx` |
 | Scene catalog | `src/store/sceneCatalog.ts`, `src/lib/modelApi.ts` |
 | Cloud model upload | `api/models/upload.ts`, `api/models/index.ts` |
+| Scan reveal system | `src/store/scanStore.ts`, `src/hooks/useScan*.ts`, `src/shaders/*`, `src/components/viewer/ScanReveal*.tsx` |
 | Browser tests | `src/__tests__/browser/*.test.tsx` |
 | Unit tests | `src/__tests__/*.test.ts` |
 
@@ -158,7 +160,6 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 ## Critical Invariants
 
 - **Coordinate system**: PLY is Z-up, GLB is Y-up. PLY gets `rotation={[-Math.PI / 2, 0, 0]}`. Never apply to GLB.
-- **Canvas**: `preserveDrawingBuffer: true` must stay on — screenshot capture depends on it.
 - **Clipping**: `CLIP_SCENE_HALF` and clipping plane world mapping must stay aligned.
 - **Cloud URLs**: filtered by `hasValidSceneAssetUrls` — keep `glbUrl`/`plyUrl` as valid HTTPS.
 - **Worker syntax**: `new Worker(new URL('...', import.meta.url), { type: 'module' })`.
@@ -170,7 +171,6 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - Three.js objects in persisted zustand state
 - Main-thread parsing for large PLY files
 - Expanding E2E to cover scenarios browser Vitest can prove
-- Removing `preserveDrawingBuffer` from Canvas
 - Auto-loading remote draft over dirty local state
 - Uploading images during annotation editing (must upload on publish path)
 - Bypassing `/api/models/upload` validation for cloud uploads
