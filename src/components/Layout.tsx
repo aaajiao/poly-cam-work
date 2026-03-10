@@ -22,8 +22,6 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
 	const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
 	const setPresentationMode = useViewerStore((s) => s.setPresentationMode);
-	const introContinueVisible = useViewerStore((s) => s.introContinueVisible);
-	const continueIntroScan = useViewerStore((s) => s.continueIntroScan);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -105,17 +103,6 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
 									</TooltipContent>
 								</Tooltip>
 							</TooltipProvider>
-						</div>
-					)}
-					{presentationMode && introContinueVisible && (
-						<div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-							<Button
-								onClick={continueIntroScan}
-								data-testid="continue-scan-cta"
-								className="pointer-events-auto shadow-lg animate-in fade-in slide-in-from-bottom-4"
-							>
-								Continue Scan
-							</Button>
 						</div>
 					)}
 				</main>

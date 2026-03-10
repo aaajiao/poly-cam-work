@@ -28,6 +28,8 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 	const introPresetStatus = useViewerStore((s) => s.introPresetStatus);
 	const introPreset = useViewerStore((s) => s.introPreset);
 	const introPresetError = useViewerStore((s) => s.introPresetError);
+	const introContinueVisible = useViewerStore((s) => s.introContinueVisible);
+	const continueIntroScan = useViewerStore((s) => s.continueIntroScan);
 
 	const ready =
 		!!activeSceneId && !isLoading && (import.meta.env.DEV || cloudScenesLoaded);
@@ -45,9 +47,15 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 		? "Stop scan"
 		: hasCompletedScan
 			? "Replay scan"
-			: "Start scan";
+			: compact && introContinueVisible
+				? "Continue scan"
+				: "Start scan";
 
 	const handleClick = () => {
+		if (compact && introContinueVisible) {
+			continueIntroScan();
+			return;
+		}
 		const store = useScanStore.getState();
 		if (store.isScanning) {
 			store.stopScan();
@@ -107,7 +115,9 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 											? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
 											: hasCompletedScan
 												? "border-accent-soft bg-accent-soft text-accent hover:bg-accent-soft"
-												: "border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"),
+												: compact && introContinueVisible
+													? "h-10 w-10 border-accent-soft bg-[color:color-mix(in_oklab,var(--accent)_18%,var(--panel))] text-accent opacity-100 shadow-[0_12px_32px_color-mix(in_oklab,var(--accent)_20%,transparent)] ring-1 ring-[color:color-mix(in_oklab,var(--accent)_24%,transparent)] hover:border-strong hover:bg-[color:color-mix(in_oklab,var(--accent)_24%,var(--panel))] hover:text-strong"
+													: "border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"),
 								)}
 							>
 								{icon}
