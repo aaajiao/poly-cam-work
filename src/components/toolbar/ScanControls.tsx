@@ -16,6 +16,7 @@ interface ScanControlsProps {
 
 export function ScanControls({ compact = false }: ScanControlsProps) {
 	const isScanning = useScanStore((s) => s.isScanning);
+	const isScanRevealVisible = useScanStore((s) => s.isScanRevealVisible);
 	const hasCompletedScan = useScanStore((s) => s.hasCompletedScan);
 	const pauseScan = useScanStore((s) => s.pauseScan);
 
@@ -41,18 +42,27 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 	) : (
 		<Play size={14} />
 	);
+	const isSaving = introPresetStatus === "saving";
+	const hasSavedIntroPreset =
+		introPreset?.sceneId === activeSceneId && introPreset.enabled;
+	const isAwaitingIntroContinue =
+		compact &&
+		!isAuthenticated &&
+		hasSavedIntroPreset &&
+		(introContinueVisible ||
+			(isScanRevealVisible && !isScanning && !hasCompletedScan));
 
 	const label = isScanning ? "Stop" : hasCompletedScan ? "Replay" : "Scan";
 	const tooltip = isScanning
 		? "Stop scan"
 		: hasCompletedScan
 			? "Replay scan"
-			: compact && introContinueVisible
+			: isAwaitingIntroContinue
 				? "Continue scan"
 				: "Start scan";
 
 	const handleClick = () => {
-		if (compact && introContinueVisible) {
+		if (isAwaitingIntroContinue) {
 			continueIntroScan();
 			return;
 		}
@@ -88,10 +98,6 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 		}
 	};
 
-	const isSaving = introPresetStatus === "saving";
-	const hasSavedIntroPreset =
-		introPreset?.sceneId === activeSceneId && introPreset.enabled;
-
 	return (
 		<div className="flex flex-col items-start gap-1">
 			<TooltipProvider delayDuration={300}>
@@ -115,7 +121,7 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 											? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
 											: hasCompletedScan
 												? "border-accent-soft bg-accent-soft text-accent hover:bg-accent-soft"
-												: compact && introContinueVisible
+												: isAwaitingIntroContinue
 													? "h-10 w-10 border-accent-soft bg-[color:color-mix(in_oklab,var(--accent)_18%,var(--panel))] text-accent opacity-100 shadow-[0_12px_32px_color-mix(in_oklab,var(--accent)_20%,transparent)] ring-1 ring-[color:color-mix(in_oklab,var(--accent)_24%,transparent)] hover:border-strong hover:bg-[color:color-mix(in_oklab,var(--accent)_24%,var(--panel))] hover:text-strong"
 													: "border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"),
 								)}
