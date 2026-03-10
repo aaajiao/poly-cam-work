@@ -65,25 +65,35 @@ describe("browser presentation mode layout", () => {
 			</Layout>,
 		);
 
+		useScanStore.setState({
+			isScanRevealVisible: true,
+			isScanning: false,
+			hasCompletedScan: false,
+			scanPhase: "expansion",
+			scanT: 0.56,
+			scanRadius: 5.1,
+			scanOrigin: [0, 0, 0],
+			maxRadius: 8.4,
+			duration: 15,
+		});
 		useViewerStore.setState({
 			presentationMode: true,
-			introContinueVisible: true,
 			introPreset: {
 				version: 1,
-				sceneId: "test",
+				sceneId: "scan-a",
 				enabled: true,
 				camera: { position: [0, 0, 0], target: [0, 0, 0], fov: 50 },
 				viewer: { viewMode: "mesh" },
 				scan: {
-					progress: 0,
-					radius: 0,
-					phase: "origin",
+					progress: 0.56,
+					radius: 5.1,
+					phase: "expansion",
 					origin: [0, 0, 0],
-					maxRadius: 0,
-					duration: 0,
+					maxRadius: 8.4,
+					duration: 15,
 				},
 				annotations: { openIds: [], triggeredIds: [], activeId: null },
-				ui: { ctaLabel: "Continue" },
+				ui: { ctaLabel: "Continue Scan" },
 				createdAt: 0,
 				updatedAt: 0,
 			},
@@ -91,16 +101,15 @@ describe("browser presentation mode layout", () => {
 
 		const btn = screen.getByTestId("scan-trigger-btn");
 		await expect.element(btn).toBeVisible();
-		await expect
-			.element(btn)
-			.toHaveClass("shadow-[0_0_10px_rgba(255,255,255,0.2)]");
+		await expect.element(btn).toHaveClass("border-accent-soft");
+		await expect.element(btn).toHaveClass("text-accent");
 		expect(
 			document.querySelector('[data-testid="continue-scan-cta"]'),
 		).toBeNull();
 
 		await btn.click();
 
-		expect(useViewerStore.getState().introContinueVisible).toBe(false);
+		expect(useScanStore.getState().isScanning).toBe(true);
 	});
 
 	test("escape exits presentation mode without clearing open annotation panels", async () => {
