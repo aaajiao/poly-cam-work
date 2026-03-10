@@ -7,6 +7,7 @@ interface ScanState {
 	isScanning: boolean;
 	scanPhase: ScanPhase;
 	scanT: number; // normalized 0→1 progress
+	hasCompletedScan: boolean;
 
 	// Scan parameters
 	scanOrigin: [number, number, number];
@@ -38,6 +39,7 @@ export const useScanStore = create<ScanState>()((set) => ({
 	isScanning: false,
 	scanPhase: "idle",
 	scanT: 0,
+	hasCompletedScan: false,
 
 	scanOrigin: [0, 0, 0],
 	scanRadius: 0,
@@ -52,6 +54,7 @@ export const useScanStore = create<ScanState>()((set) => ({
 			isScanning: true,
 			scanPhase: "origin",
 			scanT: 0,
+			hasCompletedScan: false,
 			scanRadius: 0,
 			maxRadius: maxRadius ?? DEFAULT_MAX_RADIUS,
 			duration: duration ?? DEFAULT_DURATION,
@@ -60,27 +63,35 @@ export const useScanStore = create<ScanState>()((set) => ({
 		}),
 
 	stopScan: () =>
-		set({
+		set((state) => ({
 			isScanning: false,
 			scanPhase: "idle",
 			scanT: 0,
+			hasCompletedScan:
+				state.hasCompletedScan || state.scanPhase === "complete",
 			scanRadius: 0,
 			triggeredAnnotationIds: [],
 			activeAnnotationId: null,
-		}),
+		})),
 
 	resetScan: () =>
 		set({
 			isScanning: false,
 			scanPhase: "idle",
 			scanT: 0,
+			hasCompletedScan: false,
 			scanRadius: 0,
 			triggeredAnnotationIds: [],
 			activeAnnotationId: null,
 		}),
 
 	setScanProgress: (scanT, scanRadius, phase) =>
-		set({ scanT, scanRadius, scanPhase: phase }),
+		set((state) => ({
+			scanT,
+			scanRadius,
+			scanPhase: phase,
+			hasCompletedScan: phase === "complete" ? true : state.hasCompletedScan,
+		})),
 
 	triggerAnnotation: (id) =>
 		set((state) => {

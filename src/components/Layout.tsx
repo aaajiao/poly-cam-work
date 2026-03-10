@@ -1,5 +1,6 @@
 import { Eye, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect } from "react";
+import { ScanControls } from "@/components/toolbar/ScanControls";
 import { Button } from "@/components/ui/button";
 import { useViewerStore } from "@/store/viewerStore";
 
@@ -75,17 +76,20 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
 				>
 					{children}
 					{presentationMode && (
-						<Button
-							variant="ghost"
-							size="sm"
-							data-testid="presentation-exit-btn"
-							aria-label="Exit presentation mode"
-							onClick={() => setPresentationMode(false)}
-							className="absolute right-3 top-3 z-20 h-9 w-9 rounded-full border border-subtle bg-panel p-0 text-dim opacity-75 backdrop-blur-sm transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
-							title="Exit presentation mode"
-						>
-							<Eye size={14} />
-						</Button>
+						<div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+							<ScanControls compact />
+							<Button
+								variant="ghost"
+								size="sm"
+								data-testid="presentation-exit-btn"
+								aria-label="Exit presentation mode"
+								onClick={() => setPresentationMode(false)}
+								className="h-9 w-9 rounded-full border border-subtle bg-panel p-0 text-dim opacity-75 backdrop-blur-sm transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
+								title="Exit presentation mode"
+							>
+								<Eye size={14} />
+							</Button>
+						</div>
 					)}
 				</main>
 

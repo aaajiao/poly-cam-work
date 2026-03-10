@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useViewerStore } from "@/store/viewerStore";
+import { ScanControls } from "./ScanControls";
 import { ToolButtons } from "./ToolButtons";
 import { ViewModeToggle } from "./ViewModeToggle";
 
@@ -66,6 +67,8 @@ export function Toolbar() {
 					</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
+
+			<ScanControls />
 
 			<div className="flex-1" />
 

@@ -1,6 +1,6 @@
 # Scan Reveal System — 架构方案
 
-> Status: Draft
+> Status: P0-P2 Implemented, P3 Deferred
 > Date: 2026-03-10
 
 ---
@@ -12,6 +12,12 @@
 - 现有的 `GLBViewer`、`PointCloudViewer`、`viewerStore`、`SceneCanvas` 保持不动。
 - 新系统通过**包装组件**和**独立 store**接入，在 `SceneCanvas` 中通过条件渲染切换。
 - 关闭扫描模式 = 回到完全原始的渲染路径，无任何性能或行为副作用。
+
+### 当前产品化状态
+
+- **正式入口**：扫描控制已从 dev-only button 移到产品 UI。普通模式下使用 toolbar 的 Scan 按钮；presentation mode 下使用右上角浮层按钮。
+- **播放行为**：Scan → Stop → Replay 三种状态由 `scanStore` 管理；扫描自然完成后会自动回到 idle，并显示 Replay。
+- **延期项**：Camera Director（P3）暂不实现，等待后续节点叙事和镜头脚本明确后再接入。
 
 ---
 
