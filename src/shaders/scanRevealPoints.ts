@@ -9,6 +9,7 @@ uniform float uScanTime;
 uniform float uOriginFlash;
 uniform vec3  uWavefrontColor;
 uniform float uEdgeWidth;
+uniform float uTransitionWidth;
 uniform float uPointSize;
 
 varying vec3  vColor;
@@ -20,6 +21,7 @@ void main() {
 
   float outerEdge = uScanRadius + uEdgeWidth;
   float innerEdge = uScanRadius - uEdgeWidth;
+  float trailEnd = max(uScanRadius - uTransitionWidth, 0.0);
 
   float flashRadius = uOriginFlash * 1.2;
   bool inFlash = uOriginFlash > 0.01 && dist < flashRadius;
@@ -35,13 +37,19 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
 
-  float activationT = smoothstep(outerEdge, innerEdge, dist);
+  float revealT = smoothstep(innerEdge, trailEnd, dist);
 
-  float sizePop = mix(1.6, 1.0, activationT);
-  gl_PointSize = uPointSize * sizePop * (300.0 / -mvPosition.z);
+  float wavefrontT = smoothstep(outerEdge, innerEdge, dist);
+  float sizePop = mix(1.6, 1.0, wavefrontT);
+  float trailSize = mix(1.15, 1.0, revealT);
+  gl_PointSize = uPointSize * sizePop * trailSize * (300.0 / -mvPosition.z);
 
-  vAlpha = mix(0.7, 1.0, activationT);
-  vColor = mix(uWavefrontColor, color, activationT);
+  vec3 wavefrontMix = mix(uWavefrontColor, color, wavefrontT);
+  vec3 trailTint = mix(wavefrontMix, color, revealT);
+  vColor = trailTint;
+
+  float wavefrontAlpha = mix(0.6, 1.0, wavefrontT);
+  vAlpha = mix(wavefrontAlpha, 1.0, revealT);
 
   if (inFlash && dist > outerEdge) {
     float flashFade = 1.0 - smoothstep(0.0, flashRadius, dist);
@@ -78,6 +86,7 @@ export function createScanPointsMaterial(
 			uOriginFlash: uniforms.uOriginFlash,
 			uWavefrontColor: uniforms.uWavefrontColor,
 			uEdgeWidth: uniforms.uEdgeWidth,
+			uTransitionWidth: uniforms.uTransitionWidth,
 			uPointSize: { value: pointSize },
 		},
 		vertexShader,

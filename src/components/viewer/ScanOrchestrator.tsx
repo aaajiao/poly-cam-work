@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useRef } from "react";
 
+import { useScanAnnotationTrigger } from "@/hooks/useScanAnnotationTrigger";
 import { useScanEngine } from "@/hooks/useScanEngine";
 import { useScanStore } from "@/store/scanStore";
 import { useViewerStore } from "@/store/viewerStore";
@@ -14,6 +15,7 @@ interface ScanOrchestratorProps {
 
 export function ScanOrchestrator({ glbUrl, plyUrl }: ScanOrchestratorProps) {
 	const { uniformsRef } = useScanEngine();
+	useScanAnnotationTrigger();
 	const viewMode = useViewerStore((s) => s.viewMode);
 	const boundsApplied = useRef(false);
 
