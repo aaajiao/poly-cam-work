@@ -585,7 +585,7 @@ function AnnotationFloatingPanel({
 				setEntered(false);
 				closeContentTimerRef.current = setTimeout(() => {
 					closingPhaseRef.current = "line";
-				}, 510);
+				}, 140);
 			});
 			return () => {
 				if (closeContentTimerRef.current)
@@ -746,7 +746,7 @@ function AnnotationFloatingPanel({
 		const { panelPos, midPos } = panelLayoutRef.current;
 		if (closingPhaseRef.current === "line") {
 			lineProgressRef.current = Math.max(
-				lineProgressRef.current - delta / 0.5,
+				lineProgressRef.current - delta / 0.4,
 				0,
 			);
 			const ct = lineProgressRef.current;
@@ -846,10 +846,10 @@ function AnnotationFloatingPanel({
 							pointerEvents: entered ? "auto" : "none",
 							transform: entered
 								? `scale(1) rotate(${isPanelDragging ? panelStyleProfile.tiltDeg * 0.35 : panelStyleProfile.tiltDeg}deg)`
-								: `scale(${isClosing ? 0.92 : 0.85}) rotate(${panelStyleProfile.tiltDeg * 0.8}deg)`,
+								: `scale(${isClosing ? 0.9 : 0.85}) rotate(${panelStyleProfile.tiltDeg * 0.8}deg)`,
 							opacity: entered ? 1 : 0,
 							transition: isClosing
-								? "transform 500ms cubic-bezier(0.4, 0, 1, 1), opacity 500ms cubic-bezier(0.4, 0, 1, 1)"
+								? "transform 500ms cubic-bezier(0.2, 0.65, 0.2, 1), opacity 480ms linear"
 								: "transform 500ms cubic-bezier(0.16, 1, 0.3, 1), opacity 500ms cubic-bezier(0.16, 1, 0.3, 1)",
 							transformOrigin: "bottom left",
 							zIndex,
