@@ -838,6 +838,8 @@ function AnnotationFloatingPanel({
 			/>
 			<group ref={panelGroupRef}>
 				<Html position={[0, 0, 0]} occlude={false}>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: composite annotation panel surface needs pointer/click handlers to manage z-order and event isolation while nested controls remain the real interactive elements */}
+					{/* biome-ignore lint/a11y/useKeyWithClickEvents: this wrapper is not a keyboard-activated control; keyboard interaction belongs to the nested buttons/links inside the panel */}
 					<div
 						ref={panelRootRef}
 						data-testid={`annotation-panel-${annotation.id}`}
