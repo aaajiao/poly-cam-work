@@ -42,6 +42,7 @@ export function ScanOrchestrator({ glbUrl, plyUrl }: ScanOrchestratorProps) {
 				<ScanRevealPointCloudViewer
 					url={plyUrl}
 					uniforms={uniformsRef.current}
+					onBoundsReady={handleBoundsReady}
 				/>
 			)}
 		</Suspense>

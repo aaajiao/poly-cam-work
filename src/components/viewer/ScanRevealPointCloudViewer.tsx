@@ -6,14 +6,21 @@ import type { ScanRevealUniforms } from "@/shaders/scanRevealMesh";
 import { createScanPointsMaterial } from "@/shaders/scanRevealPoints";
 import { useViewerStore } from "@/store/viewerStore";
 
+interface SceneBounds {
+	radius: number;
+	center: [number, number, number];
+}
+
 interface ScanRevealPointCloudViewerProps {
 	url: string;
 	uniforms: ScanRevealUniforms;
+	onBoundsReady?: (bounds: SceneBounds) => void;
 }
 
 export function ScanRevealPointCloudViewer({
 	url,
 	uniforms,
+	onBoundsReady,
 }: ScanRevealPointCloudViewerProps) {
 	const { data } = usePLYLoader(url);
 	const pointSize = useViewerStore((s) => s.pointSize);
@@ -27,6 +34,15 @@ export function ScanRevealPointCloudViewer({
 		geo.computeBoundingSphere();
 		return geo;
 	}, [data]);
+
+	useEffect(() => {
+		if (!geometry?.boundingSphere || !onBoundsReady) return;
+		const { center, radius } = geometry.boundingSphere;
+		onBoundsReady({
+			radius,
+			center: [center.x, center.z, -center.y],
+		});
+	}, [geometry, onBoundsReady]);
 
 	const material = useMemo(
 		() => createScanPointsMaterial(uniforms, pointSize),
