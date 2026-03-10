@@ -15,10 +15,12 @@ import { AnnotationTool } from "@/components/tools/AnnotationTool";
 import { ClippingPlaneController } from "@/components/tools/ClippingPlane";
 import { MeasurementTool } from "@/components/tools/MeasurementTool";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
+import { useScanStore } from "@/store/scanStore";
 import { useActiveScene, useViewerStore } from "@/store/viewerStore";
 import { GLBViewer } from "./GLBViewer";
 import { PointCloudViewer } from "./PointCloudViewer";
 import { PresentationGizmo } from "./PresentationGizmo";
+import { ScanOrchestrator } from "./ScanOrchestrator";
 
 function LoadingFallback() {
 	return (
@@ -180,6 +182,7 @@ export function SceneCanvas() {
 	const cameraControlsEnabled = useViewerStore((s) => s.cameraControlsEnabled);
 	const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId);
 	const selectAnnotation = useViewerStore((s) => s.selectAnnotation);
+	const isScanning = useScanStore((s) => s.isScanning);
 	const [statsHost, setStatsHost] = useState<HTMLElement | null>(null);
 	const [gizmoInteractionActive, setGizmoInteractionActive] = useState(false);
 
@@ -195,6 +198,23 @@ export function SceneCanvas() {
 			setStatsHost(host);
 		}
 	}, [presentationMode]);
+
+	useEffect(() => {
+		if (!import.meta.env.DEV) return;
+		const handler = (e: KeyboardEvent) => {
+			if (e.key === "\\" || (e.key === "s" && e.shiftKey && e.ctrlKey)) {
+				e.preventDefault();
+				const store = useScanStore.getState();
+				if (store.isScanning) {
+					store.stopScan();
+				} else {
+					store.startScan(50, 15);
+				}
+			}
+		};
+		window.addEventListener("keydown", handler);
+		return () => window.removeEventListener("keydown", handler);
+	}, []);
 
 	const handlePointerMissed = useCallback(() => {
 		if (toolMode !== "annotate" && selectedAnnotationId) {
@@ -233,14 +253,23 @@ export function SceneCanvas() {
 
 				<Environment preset="city" />
 
+				{activeScene && sceneReady && isScanning && (
+					<ScanOrchestrator
+						glbUrl={activeScene.glbUrl}
+						plyUrl={activeScene.plyUrl}
+					/>
+				)}
+
 				<Suspense fallback={<LoadingFallback />}>
 					{activeScene &&
 						sceneReady &&
+						!isScanning &&
 						(viewMode === "mesh" || viewMode === "both") && (
 							<GLBViewer url={activeScene.glbUrl} />
 						)}
 					{activeScene &&
 						sceneReady &&
+						!isScanning &&
 						(viewMode === "pointcloud" || viewMode === "both") && (
 							<PointCloudViewer url={activeScene.plyUrl} />
 						)}
