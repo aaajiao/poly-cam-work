@@ -71,7 +71,6 @@ export function ScanControls({ compact = false }: ScanControlsProps) {
 										? "border-accent-soft bg-accent-soft text-accent hover:bg-accent-soft"
 										: "border-subtle bg-panel text-dim hover:bg-elevated hover:text-soft"),
 						)}
-						title={tooltip}
 					>
 						{icon}
 						{!compact && <span className="hidden md:inline">{label}</span>}

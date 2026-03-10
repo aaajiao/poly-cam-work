@@ -89,20 +89,26 @@ export function Toolbar() {
 				<PublishButton />
 			</Suspense>
 
-			<Button
-				variant="ghost"
-				size="icon"
-				data-testid="presentation-mode-btn"
-				onClick={() => setPresentationMode(!presentationMode)}
-				className="h-9 w-9 rounded-full border border-subtle bg-panel text-dim opacity-75 transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
-				title={
-					presentationMode
-						? "Exit presentation mode"
-						: "Enter presentation mode"
-				}
-			>
-				{presentationMode ? <Eye size={16} /> : <EyeOff size={16} />}
-			</Button>
+			<TooltipProvider delayDuration={300}>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							data-testid="presentation-mode-btn"
+							onClick={() => setPresentationMode(!presentationMode)}
+							className="h-9 w-9 rounded-full border border-subtle bg-panel text-dim opacity-75 transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
+						>
+							{presentationMode ? <Eye size={16} /> : <EyeOff size={16} />}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" className="text-xs">
+						{presentationMode
+							? "Exit presentation mode"
+							: "Enter presentation mode"}
+					</TooltipContent>
+				</Tooltip>
+			</TooltipProvider>
 		</div>
 	);
 }

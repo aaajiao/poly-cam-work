@@ -2,6 +2,12 @@ import { Eye, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect } from "react";
 import { ScanControls } from "@/components/toolbar/ScanControls";
 import { Button } from "@/components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useViewerStore } from "@/store/viewerStore";
 
 interface LayoutProps {
@@ -78,17 +84,25 @@ export function Layout({ sidebar, toolbar, children, statusBar }: LayoutProps) {
 					{presentationMode && (
 						<div className="absolute right-3 top-3 z-20 flex items-center gap-2">
 							<ScanControls compact />
-							<Button
-								variant="ghost"
-								size="sm"
-								data-testid="presentation-exit-btn"
-								aria-label="Exit presentation mode"
-								onClick={() => setPresentationMode(false)}
-								className="h-9 w-9 rounded-full border border-subtle bg-panel p-0 text-dim opacity-75 backdrop-blur-sm transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
-								title="Exit presentation mode"
-							>
-								<Eye size={14} />
-							</Button>
+							<TooltipProvider delayDuration={300}>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant="ghost"
+											size="sm"
+											data-testid="presentation-exit-btn"
+											aria-label="Exit presentation mode"
+											onClick={() => setPresentationMode(false)}
+											className="h-9 w-9 rounded-full border border-subtle bg-panel p-0 text-dim opacity-75 backdrop-blur-sm transition-all duration-200 hover:border-strong hover:bg-elevated hover:text-strong hover:opacity-100"
+										>
+											<Eye size={14} />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent side="bottom" className="text-xs">
+										Exit presentation mode
+									</TooltipContent>
+								</Tooltip>
+							</TooltipProvider>
 						</div>
 					)}
 				</main>
