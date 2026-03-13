@@ -64,6 +64,8 @@ Install dependencies:
 bun install
 ```
 
+`node_modules` is not portable across operating systems. This project runs on both macOS and Linux, but native Rollup packages are installed per platform, so after moving the repo between machines you should rerun `bun install` locally. If a copied `node_modules/` directory still causes a mismatch, remove it and reinstall on the current machine.
+
 Run frontend dev server:
 
 ```bash
