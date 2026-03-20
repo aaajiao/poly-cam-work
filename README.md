@@ -44,7 +44,8 @@ docs/         Planning and implementation docs
 ## Prerequisites
 
 - Bun 1.3+
-- Node.js 20.19+ or 22.12+
+- Node.js 22.x on Vercel
+- Node.js 22.12 locally via `.node-version` / `.nvmrc`
 - Modern browsers (Safari 16+, Chrome/Edge 107+, Firefox 104+)
 - (Optional) Vercel CLI for `vercel dev`
 
