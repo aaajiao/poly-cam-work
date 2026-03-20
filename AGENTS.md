@@ -5,8 +5,8 @@ GLB textured meshes + PLY point clouds with measurement, clipping, annotation, a
 
 ## Stack
 
-Vite 6 + React 19 + TypeScript strict + bun
-@react-three/fiber v9 + drei v9 + Three.js
+Vite 7 + React 19 + TypeScript strict + bun
+@react-three/fiber v9 + drei v10 + Three.js
 zustand (persist) + shadcn/ui (new-york) + Tailwind v4
 
 ## Structure
@@ -207,6 +207,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 ## Environment
 
 - **bun** as package manager and script runner
+- Node.js `22.x` on Vercel, `22.12` locally via `.node-version` / `.nvmrc`
 - Path alias: `@/` → `src/`
 - Tailwind v4 via `@tailwindcss/vite` (no `tailwind.config.js`)
 - Env vars: `POLYCAM_BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET`
