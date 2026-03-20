@@ -26,7 +26,7 @@ For deeper context on the artwork and its evolving research, see the [Symbiosis 
 
 ## Tech Stack
 
-- Vite 6 + React 19 + TypeScript (strict)
+- Vite 7 + React 19 + TypeScript (strict)
 - Three.js + @react-three/fiber + @react-three/drei
 - zustand + shadcn/ui + Tailwind CSS v4
 - Vercel Functions (`api/`) + Vercel Blob
@@ -44,7 +44,8 @@ docs/         Planning and implementation docs
 ## Prerequisites
 
 - Bun 1.3+
-- Node.js 20+
+- Node.js 20.19+ or 22.12+
+- Modern browsers (Safari 16+, Chrome/Edge 107+, Firefox 104+)
 - (Optional) Vercel CLI for `vercel dev`
 
 ## Environment Variables

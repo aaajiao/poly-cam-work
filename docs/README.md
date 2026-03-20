@@ -23,7 +23,7 @@
 
 补充说明：项目代码可以在 macOS 和 Linux 上运行，但 `node_modules` 目录不能跨操作系统直接复用。由于 Rollup 会按平台安装原生包，在不同机器之间移动仓库后，应当在当前机器上重新执行一次 `bun install`；如果复制过来的 `node_modules/` 仍然报平台不匹配，就删除后再重新安装。
 
-- **核心架构**: 基于 Vite 6 + React 19 + Three.js 的可视化平台。
+- **核心架构**: 基于 Vite 7 + React 19 + Three.js 的可视化平台。
 - **数据流**: 采用 IndexedDB 本地优先存储与 Vercel Blob 云端同步的发布机制。
 - **工作流**: 包含场景发布、版本管理、回滚机制以及官方场景的资产同步流程。
 - **测试工作流**: 参阅 [TESTING.md](TESTING.md)，了解 Vitest 与 Playwright 的分层职责、命令选择，以及本地卡住时的排查路径。

@@ -1,9 +1,22 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+async function ensureWorkbenchLayout(page: Page) {
+  const sidebar = page.locator('[data-testid="sidebar"]')
+  const sidebarVisible = await sidebar.isVisible().catch(() => false)
+  if (sidebarVisible) return
+
+  const exitPresentationButton = page.locator('[data-testid="presentation-exit-btn"]')
+  const canExitPresentation = await exitPresentationButton.isVisible().catch(() => false)
+  if (canExitPresentation) {
+    await exitPresentationButton.click()
+  }
+
+  await page.waitForSelector('[data-testid="sidebar"]', { timeout: 10000 })
+}
 
 test('app loads and renders layout', async ({ page }) => {
   await page.goto('/')
-
-  await page.waitForSelector('[data-testid="sidebar"]', { timeout: 10000 })
+  await ensureWorkbenchLayout(page)
 
   await expect(page.locator('[data-testid="sidebar"]')).toBeVisible()
   await expect(page.locator('[data-testid="toolbar"]')).toBeVisible()
@@ -19,6 +32,7 @@ test('app loads and renders layout', async ({ page }) => {
 
 test('sidebar toggle works', async ({ page }) => {
   await page.goto('/')
+  await ensureWorkbenchLayout(page)
   await page.waitForSelector('[data-testid="scene-canvas"]', { timeout: 15000 })
 
   const sidebar = page.locator('[data-testid="sidebar"]')

@@ -52,7 +52,7 @@ export function PresentationGizmo({
   const gizmoRef = useRef<THREE.Group | null>(null)
   const currentOpacityRef = useRef(presentationMode ? PRESENTATION_GIZMO_IDLE_OPACITY : 1)
   const appliedOpacityRef = useRef<number | null>(null)
-  const axisColors = [
+  const axisColors: [string, string, string] = [
     resolveThemeColor('--primary', '#7291c8'),
     resolveThemeColor('--success', '#73b894'),
     resolveThemeColor('--accent', '#8aa7d6'),

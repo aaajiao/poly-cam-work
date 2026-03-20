@@ -1,4 +1,8 @@
-import { Html, QuadraticBezierLine } from "@react-three/drei";
+import {
+	Html,
+	QuadraticBezierLine,
+	type QuadraticBezierLineRef,
+} from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { GripVertical } from "lucide-react";
 import {
@@ -44,14 +48,7 @@ type LineMaterialMutable = THREE.Material & {
 	transparent?: boolean;
 };
 
-interface BezierLineHandle {
-	setPoints: (
-		start: THREE.Vector3 | [number, number, number],
-		end: THREE.Vector3 | [number, number, number],
-		mid: THREE.Vector3 | [number, number, number],
-	) => void;
-	material?: THREE.Material | THREE.Material[];
-}
+type BezierLineHandle = QuadraticBezierLineRef;
 
 function withLineMaterials(
 	line: BezierLineHandle | null,

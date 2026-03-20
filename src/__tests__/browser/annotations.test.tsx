@@ -33,6 +33,7 @@ function resetStore() {
   localStorage.removeItem('polycam-viewer-state')
   useViewerStore.setState({
     activeSceneId: 'scan-a',
+    isAuthenticated: true,
     toolMode: 'orbit',
     measurements: [],
     annotations: [],

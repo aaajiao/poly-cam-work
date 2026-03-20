@@ -5,12 +5,22 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'vitest-browser-react',
+    ],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
   test: {
+    setupFiles: ['./src/__tests__/setup.ts'],
     projects: [
       {
         test: {
