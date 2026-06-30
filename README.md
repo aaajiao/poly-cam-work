@@ -1,4 +1,4 @@
-# poly.cam.work (v0.2.1)
+# poly.cam.work (v0.3.0)
 
 A visualization platform for the ongoing work of aaajiao. This repository serves as the technical foundation for the *Symbiosis* project, providing a space where 3D scans, point clouds, and rich-media annotations converge to document the intersection of labor, material production, and global trade.
 
@@ -154,4 +154,4 @@ Official scenes are repository-first. Maintainers add model assets to the codeba
 
 ## Current Version
 
-`v0.2.1`
+`v0.3.0`
