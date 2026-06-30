@@ -31,7 +31,7 @@
 ## 外部链接 (External Links)
 
 - [**1bit 游戏**](https://1bit-zeta.vercel.app) - 可漫游的数字废墟，由制造业崩塌的残骸生成。
-- [**Two Rituals 视频**](https://vimeo.com/1138253490) - 记录“入神”与“出神”两种状态的影像作品。
+- [**Two Rituals 视频**](https://vimeo.com/1108889225) - 记录“入神”与“出神”两种状态的影像作品。
 - [**WorldLabs 3D**](https://marble.worldlabs.ai/world/3ed003df-ee7f-46d6-950b-3d16c9b31a18) - 使用 WorldLabs 构建的 3D 世界。
 
 ## 当前版本 (Current Version)

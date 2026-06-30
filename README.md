@@ -18,7 +18,7 @@ For deeper context on the artwork and its evolving research, see the [Symbiosis 
 ## External Links
 
 - [**1bit Game**](https://1bit-zeta.vercel.app) — A roamable digital ruin generated from the wreckage of manufacturing collapse.
-- [**Two Rituals (Video)**](https://vimeo.com/1138253490) — A video work documenting the two states of *Absorption* and *Trance*.
+- [**Two Rituals (Video)**](https://vimeo.com/1108889225) — A video work documenting the two states of *Absorption* and *Trance*.
 - [**WorldLabs 3D**](https://marble.worldlabs.ai/world/3ed003df-ee7f-46d6-950b-3d16c9b31a18) — A 3D world built with WorldLabs.
 
 ## Highlights
