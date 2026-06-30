@@ -36,7 +36,7 @@
 
 ## 当前版本 (Current Version)
 
-`v0.2.1`
+版本号以英文 README 的 [Current Version](../README.md#current-version) 为准（单一真源，避免双处漂移）。
 
 ---
 
