@@ -87,8 +87,7 @@ Prefer browser Vitest over Playwright E2E for component behavior. See `docs/TEST
 ### Formatting
 
 - **No Prettier**. ESLint handles TS/TSX linting. Biome handles CSS parsing (tailwind directives only).
-- Single quotes, no semicolons (dominant pattern in codebase).
-- 2-space indentation in most files.
+- Match the existing style of the file you edit — ESLint enforces neither quotes nor semicolons. `src/**` is predominantly single quotes, no semicolons, 2-space indent; `api/**` is tabs, double quotes, semicolons. A few files deviate (e.g. `api/_lib/auth.ts` follows the src style), so mirror what's already in the file.
 - Unused vars: prefix with `_` (eslint `argsIgnorePattern: ^_`).
 
 ### Imports
@@ -193,6 +192,9 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - **Cloud URLs**: filtered by `hasValidSceneAssetUrls` — keep `glbUrl`/`plyUrl` as valid HTTPS.
 - **Worker syntax**: `new Worker(new URL('...', import.meta.url), { type: 'module' })`.
 - **API imports**: relative imports in `api/` must use `.js` extensions (`from '../_lib/auth.js'`). Vercel's Node.js ESM requires explicit extensions; bun resolves without them locally but production breaks.
+- **GLTF cache**: never dispose the object returned by `useGLTF` — drei caches it process-wide. Clone first (`deepCloneScene` in `GLBViewer.tsx` / `ScanRevealGLBViewer.tsx`) and dispose only the clone; disposing the cached scene corrupts every later mount.
+- **Blob concurrency (CAS)**: shared mutable JSON blobs (model registry, scene drafts) are written through compare-and-set in `api/_lib/blobStore.ts` — `mutateJsonBlob` / `readJsonBlobWithEtag` / `writeJsonBlobIfMatch` (etag `ifMatch`). A blind `writeJsonBlob` (`allowOverwrite`) on shared state silently loses concurrent updates.
+- **Release versioning**: a new publish version is `max(highest existing release, live pointer) + 1`. The live pointer can lag behind the releases on disk (after a rollback), so deriving from it alone collides with an existing immutable release and 500s.
 
 ## Anti-Patterns (Do Not Introduce)
 
@@ -203,6 +205,8 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 - Auto-loading remote draft over dirty local state
 - Uploading images during annotation editing (must upload on publish path)
 - Bypassing `/api/models/upload` validation for cloud uploads
+- Disposing the cached `useGLTF` scene (clone with `deepCloneScene` and dispose the clone instead)
+- Blind `writeJsonBlob` (`allowOverwrite`) for shared mutable blobs — use the `mutateJsonBlob` CAS helpers
 
 ## Environment
 
