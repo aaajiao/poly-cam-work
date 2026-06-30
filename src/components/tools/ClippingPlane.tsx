@@ -6,6 +6,10 @@ import { useViewerStore } from '@/store/viewerStore'
 export function ClippingPlaneController() {
   const { gl, scene } = useThree()
   const clipPlane = useViewerStore((s) => s.clipPlane)
+  // Re-run when the active model changes so GLB meshes that mount asynchronously
+  // after clipping is enabled also receive DoubleSide on their cut surface.
+  const activeSceneId = useViewerStore((s) => s.activeSceneId)
+  const viewMode = useViewerStore((s) => s.viewMode)
   const planeRef = useRef(new THREE.Plane())
 
   useEffect(() => {
@@ -70,7 +74,7 @@ export function ClippingPlaneController() {
         obj.material.needsUpdate = true
       }
     })
-  }, [clipPlane, gl, scene])
+  }, [clipPlane, gl, scene, activeSceneId, viewMode])
 
   return null
 }

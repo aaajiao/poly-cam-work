@@ -1,6 +1,11 @@
+import { BlobPreconditionFailedError } from "@vercel/blob";
 import type { SceneDraft } from "../../src/types";
 import { requireAuth } from "../_lib/auth.js";
-import { readJsonBlob, writeJsonBlob } from "../_lib/blobStore.js";
+import {
+	readJsonBlob,
+	readJsonBlobWithEtag,
+	writeJsonBlobIfMatch,
+} from "../_lib/blobStore.js";
 import {
 	badRequest,
 	conflict,
@@ -62,9 +67,9 @@ async function handler(request: Request) {
 		return badRequest("draft and expectedRevision are required");
 	}
 
-	const currentDraft =
-		(await readJsonBlob<SceneDraft>(draftPath(sceneId))) ??
-		createEmptyDraft(sceneId);
+	const { value: persistedDraft, etag } =
+		await readJsonBlobWithEtag<SceneDraft>(draftPath(sceneId));
+	const currentDraft = persistedDraft ?? createEmptyDraft(sceneId);
 	if (body.expectedRevision !== currentDraft.revision) {
 		return conflict("Revision mismatch");
 	}
@@ -80,7 +85,18 @@ async function handler(request: Request) {
 	};
 	const nextImagePathnames = collectImagePathnamesFromDraft(nextDraft);
 
-	await writeJsonBlob(draftPath(sceneId), nextDraft);
+	// The revision check above is TOCTOU: two concurrent same-revision PUTs both
+	// pass it. The ifMatch precondition closes the race — only one write lands;
+	// the loser sees a changed ETag and gets the same 409 it would have gotten
+	// had it read the already-incremented revision.
+	try {
+		await writeJsonBlobIfMatch(draftPath(sceneId), nextDraft, etag);
+	} catch (error) {
+		if (error instanceof BlobPreconditionFailedError) {
+			return conflict("Revision mismatch");
+		}
+		throw error;
+	}
 
 	try {
 		await reconcileSceneImageAssets(

@@ -1,5 +1,5 @@
 import { Image, Link, Trash2, Video, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ImageUpload } from "@/components/ui/ImageUpload";
 import { cn } from "@/lib/utils";
 import { useViewerStore } from "@/store/viewerStore";
@@ -24,22 +24,6 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 	const [localLinks, setLocalLinks] = useState<AnnotationLink[]>(
 		annotation.links,
 	);
-	const linkKeys = useMemo(() => {
-		const counts = new Map<string, number>();
-
-		return localLinks.map((link) => {
-			const trimmedUrl = link.url.trim();
-			const trimmedLabel = link.label.trim();
-			const base =
-				trimmedUrl === "" && trimmedLabel === ""
-					? "empty-link"
-					: `${trimmedUrl}::${trimmedLabel}`;
-			const count = counts.get(base) ?? 0;
-			counts.set(base, count + 1);
-			return `${annotation.id}:${base}:${count}`;
-		});
-	}, [annotation.id, localLinks]);
-
 	useEffect(() => {
 		setLocalTitle(annotation.title);
 		setLocalDesc(annotation.description);
@@ -174,7 +158,9 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 				<p className="text-faint text-xs uppercase tracking-wide mb-1">Links</p>
 				<div className="space-y-1">
 					{localLinks.map((link, i) => (
-						<div key={linkKeys[i]} className="flex gap-1 items-center">
+						// Rows are only appended/removed, never reordered, so a stable
+						// index key is safe and avoids remounting the focused input.
+						<div key={i} className="flex gap-1 items-center">
 							<input
 								value={link.url}
 								onChange={(e) => handleLinkChange(i, "url", e.target.value)}

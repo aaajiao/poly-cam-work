@@ -1,15 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+interface MutatorResult<T> {
+	value: unknown;
+	result: T;
+}
+
 const mocks = vi.hoisted(() => ({
 	readJsonBlob: vi.fn(),
-	writeJsonBlob: vi.fn(),
+	mutateJsonBlob: vi.fn(),
 	deleteBlobByPathname: vi.fn(),
 	requireAuth: vi.fn(),
 }));
 
+// Captures every registry document the code commits through mutateJsonBlob, so
+// tests can assert on the persisted value without depending on the underlying
+// blob write primitive.
+let writtenRegistries: unknown[] = [];
+
 vi.mock("../../api/_lib/blobStore", () => ({
 	readJsonBlob: mocks.readJsonBlob,
-	writeJsonBlob: mocks.writeJsonBlob,
+	mutateJsonBlob: mocks.mutateJsonBlob,
 	deleteBlobByPathname: mocks.deleteBlobByPathname,
 }));
 
@@ -49,12 +59,25 @@ function registryWith(models: Array<{ id: string; name: string }>) {
 describe("models route - create-only append contract", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		writtenRegistries = [];
 		mocks.requireAuth.mockReturnValue(true);
+		// Realistic compare-and-set stand-in: read the mocked current registry,
+		// apply the mutator, capture what would be written, and return the result.
+		mocks.mutateJsonBlob.mockImplementation(
+			async (
+				pathname: string,
+				mutator: (current: unknown) => MutatorResult<unknown>,
+			) => {
+				const current = await mocks.readJsonBlob(pathname);
+				const { value, result } = mutator(current);
+				writtenRegistries.push(value);
+				return result;
+			},
+		);
 	});
 
 	it("appends one scene to an empty registry", async () => {
 		mocks.readJsonBlob.mockResolvedValueOnce(emptyRegistry());
-		mocks.writeJsonBlob.mockResolvedValueOnce(undefined);
 
 		const response = await handler(
 			postRequest({
@@ -80,8 +103,11 @@ describe("models route - create-only append contract", () => {
 		expect(typeof json.model.createdAt).toBe("number");
 		expect(typeof json.model.updatedAt).toBe("number");
 
-		expect(mocks.writeJsonBlob).toHaveBeenCalledWith(
+		expect(mocks.mutateJsonBlob).toHaveBeenCalledWith(
 			"models/index.json",
+			expect.any(Function),
+		);
+		expect(writtenRegistries[writtenRegistries.length - 1]).toEqual(
 			expect.objectContaining({
 				version: 1,
 				models: [expect.objectContaining({ id: "official-scene-1" })],
@@ -91,7 +117,6 @@ describe("models route - create-only append contract", () => {
 
 	it("preserves exact sceneId without cloud- prefix or suffix", async () => {
 		mocks.readJsonBlob.mockResolvedValueOnce(emptyRegistry());
-		mocks.writeJsonBlob.mockResolvedValueOnce(undefined);
 
 		const response = await handler(
 			postRequest({
@@ -114,7 +139,6 @@ describe("models route - create-only append contract", () => {
 			{ id: "scan-b", name: "Scan B" },
 		];
 		mocks.readJsonBlob.mockResolvedValueOnce(registryWith(existingModels));
-		mocks.writeJsonBlob.mockResolvedValueOnce(undefined);
 
 		const response = await handler(
 			postRequest({
@@ -130,9 +154,11 @@ describe("models route - create-only append contract", () => {
 		expect(response.status).toBe(200);
 		expect(json.model.id).toBe("scan-c");
 
-		const writtenRegistry = mocks.writeJsonBlob.mock.calls[0][1];
+		const writtenRegistry = writtenRegistries[0] as {
+			models: Array<{ id: string }>;
+		};
 		expect(writtenRegistry.models).toHaveLength(3);
-		const ids = writtenRegistry.models.map((m: { id: string }) => m.id);
+		const ids = writtenRegistry.models.map((m) => m.id);
 		expect(ids).toContain("scan-a");
 		expect(ids).toContain("scan-b");
 		expect(ids).toContain("scan-c");
@@ -156,7 +182,7 @@ describe("models route - create-only append contract", () => {
 
 		expect(response.status).toBe(409);
 		expect(json.error).toContain("already exists in registry");
-		expect(mocks.writeJsonBlob).not.toHaveBeenCalled();
+		expect(writtenRegistries).toHaveLength(0);
 	});
 
 	it("does not mutate any existing entries on collision", async () => {
@@ -185,7 +211,7 @@ describe("models route - create-only append contract", () => {
 		);
 
 		expect(response.status).toBe(409);
-		expect(mocks.writeJsonBlob).not.toHaveBeenCalled();
+		expect(writtenRegistries).toHaveLength(0);
 	});
 
 	it("returns 401 when not authenticated", async () => {
@@ -205,7 +231,7 @@ describe("models route - create-only append contract", () => {
 		expect(response.status).toBe(401);
 		expect(json.error).toBe("Unauthorized");
 		expect(mocks.readJsonBlob).not.toHaveBeenCalled();
-		expect(mocks.writeJsonBlob).not.toHaveBeenCalled();
+		expect(mocks.mutateJsonBlob).not.toHaveBeenCalled();
 	});
 
 	it("returns 400 when id is missing with createOnly", async () => {
@@ -269,17 +295,59 @@ describe("models route - create-only append contract", () => {
 		expect(response.status).toBe(400);
 		expect(json.error).toContain("valid HTTP(S) asset URLs");
 	});
+
+	it("delegates persistence to the compare-and-set helper, not a blind overwrite", async () => {
+		mocks.readJsonBlob.mockResolvedValueOnce(
+			registryWith([{ id: "scan-a", name: "Scan A" }]),
+		);
+
+		const response = await handler(
+			postRequest({
+				id: "scan-new",
+				name: "Scan New",
+				glbUrl: "https://blob.vercel-storage.com/scan-new.glb",
+				plyUrl: "https://blob.vercel-storage.com/scan-new.ply",
+				createOnly: true,
+			}),
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(json.model.id).toBe("scan-new");
+		// Persistence MUST go through mutateJsonBlob (which carries the ifMatch
+		// precondition); a plain writeJsonBlob would lose concurrent updates.
+		expect(mocks.mutateJsonBlob).toHaveBeenCalledTimes(1);
+		expect(mocks.mutateJsonBlob).toHaveBeenCalledWith(
+			"models/index.json",
+			expect.any(Function),
+		);
+		const written = writtenRegistries[0] as { models: Array<{ id: string }> };
+		expect(written.models.map((m) => m.id)).toEqual(
+			expect.arrayContaining(["scan-a", "scan-new"]),
+		);
+	});
 });
 
 describe("models route - legacy behavior preserved", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		writtenRegistries = [];
 		mocks.requireAuth.mockReturnValue(true);
+		mocks.mutateJsonBlob.mockImplementation(
+			async (
+				pathname: string,
+				mutator: (current: unknown) => MutatorResult<unknown>,
+			) => {
+				const current = await mocks.readJsonBlob(pathname);
+				const { value, result } = mutator(current);
+				writtenRegistries.push(value);
+				return result;
+			},
+		);
 	});
 
 	it("legacy create (no createOnly) still auto-generates cloud- prefixed id", async () => {
 		mocks.readJsonBlob.mockResolvedValueOnce(emptyRegistry());
-		mocks.writeJsonBlob.mockResolvedValueOnce(undefined);
 
 		const response = await handler(
 			postRequest({
@@ -297,7 +365,6 @@ describe("models route - legacy behavior preserved", () => {
 
 	it("replace: true bulk sync still works for official scenes path", async () => {
 		mocks.readJsonBlob.mockResolvedValueOnce(emptyRegistry());
-		mocks.writeJsonBlob.mockResolvedValueOnce(undefined);
 		mocks.deleteBlobByPathname.mockResolvedValueOnce(undefined);
 
 		const response = await handler(

@@ -1,3 +1,4 @@
+import { BlobPreconditionFailedError } from "@vercel/blob";
 import type { IntroPreset, LivePointer, SceneDraft } from "../../src/types";
 import { requireAuth } from "../_lib/auth.js";
 import {
@@ -238,7 +239,12 @@ async function handler(request: Request) {
 	}
 
 	const live = await readJsonBlob<LivePointer>(livePath(sceneId));
-	const nextVersion = (live?.version ?? 0) + 1;
+	// The live pointer can lag behind the highest existing release (e.g. after a
+	// rollback moved live to an older version), so derive the next version from
+	// BOTH the live pointer and the max release on disk. Using live alone would
+	// collide with an existing immutable release blob and 500 forever.
+	const maxExistingVersion = (await listReleaseVersions(sceneId))[0] ?? 0;
+	const nextVersion = Math.max(maxExistingVersion, live?.version ?? 0) + 1;
 
 	const release: SceneDraft = {
 		...draft,
@@ -248,12 +254,21 @@ async function handler(request: Request) {
 	};
 	const introDraft = await readJsonBlob<IntroPreset>(introDraftPath(sceneId));
 
-	await writeImmutableJsonBlob(releasePath(sceneId, nextVersion), release);
-	if (introDraft) {
-		await writeImmutableJsonBlob(
-			introReleasePath(sceneId, nextVersion),
-			introDraft,
-		);
+	try {
+		await writeImmutableJsonBlob(releasePath(sceneId, nextVersion), release);
+		if (introDraft) {
+			await writeImmutableJsonBlob(
+				introReleasePath(sceneId, nextVersion),
+				introDraft,
+			);
+		}
+	} catch (error) {
+		// A concurrent publish may have claimed this version between our read and
+		// write. Surface a retryable 409 instead of an uncaught 500.
+		if (error instanceof BlobPreconditionFailedError) {
+			return conflict("Release version conflict, please retry");
+		}
+		throw error;
 	}
 	await writeJsonBlob(livePath(sceneId), { version: nextVersion });
 

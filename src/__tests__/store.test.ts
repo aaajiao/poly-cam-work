@@ -451,6 +451,21 @@ describe("viewerStore", () => {
 		expect(persisted.state.activeSceneId).toBe("scan-c");
 	});
 
+	it("setActiveScene clears prior draftStatus/draftError banner state", () => {
+		useViewerStore.setState({
+			activeSceneId: "scan-a",
+			draftStatus: "conflict",
+			draftError: "Draft conflict detected",
+		});
+
+		useViewerStore.getState().setActiveScene("scan-b");
+
+		const state = useViewerStore.getState();
+		expect(state.activeSceneId).toBe("scan-b");
+		expect(state.draftStatus).toBe("idle");
+		expect(state.draftError).toBeNull();
+	});
+
 	it("setToolMode ignores non-orbit requests during presentation mode", () => {
 		useViewerStore.setState({ presentationMode: true, toolMode: "orbit" });
 

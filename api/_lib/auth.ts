@@ -96,5 +96,13 @@ export function validateLoginPassword(password: string) {
   if (!adminPassword) {
     throw new Error('ADMIN_PASSWORD is not configured')
   }
-  return password === adminPassword
+  // Constant-time compare: HMAC both sides with the secret as the key so the
+  // digests are fixed-length and value-independent, then timingSafeEqual them.
+  // Mirrors the session-signature check above and avoids the early-out timing
+  // leak of `password === adminPassword`.
+  const provided = createHmac('sha256', adminPassword).update(password).digest()
+  const expected = createHmac('sha256', adminPassword)
+    .update(adminPassword)
+    .digest()
+  return timingSafeEqual(provided, expected)
 }
