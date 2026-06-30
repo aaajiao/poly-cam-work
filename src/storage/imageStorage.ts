@@ -30,12 +30,16 @@ export interface ImageStorage {
  * Stores image blobs and auto-generated thumbnails.
  * Images are associated with annotations via annotationId.
  */
-class IndexedDBImageStorage implements ImageStorage {
+export class IndexedDBImageStorage implements ImageStorage {
   private db: IDBDatabase | null = null
+  // Memoize the in-flight open promise so concurrent first callers share a
+  // single indexedDB.open() instead of leaking parallel connections (F12).
+  private dbPromise: Promise<IDBDatabase> | null = null
 
-  private async getDB(): Promise<IDBDatabase> {
-    if (this.db) return this.db
-    return new Promise((resolve, reject) => {
+  private getDB(): Promise<IDBDatabase> {
+    if (this.db) return Promise.resolve(this.db)
+    if (this.dbPromise) return this.dbPromise
+    this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION)
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result
@@ -48,11 +52,52 @@ class IndexedDBImageStorage implements ImageStorage {
         }
       }
       request.onsuccess = () => {
-        this.db = request.result
-        resolve(request.result)
+        const db = request.result
+        // Invalidate the cache when the connection drops or a newer version is
+        // requested elsewhere, so the next call re-opens instead of reusing a
+        // dead handle that throws InvalidStateError forever (F11).
+        db.onclose = () => {
+          this.db = null
+          this.dbPromise = null
+        }
+        db.onversionchange = () => {
+          db.close()
+          this.db = null
+          this.dbPromise = null
+        }
+        this.db = db
+        resolve(db)
       }
-      request.onerror = () => reject(request.error)
+      request.onerror = () => {
+        this.dbPromise = null
+        reject(request.error)
+      }
     })
+    return this.dbPromise
+  }
+
+  /**
+   * Create a transaction, transparently recovering from a closed connection.
+   * If the cached handle was closed without firing onclose (e.g. tab BFCache
+   * or backgrounding), db.transaction() throws InvalidStateError; we drop the
+   * stale handle and re-open exactly once before retrying (F11).
+   */
+  private async transaction(
+    storeNames: string | string[],
+    mode: IDBTransactionMode
+  ): Promise<IDBTransaction> {
+    const db = await this.getDB()
+    try {
+      return db.transaction(storeNames, mode)
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'InvalidStateError') {
+        this.db = null
+        this.dbPromise = null
+        const reopened = await this.getDB()
+        return reopened.transaction(storeNames, mode)
+      }
+      throw e
+    }
   }
 
   private async generateThumbnail(blob: Blob): Promise<Blob> {
@@ -97,12 +142,11 @@ class IndexedDBImageStorage implements ImageStorage {
     blob: Blob,
     metadata: { annotationId: string; filename: string }
   ): Promise<void> {
-    const db = await this.getDB()
     const thumbnailId = `thumb-${id}`
     const thumbnail = await this.generateThumbnail(blob)
+    const tx = await this.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
 
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
       const item: ImageStorageItem = {
         id,
         blob,
@@ -118,9 +162,8 @@ class IndexedDBImageStorage implements ImageStorage {
   }
 
   async get(id: string): Promise<Blob | null> {
-    const db = await this.getDB()
+    const tx = await this.transaction(STORE_NAME, 'readonly')
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly')
       const req = tx.objectStore(STORE_NAME).get(id)
       req.onsuccess = () => resolve((req.result as ImageStorageItem | undefined)?.blob ?? null)
       req.onerror = () => reject(req.error)
@@ -128,10 +171,9 @@ class IndexedDBImageStorage implements ImageStorage {
   }
 
   async getThumbnail(id: string): Promise<Blob | null> {
-    const db = await this.getDB()
     const thumbnailId = `thumb-${id}`
+    const tx = await this.transaction(THUMB_STORE_NAME, 'readonly')
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(THUMB_STORE_NAME, 'readonly')
       const req = tx.objectStore(THUMB_STORE_NAME).get(thumbnailId)
       req.onsuccess = () => resolve((req.result as { id: string; blob: Blob } | undefined)?.blob ?? null)
       req.onerror = () => reject(req.error)
@@ -139,10 +181,9 @@ class IndexedDBImageStorage implements ImageStorage {
   }
 
   async delete(id: string): Promise<void> {
-    const db = await this.getDB()
     const thumbnailId = `thumb-${id}`
+    const tx = await this.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
       tx.objectStore(STORE_NAME).delete(id)
       tx.objectStore(THUMB_STORE_NAME).delete(thumbnailId)
       tx.oncomplete = () => resolve()
@@ -151,12 +192,11 @@ class IndexedDBImageStorage implements ImageStorage {
   }
 
   async deleteByAnnotation(annotationId: string): Promise<void> {
-    const db = await this.getDB()
     const items = await this.list(annotationId)
     if (items.length === 0) return
 
+    const tx = await this.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
       const imageStore = tx.objectStore(STORE_NAME)
       const thumbStore = tx.objectStore(THUMB_STORE_NAME)
       for (const item of items) {
@@ -169,9 +209,8 @@ class IndexedDBImageStorage implements ImageStorage {
   }
 
   async list(annotationId: string): Promise<ImageStorageItem[]> {
-    const db = await this.getDB()
+    const tx = await this.transaction(STORE_NAME, 'readonly')
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly')
       const index = tx.objectStore(STORE_NAME).index('annotationId')
       const req = index.getAll(annotationId)
       req.onsuccess = () => resolve(req.result as ImageStorageItem[])
@@ -180,9 +219,8 @@ class IndexedDBImageStorage implements ImageStorage {
   }
 
   async clearAll(): Promise<void> {
-    const db = await this.getDB()
+    const tx = await this.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([STORE_NAME, THUMB_STORE_NAME], 'readwrite')
       tx.objectStore(STORE_NAME).clear()
       tx.objectStore(THUMB_STORE_NAME).clear()
       tx.oncomplete = () => resolve()

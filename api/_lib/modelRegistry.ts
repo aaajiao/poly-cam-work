@@ -1,5 +1,5 @@
 import type { ScanScene } from "../../src/types";
-import { readJsonBlob, writeJsonBlob } from "./blobStore.js";
+import { mutateJsonBlob, readJsonBlob } from "./blobStore.js";
 import { cleanupStaleModelAssets } from "./modelAssetCleanup.js";
 import {
 	dedupeModelsById,
@@ -12,48 +12,41 @@ interface ModelRegistryDocument {
 	models: ScanScene[];
 }
 
+type RawModelRegistry = ModelRegistryDocument | ScanScene[];
+
 const MODEL_REGISTRY_PATH = "models/index.json";
 
-export async function readModelRegistry() {
-	const raw = await readJsonBlob<ModelRegistryDocument | ScanScene[]>(
-		MODEL_REGISTRY_PATH,
+function normalizeRegistryModels(raw: RawModelRegistry | null): ScanScene[] {
+	if (!raw) return [];
+
+	const source = Array.isArray(raw)
+		? raw
+		: Array.isArray(raw.models)
+			? raw.models
+			: [];
+
+	return dedupeModelsById(
+		source
+			.map((model) => normalizeModel(model))
+			.filter((model): model is ScanScene => model !== null),
 	);
-	if (!raw) {
-		return { version: 1, models: [] as ScanScene[] };
-	}
-
-	if (Array.isArray(raw)) {
-		const models = dedupeModelsById(
-			raw
-				.map((model) => normalizeModel(model))
-				.filter((model): model is ScanScene => model !== null),
-		);
-
-		return {
-			version: 1,
-			models,
-		};
-	}
-
-	const models = Array.isArray(raw.models)
-		? dedupeModelsById(
-				raw.models
-					.map((model) => normalizeModel(model))
-					.filter((model): model is ScanScene => model !== null),
-			)
-		: [];
-
-	return {
-		version: 1,
-		models,
-	};
 }
 
-async function writeModelRegistry(models: ScanScene[]) {
-	await writeJsonBlob(MODEL_REGISTRY_PATH, {
-		version: 1,
-		models,
-	} satisfies ModelRegistryDocument);
+function registryDocument(models: ScanScene[]): ModelRegistryDocument {
+	return { version: 1, models };
+}
+
+export async function readModelRegistry() {
+	const raw = await readJsonBlob<RawModelRegistry>(MODEL_REGISTRY_PATH);
+	return { version: 1, models: normalizeRegistryModels(raw) };
+}
+
+function persistFailure(prefix: string, error: unknown): Error {
+	return new Error(
+		`${prefix}${
+			error instanceof Error && error.message ? `: ${error.message}` : ""
+		}`,
+	);
 }
 
 export async function createModelWithRetry(input: {
@@ -62,38 +55,36 @@ export async function createModelWithRetry(input: {
 	glbUrl: string;
 	plyUrl: string;
 }) {
-	let lastError: unknown;
-	for (let attempt = 0; attempt < 4; attempt += 1) {
-		try {
-			const registry = await readModelRegistry();
-			const existingIds = new Set(registry.models.map((model) => model.id));
-			const id = generateUniqueId(input.requestedId || input.name, existingIds);
+	try {
+		return await mutateJsonBlob<RawModelRegistry, ScanScene>(
+			MODEL_REGISTRY_PATH,
+			(raw) => {
+				const models = normalizeRegistryModels(raw);
+				const existingIds = new Set(models.map((model) => model.id));
+				const id = generateUniqueId(
+					input.requestedId || input.name,
+					existingIds,
+				);
 
-			const now = Date.now();
-			const model: ScanScene = {
-				id,
-				name: input.name,
-				glbUrl: input.glbUrl,
-				plyUrl: input.plyUrl,
-				createdAt: now,
-				updatedAt: now,
-			};
+				const now = Date.now();
+				const model: ScanScene = {
+					id,
+					name: input.name,
+					glbUrl: input.glbUrl,
+					plyUrl: input.plyUrl,
+					createdAt: now,
+					updatedAt: now,
+				};
 
-			const models = [model, ...registry.models];
-			await writeModelRegistry(models);
-			return model;
-		} catch (error) {
-			lastError = error;
-		}
+				return {
+					value: registryDocument([model, ...models]),
+					result: model,
+				};
+			},
+		);
+	} catch (error) {
+		throw persistFailure("Failed to persist model registration", error);
 	}
-
-	throw new Error(
-		`Failed to persist model registration${
-			lastError instanceof Error && lastError.message
-				? `: ${lastError.message}`
-				: ""
-		}`,
-	);
 }
 
 export async function createModelCreateOnlyWithRetry(input: {
@@ -102,50 +93,44 @@ export async function createModelCreateOnlyWithRetry(input: {
 	glbUrl: string;
 	plyUrl: string;
 }) {
-	let lastError: unknown;
-	for (let attempt = 0; attempt < 4; attempt += 1) {
-		try {
-			const registry = await readModelRegistry();
-			const existingIds = new Set(registry.models.map((model) => model.id));
+	try {
+		return await mutateJsonBlob<RawModelRegistry, ScanScene>(
+			MODEL_REGISTRY_PATH,
+			(raw) => {
+				const models = normalizeRegistryModels(raw);
+				const existingIds = new Set(models.map((model) => model.id));
 
-			if (existingIds.has(input.requestedId)) {
-				throw new Error(
-					`Scene ID "${input.requestedId}" already exists in registry`,
-				);
-			}
+				if (existingIds.has(input.requestedId)) {
+					throw new Error(
+						`Scene ID "${input.requestedId}" already exists in registry`,
+					);
+				}
 
-			const now = Date.now();
-			const model: ScanScene = {
-				id: input.requestedId,
-				name: input.name,
-				glbUrl: input.glbUrl,
-				plyUrl: input.plyUrl,
-				createdAt: now,
-				updatedAt: now,
-			};
+				const now = Date.now();
+				const model: ScanScene = {
+					id: input.requestedId,
+					name: input.name,
+					glbUrl: input.glbUrl,
+					plyUrl: input.plyUrl,
+					createdAt: now,
+					updatedAt: now,
+				};
 
-			const models = [model, ...registry.models];
-			await writeModelRegistry(models);
-			return model;
-		} catch (error) {
-			if (
-				error instanceof Error &&
-				error.message.includes("already exists in registry")
-			) {
-				throw error;
-			}
-
-			lastError = error;
+				return {
+					value: registryDocument([model, ...models]),
+					result: model,
+				};
+			},
+		);
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message.includes("already exists in registry")
+		) {
+			throw error;
 		}
+		throw persistFailure("Failed to persist model registration", error);
 	}
-
-	throw new Error(
-		`Failed to persist model registration${
-			lastError instanceof Error && lastError.message
-				? `: ${lastError.message}`
-				: ""
-		}`,
-	);
 }
 
 export async function upsertModelByIdWithRetry(input: {
@@ -154,12 +139,18 @@ export async function upsertModelByIdWithRetry(input: {
 	glbUrl: string;
 	plyUrl: string;
 }) {
-	let lastError: unknown;
-	for (let attempt = 0; attempt < 4; attempt += 1) {
-		try {
-			const registry = await readModelRegistry();
+	try {
+		const { merged, previousModels, nextModels } = await mutateJsonBlob<
+			RawModelRegistry,
+			{
+				merged: ScanScene;
+				previousModels: ScanScene[];
+				nextModels: ScanScene[];
+			}
+		>(MODEL_REGISTRY_PATH, (raw) => {
+			const previousModels = normalizeRegistryModels(raw);
 			const now = Date.now();
-			const existing = registry.models.find((model) => model.id === input.id);
+			const existing = previousModels.find((model) => model.id === input.id);
 
 			const merged: ScanScene = {
 				id: input.id,
@@ -170,25 +161,22 @@ export async function upsertModelByIdWithRetry(input: {
 				updatedAt: now,
 			};
 
-			const models = [
+			const nextModels = [
 				merged,
-				...registry.models.filter((model) => model.id !== input.id),
+				...previousModels.filter((model) => model.id !== input.id),
 			];
-			await writeModelRegistry(models);
-			await cleanupStaleModelAssets(registry.models, models);
-			return merged;
-		} catch (error) {
-			lastError = error;
-		}
-	}
 
-	throw new Error(
-		`Failed to merge model registration${
-			lastError instanceof Error && lastError.message
-				? `: ${lastError.message}`
-				: ""
-		}`,
-	);
+			return {
+				value: registryDocument(nextModels),
+				result: { merged, previousModels, nextModels },
+			};
+		});
+
+		await cleanupStaleModelAssets(previousModels, nextModels);
+		return merged;
+	} catch (error) {
+		throw persistFailure("Failed to merge model registration", error);
+	}
 }
 
 export async function replaceModelsWithRetry(
@@ -199,13 +187,14 @@ export async function replaceModelsWithRetry(
 		plyUrl: string;
 	}>,
 ) {
-	let lastError: unknown;
-
-	for (let attempt = 0; attempt < 4; attempt += 1) {
-		try {
-			const registry = await readModelRegistry();
+	try {
+		const { previousModels, nextModels } = await mutateJsonBlob<
+			RawModelRegistry,
+			{ previousModels: ScanScene[]; nextModels: ScanScene[] }
+		>(MODEL_REGISTRY_PATH, (raw) => {
+			const previousModels = normalizeRegistryModels(raw);
 			const existingById = new Map(
-				registry.models.map((model) => [model.id, model] as const),
+				previousModels.map((model) => [model.id, model] as const),
 			);
 			const now = Date.now();
 
@@ -222,19 +211,15 @@ export async function replaceModelsWithRetry(
 				};
 			});
 
-			await writeModelRegistry(nextModels);
-			await cleanupStaleModelAssets(registry.models, nextModels);
-			return nextModels;
-		} catch (error) {
-			lastError = error;
-		}
-	}
+			return {
+				value: registryDocument(nextModels),
+				result: { previousModels, nextModels },
+			};
+		});
 
-	throw new Error(
-		`Failed to replace model registry${
-			lastError instanceof Error && lastError.message
-				? `: ${lastError.message}`
-				: ""
-		}`,
-	);
+		await cleanupStaleModelAssets(previousModels, nextModels);
+		return nextModels;
+	} catch (error) {
+		throw persistFailure("Failed to replace model registry", error);
+	}
 }

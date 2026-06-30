@@ -279,6 +279,8 @@ export const useViewerStore = create<ViewerState>()(
 					introContinueVisible: false,
 					introPresetStatus: "idle",
 					introPresetError: null,
+					draftStatus: "idle",
+					draftError: null,
 				}),
 			setViewMode: (viewMode) => set({ viewMode }),
 			setToolMode: (toolMode) =>

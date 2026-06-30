@@ -20,6 +20,10 @@ export function VimeoEmbed({ videoId, className, sourceUrl }: VimeoEmbedProps) {
   useEffect(() => {
     const controller = new AbortController()
 
+    // Reset to default so a new video never shows the previous one's ratio
+    // while the oEmbed request is in flight.
+    setAspectRatio(DEFAULT_ASPECT_RATIO)
+
     const loadAspectRatio = async () => {
       try {
         const videoUrl = encodeURIComponent(`https://vimeo.com/${videoId}`)

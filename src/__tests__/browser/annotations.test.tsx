@@ -1,3 +1,4 @@
+import { userEvent } from 'vitest/browser'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { AnnotationManager } from '@/components/sidebar/AnnotationManager'
@@ -125,6 +126,24 @@ describe('browser annotation manager', () => {
 
     await screen.getByTestId('annotation-link-delete-0').click()
     expect(useViewerStore.getState().annotations[0].links).toHaveLength(0)
+  })
+
+  test('link input keeps focus across keystrokes (no per-char remount)', async () => {
+    useViewerStore.setState({ annotations: [makeAnnotation('ann-focus', 'Focus Test')] })
+    const screen = await render(<AnnotationManager />)
+
+    await screen.getByTestId('annotation-item-ann-focus').click()
+    await screen.getByTestId('annotation-add-link-btn').click()
+
+    const urlInput = screen.getByTestId('annotation-link-url-0')
+    await expect.element(urlInput).toBeVisible()
+
+    // Type character-by-character. If the row key is derived from the input
+    // value, each keystroke remounts the input and steals focus, so only the
+    // first character survives. A stable key keeps the full string.
+    await userEvent.type(urlInput, 'https://example.com')
+
+    await expect.element(urlInput).toHaveValue('https://example.com')
   })
 
   test('delete action removes annotation when confirmed and keeps it when dismissed', async () => {

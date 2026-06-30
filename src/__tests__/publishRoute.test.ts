@@ -1,3 +1,4 @@
+import { BlobPreconditionFailedError } from "@vercel/blob";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneDraft } from "@/types";
 
@@ -176,5 +177,81 @@ describe("publish route", () => {
 		expect(mocks.writeImmutableJsonBlob).not.toHaveBeenCalled();
 		expect(mocks.writeJsonBlob).not.toHaveBeenCalled();
 		expect(mocks.reconcileSceneImageAssets).not.toHaveBeenCalled();
+	});
+
+	it("publishes above the max existing release after a rollback to an older version", async () => {
+		const draft: SceneDraft = {
+			sceneId: "scan-a",
+			revision: 5,
+			updatedAt: Date.now(),
+			annotations: [],
+		};
+
+		// Releases 1..3 exist on disk, but live was rolled back to version 2.
+		// The next version must clear the max existing release (3), not just
+		// live+1 (which would collide with releases/3.json and 500 forever).
+		mocks.readJsonBlob.mockImplementation(async (pathname: string) => {
+			if (pathname === "scenes/scan-a/draft.json") return draft;
+			if (pathname === "scenes/scan-a/live.json") return { version: 2 };
+			return null;
+		});
+		mocks.listBlobsByPrefix.mockResolvedValue([
+			{ url: "u1", pathname: "scenes/scan-a/releases/1.json" },
+			{ url: "u2", pathname: "scenes/scan-a/releases/2.json" },
+			{ url: "u3", pathname: "scenes/scan-a/releases/3.json" },
+		]);
+
+		const request = new Request("http://localhost/api/publish/scan-a", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({}),
+		});
+
+		const response = await handler(request);
+		const json = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(json).toEqual({ ok: true, version: 4 });
+		expect(mocks.writeImmutableJsonBlob).toHaveBeenCalledWith(
+			"scenes/scan-a/releases/4.json",
+			expect.objectContaining({ sceneId: "scan-a", revision: 5 }),
+		);
+		expect(mocks.writeJsonBlob).toHaveBeenCalledWith(
+			"scenes/scan-a/live.json",
+			{ version: 4 },
+		);
+	});
+
+	it("surfaces a 409 instead of an uncaught 500 when a release version is claimed concurrently", async () => {
+		const draft: SceneDraft = {
+			sceneId: "scan-a",
+			revision: 5,
+			updatedAt: Date.now(),
+			annotations: [],
+		};
+
+		mocks.readJsonBlob.mockImplementation(async (pathname: string) => {
+			if (pathname === "scenes/scan-a/draft.json") return draft;
+			if (pathname === "scenes/scan-a/live.json") return { version: 0 };
+			return null;
+		});
+		mocks.writeImmutableJsonBlob.mockRejectedValueOnce(
+			new BlobPreconditionFailedError(),
+		);
+
+		const request = new Request("http://localhost/api/publish/scan-a", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({}),
+		});
+
+		const response = await handler(request);
+
+		expect(response.status).toBe(409);
+		// The live pointer must NOT advance on a conflicted release write.
+		expect(mocks.writeJsonBlob).not.toHaveBeenCalledWith(
+			"scenes/scan-a/live.json",
+			expect.anything(),
+		);
 	});
 });
