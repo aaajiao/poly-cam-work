@@ -2,6 +2,8 @@
 
 A visualization platform for the ongoing work of aaajiao. This repository serves as the technical foundation for the *Symbiosis* project, providing a space where 3D scans, point clouds, and rich-media annotations converge to document the intersection of labor, material production, and global trade.
 
+![poly.cam.work — a 3D scan with rich-media annotations in presentation mode](docs/screenshot.png)
+
 [**中文文档 (Chinese Documentation)**](docs/README.md)
 
 ## Positioning
