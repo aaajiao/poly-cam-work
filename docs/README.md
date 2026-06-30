@@ -34,6 +34,10 @@
 - [**Two Rituals 视频**](https://vimeo.com/1138253490) - 记录“入神”与“出神”两种状态的影像作品。
 - [**WorldLabs 3D**](https://marble.worldlabs.ai/world/3ed003df-ee7f-46d6-950b-3d16c9b31a18) - 使用 WorldLabs 构建的 3D 世界。
 
+## 当前版本 (Current Version)
+
+`v0.2.1`
+
 ---
 
-*文档更新时间：2026年3月8日*
+*文档更新时间：2026年6月30日*
