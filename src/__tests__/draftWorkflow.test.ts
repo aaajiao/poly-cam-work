@@ -300,11 +300,10 @@ describe('viewerStore draft workflow', () => {
     expect(publishSpy).toHaveBeenCalledTimes(1)
     const publishInput = publishSpy.mock.calls[0]?.[1]
     expect(publishInput).toBeTruthy()
+    // Publish sends only the revision just persisted by saveDraft — no draft body,
+    // so the server publishes exactly the stored draft under CAS.
     expect(publishInput?.expectedRevision).toBe(1)
     expect(publishInput?.message).toBeUndefined()
-    expect(publishInput?.draft?.annotations[0]?.images).toEqual([
-      { filename: 'pending.jpg', url: 'https://blob.example/pending.jpg' },
-    ])
     expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(false)
   })
 
@@ -717,6 +716,129 @@ describe('viewerStore draft workflow', () => {
     })
   })
 
+  it('saveDraftWithImages uploads pending local images, saves, then deletes local copies', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-save-images',
+          position: [0, 0, 0],
+          title: 'Save with images',
+          description: '',
+          images: [{ filename: 'pending.jpg', localId: 'local-save-1' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 0 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
+    })
+
+    vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }))
+    const deleteSpy = vi.spyOn(imageStorage, 'delete').mockResolvedValue()
+    const uploadSpy = vi.spyOn(vercelBlobImageStorage, 'upload').mockResolvedValue({
+      filename: 'pending.jpg',
+      url: 'https://blob.example/pending.jpg',
+    })
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 1,
+    })
+    const publishSpy = vi.spyOn(publishApi, 'publishDraft')
+
+    const { saveDraftWithImages } = useViewerStore.getState()
+    const revision = await saveDraftWithImages('scan-a')
+
+    expect(uploadSpy).toHaveBeenCalledTimes(1)
+    expect(uploadSpy).toHaveBeenCalledWith(expect.any(Blob), {
+      sceneId: 'scan-a',
+      annotationId: 'ann-save-images',
+      filename: 'pending.jpg',
+    })
+
+    // The saved payload carries the uploaded remote URL, not the local id.
+    const savedDraft = saveDraftSpy.mock.calls[0]?.[1]
+    expect(savedDraft.annotations[0].images).toEqual([
+      { filename: 'pending.jpg', url: 'https://blob.example/pending.jpg' },
+    ])
+
+    // Local copy is deleted only after saveDraft persisted the remote URL.
+    expect(deleteSpy).toHaveBeenCalledWith('local-save-1')
+    expect(revision).toBe(1)
+    // The save path never publishes.
+    expect(publishSpy).not.toHaveBeenCalled()
+
+    // The committed annotation now references the remote URL and is no longer dirty.
+    const committed = useViewerStore
+      .getState()
+      .annotations.find((a) => a.id === 'ann-save-images')
+    expect(committed?.images[0]).toEqual({
+      filename: 'pending.jpg',
+      url: 'https://blob.example/pending.jpg',
+    })
+    expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(false)
+  })
+
+  it('saveDraftWithImages throws on partial upload failure, deleting nothing and committing successes', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-save-partial-1',
+          position: [0, 0, 0],
+          title: 'First',
+          description: '',
+          images: [{ filename: 'first.jpg', localId: 'local-save-first' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+        {
+          id: 'ann-save-partial-2',
+          position: [1, 1, 1],
+          title: 'Second',
+          description: '',
+          images: [{ filename: 'second.jpg', localId: 'local-save-second' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 0 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
+    })
+
+    vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }))
+    const deleteSpy = vi.spyOn(imageStorage, 'delete').mockResolvedValue()
+    vi.spyOn(vercelBlobImageStorage, 'upload')
+      .mockResolvedValueOnce({ filename: 'first.jpg', url: 'https://blob.example/first.jpg' })
+      .mockRejectedValueOnce(new Error('network down'))
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 1,
+    })
+
+    const { saveDraftWithImages } = useViewerStore.getState()
+    await expect(saveDraftWithImages('scan-a')).rejects.toThrow('network down')
+
+    // saveDraft never ran, so no local copy may be deleted (retry-friendly).
+    expect(saveDraftSpy).not.toHaveBeenCalled()
+    expect(deleteSpy).not.toHaveBeenCalled()
+
+    // The successfully-uploaded image is still committed as a remote URL.
+    const first = useViewerStore
+      .getState()
+      .annotations.find((a) => a.id === 'ann-save-partial-1')
+    expect(first?.images[0]).toEqual({
+      filename: 'first.jpg',
+      url: 'https://blob.example/first.jpg',
+    })
+  })
+
   it('logout clears non-dirty draft annotations but keeps dirty scene edits', async () => {
     useViewerStore.setState({
       isAuthenticated: true,
@@ -774,6 +896,60 @@ describe('viewerStore draft workflow', () => {
     expect(state.draftRevisionSourceByScene['scan-b']).toBe('draft')
     expect(state.draftDirtyByScene['scan-b']).toBe(true)
     expect(state.sceneMutationVersion['scan-b']).toBe(1)
+  })
+
+  it('logout({ discardDirtyScenes: true }) reverts dirty draft scenes too', async () => {
+    useViewerStore.setState({
+      isAuthenticated: true,
+      presentationMode: false,
+      annotations: [
+        {
+          id: 'ann-dirty-discard',
+          position: [1, 1, 1],
+          title: 'Dirty draft',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-b',
+          createdAt: Date.now(),
+        },
+      ],
+      openAnnotationPanelIds: ['ann-dirty-discard'],
+      selectedAnnotationId: 'ann-dirty-discard',
+      draftRevisionByScene: { 'scan-b': 5 },
+      draftRevisionSourceByScene: { 'scan-b': 'draft' },
+      draftDirtyByScene: { 'scan-b': true },
+      sceneMutationVersion: { 'scan-b': 2 },
+    })
+
+    vi.spyOn(publishApi, 'logout').mockResolvedValue(undefined)
+
+    await useViewerStore.getState().logout({ discardDirtyScenes: true })
+
+    const state = useViewerStore.getState()
+    expect(state.isAuthenticated).toBe(false)
+    expect(state.presentationMode).toBe(true)
+
+    // Dirty draft scene is discarded so the anon effect refetches the release.
+    expect(state.annotations.some((a) => a.sceneId === 'scan-b')).toBe(false)
+    expect(state.draftRevisionByScene['scan-b']).toBeUndefined()
+    expect(state.draftRevisionSourceByScene['scan-b']).toBeUndefined()
+    expect(state.draftDirtyByScene['scan-b']).toBeUndefined()
+    expect(state.sceneMutationVersion['scan-b']).toBe(3)
+    expect(state.selectedAnnotationId).toBeNull()
+    expect(state.openAnnotationPanelIds).toEqual([])
+  })
+
+  it('logout clears auth locally even when the server call fails', async () => {
+    useViewerStore.setState({ isAuthenticated: true, presentationMode: false })
+    vi.spyOn(publishApi, 'logout').mockRejectedValue(new Error('network down'))
+
+    await expect(useViewerStore.getState().logout()).resolves.toBeUndefined()
+
+    const state = useViewerStore.getState()
+    expect(state.isAuthenticated).toBe(false)
+    expect(state.presentationMode).toBe(true)
   })
 
   it('loadDraft keeps dirty state when user deletes last local annotation during in-flight request', async () => {

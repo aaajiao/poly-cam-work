@@ -12,7 +12,6 @@ interface PublishResponse {
 
 interface PublishDraftInput {
 	message?: string;
-	draft?: SceneDraft;
 	expectedRevision?: number;
 }
 
@@ -139,12 +138,13 @@ export async function publishDraft(
 	sceneId: string,
 	input: PublishDraftInput = {},
 ): Promise<PublishResponse> {
+	// The client never posts a draft body: the server publishes the draft it
+	// already stored under CAS at `expectedRevision`. This keeps the published
+	// content identical to what saveDraft just persisted and makes the server's
+	// "Invalid draft" 400 an unreachable defensive backstop for this client.
 	const body: PublishDraftInput = {};
 	if (typeof input.message === "string") {
 		body.message = input.message;
-	}
-	if (input.draft) {
-		body.draft = input.draft;
 	}
 	if (typeof input.expectedRevision === "number") {
 		body.expectedRevision = input.expectedRevision;

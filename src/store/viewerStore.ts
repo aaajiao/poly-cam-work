@@ -253,12 +253,14 @@ interface ViewerState {
 	loadDraft: (sceneId: string) => Promise<void>;
 	loadPublishedVersions: (sceneId: string) => Promise<void>;
 	saveDraft: (sceneId: string) => Promise<number>;
+	saveDraftWithImages: (sceneId: string) => Promise<number>;
+	uploadPendingLocalImages: (sceneId: string) => Promise<string[]>;
 	publishDraft: (sceneId: string, message?: string) => Promise<number>;
 	rollbackToVersion: (sceneId: string, version: number) => Promise<number>;
 	deletePublishedVersion: (sceneId: string, version: number) => Promise<void>;
 	setDraftError: (message: string | null) => void;
 	login: (password: string) => Promise<void>;
-	logout: () => Promise<void>;
+	logout: (options?: { discardDirtyScenes?: boolean }) => Promise<void>;
 	refreshAuthSession: () => Promise<void>;
 	setRuntimeCamera: (camera: IntroPreset["camera"]) => void;
 	loadIntroPreset: (
@@ -1329,7 +1331,12 @@ export const useViewerStore = create<ViewerState>()(
 				applyFailure(conflictError);
 				throw conflictError;
 			},
-			publishDraft: async (sceneId, message) => {
+			// Shared by publishDraft and saveDraftWithImages: upload every pending
+			// local image for a scene, commit the resulting remote URLs into state
+			// (including partial successes on failure, then rethrow), and return the
+			// local ids whose IndexedDB copies are now redundant. Deletion of those
+			// copies is deferred to the caller until after its saveDraft succeeds.
+			uploadPendingLocalImages: async (sceneId) => {
 				const localImagesToUpload = sceneAnnotations(
 					get().annotations,
 					sceneId,
@@ -1408,6 +1415,33 @@ export const useViewerStore = create<ViewerState>()(
 					uploadedLocalIdsToCleanup.push(...uploadedByLocalId.keys());
 				}
 
+				return uploadedLocalIdsToCleanup;
+			},
+			// Persist a scene's draft after uploading any pending local images to blob
+			// storage, then delete the now-redundant local copies. Uploads happen here
+			// at the explicit save boundary (e.g. Save & log out), never during
+			// annotation editing: the saved draft references the remote URLs and the
+			// server-side reconcile treats draft-referenced images as in-use, so
+			// committing them at this boundary is safe.
+			saveDraftWithImages: async (sceneId) => {
+				const uploadedLocalIdsToCleanup =
+					await get().uploadPendingLocalImages(sceneId);
+
+				const revision = await get().saveDraft(sceneId);
+
+				// Draft (with remote image URLs) is now saved server-side, so the local
+				// copies are redundant and safe to remove. On any failure above this
+				// line nothing is deleted, so a retry still has the local originals.
+				for (const localId of uploadedLocalIdsToCleanup) {
+					imageStorage.delete(localId).catch(console.error);
+				}
+
+				return revision;
+			},
+			publishDraft: async (sceneId, message) => {
+				const uploadedLocalIdsToCleanup =
+					await get().uploadPendingLocalImages(sceneId);
+
 				const revision = await get().saveDraft(sceneId);
 
 				// Draft (with remote image URLs) is now saved server-side, so the local
@@ -1415,14 +1449,12 @@ export const useViewerStore = create<ViewerState>()(
 				for (const localId of uploadedLocalIdsToCleanup) {
 					imageStorage.delete(localId).catch(console.error);
 				}
-				const draftSnapshot = buildSceneDraftPayload(
-					get().annotations,
-					sceneId,
-					revision,
-				);
+				// Publish the draft we just persisted under CAS — the server loads the
+				// stored draft at `expectedRevision` and publishes it. Sending no draft
+				// body means a "posted draft fails validation" failure can never occur,
+				// and what ships is exactly what saveDraft just wrote.
 				const result = await publishApi.publishDraft(sceneId, {
 					message,
-					draft: draftSnapshot,
 					expectedRevision: revision,
 				});
 				set((state) => ({
@@ -1513,20 +1545,28 @@ export const useViewerStore = create<ViewerState>()(
 					presentationMode: false,
 				});
 			},
-			logout: async () => {
-				await publishApi.logout();
+			logout: async (options) => {
+				const discardDirtyScenes = options?.discardDirtyScenes ?? false;
+				// The local logout (clearing auth + reverting drafts) must succeed even
+				// if the server call fails, so the viewer never appears "logged in" with
+				// a dead session. Swallow the network error but keep the local reset.
+				await publishApi.logout().catch(() => undefined);
 				set((state) => {
 					// Hide unpublished draft annotations from the logged-out viewer.
-					// Clear only scenes whose content came from a saved draft and that
-					// are NOT dirty, so the anonymous load effect refetches the release.
-					// Dirty scenes keep their local edits — never destroy unsaved work.
+					// Clear scenes whose content came from a saved draft so the anonymous
+					// load effect refetches the release. By default dirty scenes keep
+					// their local edits (never destroy unsaved work); when
+					// discardDirtyScenes is set the caller has already resolved dirtiness
+					// (saved or explicitly discarded), so dirty draft scenes revert too.
 					const clearedSceneIds = new Set<string>();
-					for (const sceneId of new Set(
-						state.annotations.map((annotation) => annotation.sceneId),
-					)) {
+					const candidateSceneIds = new Set<string>([
+						...state.annotations.map((annotation) => annotation.sceneId),
+						...Object.keys(state.draftRevisionSourceByScene),
+					]);
+					for (const sceneId of candidateSceneIds) {
 						const isDirty = state.draftDirtyByScene[sceneId] ?? false;
 						const source = state.draftRevisionSourceByScene[sceneId];
-						if (!isDirty && source === "draft") {
+						if (source === "draft" && (!isDirty || discardDirtyScenes)) {
 							clearedSceneIds.add(sceneId);
 						}
 					}
