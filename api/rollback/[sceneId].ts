@@ -1,6 +1,6 @@
 import type { SceneDraft } from "../../src/types";
 import { requireAuth } from "../_lib/auth.js";
-import { readJsonBlob, writeJsonBlob } from "../_lib/blobStore.js";
+import { mutateJsonBlob, readJsonBlob } from "../_lib/blobStore.js";
 import {
 	badRequest,
 	jsonResponse,
@@ -61,19 +61,30 @@ async function handler(request: Request) {
 		return notFound("Release not found");
 	}
 
-	const currentDraft = await readJsonBlob<SceneDraft>(draftPath(sceneId));
-	const previousImagePathnames = currentDraft
-		? collectImagePathnamesFromDraft(currentDraft)
-		: [];
-	const nextDraft: SceneDraft = {
-		...release,
-		revision: (currentDraft?.revision ?? release.revision) + 1,
-		updatedAt: Date.now(),
-	};
-	const nextImagePathnames = collectImagePathnamesFromDraft(nextDraft);
+	// Compare-and-set both shared mutable pointers so a concurrent draft PUT or
+	// live update is not clobbered. The previous-image set is captured from the
+	// authoritative current draft observed inside the winning mutation.
+	await mutateJsonBlob(livePath(sceneId), () => ({
+		value: { version },
+		result: undefined,
+	}));
 
-	await writeJsonBlob(livePath(sceneId), { version });
-	await writeJsonBlob(draftPath(sceneId), nextDraft);
+	let previousImagePathnames: string[] = [];
+	const nextDraft = await mutateJsonBlob<SceneDraft, SceneDraft>(
+		draftPath(sceneId),
+		(current) => {
+			previousImagePathnames = current
+				? collectImagePathnamesFromDraft(current)
+				: [];
+			const next: SceneDraft = {
+				...release,
+				revision: (current?.revision ?? release.revision) + 1,
+				updatedAt: Date.now(),
+			};
+			return { value: next, result: next };
+		},
+	);
+	const nextImagePathnames = collectImagePathnamesFromDraft(nextDraft);
 
 	try {
 		await reconcileSceneImageAssets(

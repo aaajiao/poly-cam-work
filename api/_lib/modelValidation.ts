@@ -22,7 +22,9 @@ export function isPlaceholderHost(hostname: string) {
 export function isValidAssetUrl(value: string) {
   try {
     const parsed = new URL(value)
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    // HTTPS only: an http:// asset URL causes mixed-content blocks in the https
+    // app and violates the cloud-URL invariant.
+    if (parsed.protocol !== 'https:') {
       return false
     }
 

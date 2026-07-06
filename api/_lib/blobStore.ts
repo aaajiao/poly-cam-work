@@ -77,10 +77,47 @@ async function fetchJsonFromUrl<T>(url: string): Promise<T | null> {
 	return (await response.json()) as T;
 }
 
+/**
+ * Strict variant of {@link fetchJsonFromUrl}: a non-OK response THROWS instead
+ * of collapsing to null. Callers that must distinguish "blob genuinely absent"
+ * from "transient read failure" (e.g. asset reconciliation, which deletes what
+ * it cannot prove is referenced) must use this so a 503/500 never masquerades
+ * as an empty document.
+ */
+async function fetchJsonFromUrlStrict<T>(url: string): Promise<T> {
+	const cacheBypassUrl = `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+	const response = await fetch(cacheBypassUrl, {
+		cache: "no-store",
+		headers: {
+			"Cache-Control": "no-cache, no-store, max-age=0",
+		},
+	});
+	if (!response.ok) {
+		throw new Error(
+			`Failed to read JSON blob (HTTP ${response.status}): ${url}`,
+		);
+	}
+	return (await response.json()) as T;
+}
+
 export async function readJsonBlob<T>(pathname: string): Promise<T | null> {
 	const url = await getBlobUrlByPath(pathname);
 	if (!url) return null;
 	return fetchJsonFromUrl<T>(url);
+}
+
+/**
+ * Fail-safe read: returns null ONLY when the blob genuinely does not exist
+ * (not present in the listing). A blob that is listed but whose body cannot be
+ * fetched (transient 5xx, or an anomalous 404 for a just-listed blob) THROWS
+ * so the caller can abort rather than treat the blob as empty.
+ */
+export async function readJsonBlobStrict<T>(
+	pathname: string,
+): Promise<T | null> {
+	const url = await getBlobUrlByPath(pathname);
+	if (!url) return null;
+	return fetchJsonFromUrlStrict<T>(url);
 }
 
 /**

@@ -4,7 +4,7 @@ import type { SceneDraft } from "@/types";
 const mocks = vi.hoisted(() => ({
 	requireAuth: vi.fn(),
 	readJsonBlob: vi.fn(),
-	writeJsonBlob: vi.fn(),
+	mutateJsonBlob: vi.fn(),
 	reconcileSceneImageAssets: vi.fn(),
 }));
 
@@ -14,7 +14,7 @@ vi.mock("../../api/_lib/auth", () => ({
 
 vi.mock("../../api/_lib/blobStore", () => ({
 	readJsonBlob: mocks.readJsonBlob,
-	writeJsonBlob: mocks.writeJsonBlob,
+	mutateJsonBlob: mocks.mutateJsonBlob,
 }));
 
 vi.mock("../../api/_lib/sceneAssetCleanup", async () => {
@@ -35,7 +35,20 @@ describe("rollback route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.requireAuth.mockReturnValue(true);
-		mocks.writeJsonBlob.mockResolvedValue(undefined);
+		// Compare-and-set stand-in: the draft mutator receives the current draft
+		// blob (read through readJsonBlob), the live pointer mutator ignores it.
+		mocks.mutateJsonBlob.mockImplementation(
+			async (
+				path: string,
+				mutator: (current: unknown) => { value: unknown; result: unknown },
+			) => {
+				const current =
+					path === "scenes/scan-a/draft.json"
+						? await mocks.readJsonBlob(path)
+						: null;
+				return mutator(current).result;
+			},
+		);
 		mocks.reconcileSceneImageAssets.mockResolvedValue({
 			deletedPathnames: [],
 			failedPathnames: [],

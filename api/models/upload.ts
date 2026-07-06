@@ -11,6 +11,9 @@ const ALLOWED_MODEL_CONTENT_TYPES = [
 	"text/plain",
 ];
 
+// Cap the token so it cannot authorize an unbounded blob upload.
+const MAX_MODEL_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
 interface ModelUploadPayload {
 	kind?: "glb" | "ply";
 	sceneKey?: string;
@@ -53,15 +56,19 @@ async function handler(request: Request) {
 		return methodNotAllowed(["POST"]);
 	}
 
-	if (!requireAuth(request)) {
-		return unauthorized();
-	}
-
 	const body = (await request
 		.json()
 		.catch(() => null)) as HandleUploadBody | null;
 	if (!body) {
 		return badRequest("Invalid upload body");
+	}
+
+	// Only client-token generation is user-initiated and must be authenticated.
+	// The blob.upload-completed callback is a server-to-server request from
+	// Vercel that carries no session cookie, so gating the whole handler on auth
+	// would 401 that callback.
+	if (body.type === "blob.generate-client-token" && !requireAuth(request)) {
+		return unauthorized();
 	}
 
 	let response: Awaited<ReturnType<typeof handleUpload>>;
@@ -80,6 +87,7 @@ async function handler(request: Request) {
 				return {
 					allowedContentTypes: ALLOWED_MODEL_CONTENT_TYPES,
 					addRandomSuffix: false,
+					maximumSizeInBytes: MAX_MODEL_UPLOAD_BYTES,
 				};
 			},
 			onUploadCompleted: async () => {

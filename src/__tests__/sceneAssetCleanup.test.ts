@@ -4,12 +4,12 @@ import { reconcileSceneImageAssets } from '../../api/_lib/sceneAssetCleanup'
 import {
   deleteBlobByPathname,
   listBlobsByPrefix,
-  readJsonBlob,
+  readJsonBlobStrict,
 } from '../../api/_lib/blobStore'
 
 vi.mock('../../api/_lib/blobStore', () => ({
   listBlobsByPrefix: vi.fn(),
-  readJsonBlob: vi.fn(),
+  readJsonBlobStrict: vi.fn(),
   deleteBlobByPathname: vi.fn(),
 }))
 
@@ -26,7 +26,7 @@ describe('reconcileSceneImageAssets', () => {
       updatedAt: Date.now(),
     }
 
-    vi.mocked(readJsonBlob).mockResolvedValue(draft)
+    vi.mocked(readJsonBlobStrict).mockResolvedValue(draft)
     vi.mocked(listBlobsByPrefix).mockImplementation(async (prefix: string) => {
       if (prefix === 'scenes/scan-a/images/') {
         return [
@@ -58,5 +58,49 @@ describe('reconcileSceneImageAssets', () => {
     expect(deleteBlobByPathname).toHaveBeenCalledTimes(1)
     expect(deleteBlobByPathname).toHaveBeenCalledWith('scenes/scan-a/images/ann-1/old.png')
     expect(result.deletedPathnames).toEqual(['scenes/scan-a/images/ann-1/old.png'])
+  })
+
+  it('aborts without deleting anything when a draft/release read fails transiently', async () => {
+    // A transient 503 on a referenced document must NOT be treated as "absent";
+    // reconcile has to fail-safe and delete nothing rather than drop live images.
+    vi.mocked(readJsonBlobStrict).mockRejectedValue(
+      new Error('Failed to read JSON blob (HTTP 503): https://blob.example/draft')
+    )
+    vi.mocked(listBlobsByPrefix).mockResolvedValue([])
+    vi.mocked(deleteBlobByPathname).mockResolvedValue(true)
+
+    await expect(
+      reconcileSceneImageAssets('scan-a', ['scenes/scan-a/images/ann-1/orphan.png'])
+    ).rejects.toThrow(/HTTP 503/)
+
+    expect(deleteBlobByPathname).not.toHaveBeenCalled()
+  })
+
+  it('aborts when a just-listed release blob is unexpectedly absent', async () => {
+    vi.mocked(readJsonBlobStrict).mockImplementation(
+      async (pathname: string) => {
+        if (pathname === 'scenes/scan-a/draft.json') return null
+        // Release listed above but its body cannot be read back -> anomalous.
+        return null
+      }
+    )
+    vi.mocked(listBlobsByPrefix).mockImplementation(async (prefix: string) => {
+      if (prefix === 'scenes/scan-a/releases/') {
+        return [
+          {
+            url: 'https://blob.example/scenes/scan-a/releases/1.json',
+            pathname: 'scenes/scan-a/releases/1.json',
+          },
+        ]
+      }
+      return []
+    })
+    vi.mocked(deleteBlobByPathname).mockResolvedValue(true)
+
+    await expect(
+      reconcileSceneImageAssets('scan-a', ['scenes/scan-a/images/ann-1/orphan.png'])
+    ).rejects.toThrow(/Release blob disappeared/)
+
+    expect(deleteBlobByPathname).not.toHaveBeenCalled()
   })
 })

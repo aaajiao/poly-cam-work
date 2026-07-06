@@ -2,7 +2,7 @@ import type { AnnotationImage, SceneDraft } from "../../src/types";
 import {
 	deleteBlobByPathname,
 	listBlobsByPrefix,
-	readJsonBlob,
+	readJsonBlobStrict,
 } from "./blobStore.js";
 
 function draftPath(sceneId: string) {
@@ -62,7 +62,11 @@ async function collectReferencedSceneImagePathnames(
 ): Promise<Set<string>> {
 	const referenced = new Set<string>();
 
-	const draft = await readJsonBlob<SceneDraft>(draftPath(sceneId));
+	// Fail-safe: a transient read failure THROWS (readJsonBlobStrict), which
+	// aborts the whole reconcile before any deletion. The draft may legitimately
+	// not exist yet (null), which is fine — only an unreadable-but-present blob
+	// throws.
+	const draft = await readJsonBlobStrict<SceneDraft>(draftPath(sceneId));
 	if (draft) {
 		for (const pathname of collectImagePathnamesFromDraft(draft)) {
 			referenced.add(pathname);
@@ -75,8 +79,15 @@ async function collectReferencedSceneImagePathnames(
 		.filter((pathname) => releaseVersionFromPath(pathname) !== null);
 
 	for (const releaseBlobPath of releasePaths) {
-		const release = await readJsonBlob<SceneDraft>(releaseBlobPath);
-		if (!release) continue;
+		const release = await readJsonBlobStrict<SceneDraft>(releaseBlobPath);
+		// The blob was JUST listed above, so a null (absent) or unreadable body is
+		// anomalous — abort rather than drop its images from the referenced set and
+		// then delete live assets as if they were stale.
+		if (!release) {
+			throw new Error(
+				`Release blob disappeared during reconcile: ${releaseBlobPath}`,
+			);
+		}
 
 		for (const pathname of collectImagePathnamesFromDraft(release)) {
 			referenced.add(pathname);

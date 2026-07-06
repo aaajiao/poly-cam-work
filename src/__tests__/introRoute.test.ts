@@ -4,7 +4,7 @@ import type { IntroPreset } from "@/types";
 const mocks = vi.hoisted(() => ({
 	requireAuth: vi.fn(),
 	readJsonBlob: vi.fn(),
-	writeJsonBlob: vi.fn(),
+	mutateJsonBlob: vi.fn(),
 }));
 
 vi.mock("../../api/_lib/auth", () => ({
@@ -13,7 +13,7 @@ vi.mock("../../api/_lib/auth", () => ({
 
 vi.mock("../../api/_lib/blobStore", () => ({
 	readJsonBlob: mocks.readJsonBlob,
-	writeJsonBlob: mocks.writeJsonBlob,
+	mutateJsonBlob: mocks.mutateJsonBlob,
 }));
 
 import handlerModule from "../../api/intro/[sceneId]";
@@ -55,7 +55,13 @@ describe("intro route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.requireAuth.mockReturnValue(true);
-		mocks.writeJsonBlob.mockResolvedValue(undefined);
+		// Compare-and-set stand-in: apply the mutator and commit its value.
+		mocks.mutateJsonBlob.mockImplementation(
+			async (
+				_path: string,
+				mutator: (current: unknown) => { value: unknown; result: unknown },
+			) => mutator(null).result,
+		);
 	});
 
 	it("returns 401 for unauthenticated PUT", async () => {

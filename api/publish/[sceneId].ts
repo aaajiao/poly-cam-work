@@ -4,9 +4,11 @@ import { requireAuth } from "../_lib/auth.js";
 import {
 	deleteBlobByPathname,
 	listBlobsByPrefix,
+	mutateJsonBlob,
 	readJsonBlob,
+	readJsonBlobWithEtag,
 	writeImmutableJsonBlob,
-	writeJsonBlob,
+	writeJsonBlobIfMatch,
 } from "../_lib/blobStore.js";
 import {
 	badRequest,
@@ -190,7 +192,11 @@ async function handler(request: Request) {
 			liveVersion = versions[0] ?? null;
 		}
 
-		await writeJsonBlob(livePath(sceneId), { version: liveVersion ?? 0 });
+		const nextLiveVersion = liveVersion ?? 0;
+		await mutateJsonBlob(livePath(sceneId), () => ({
+			value: { version: nextLiveVersion },
+			result: undefined,
+		}));
 
 		try {
 			await reconcileSceneImageAssets(sceneId, candidateImagePathnames);
@@ -210,32 +216,58 @@ async function handler(request: Request) {
 
 	const body = (await request.json().catch(() => null)) as PublishBody | null;
 	const draftFromBody = normalizePublishDraft(sceneId, body?.draft);
-	const draft =
-		draftFromBody ?? (await readJsonBlob<SceneDraft>(draftPath(sceneId)));
-	if (!draft) {
-		return badRequest("Draft not found");
+
+	// A request that carried a draft body which fails validation must NOT
+	// silently fall back to the stored draft — that would publish stale content.
+	// Fall back to the stored draft only when no draft body was sent at all.
+	if (body?.draft !== undefined && !draftFromBody) {
+		return badRequest("Invalid draft");
 	}
 
-	if (
-		typeof body?.expectedRevision === "number" &&
-		draft.revision !== body.expectedRevision
-	) {
-		return conflict("Revision mismatch");
-	}
-
-	if (draftFromBody && typeof body?.expectedRevision === "number") {
-		const persistedDraft = await readJsonBlob<SceneDraft>(draftPath(sceneId));
+	let draft: SceneDraft;
+	if (draftFromBody) {
 		if (
+			typeof body?.expectedRevision === "number" &&
+			draftFromBody.revision !== body.expectedRevision
+		) {
+			return conflict("Revision mismatch");
+		}
+
+		// Persist the posted draft through compare-and-set so a concurrent draft
+		// PUT landing between our read and write is not clobbered (the old blind
+		// write + separate revision re-check was TOCTOU).
+		const { value: persistedDraft, etag } =
+			await readJsonBlobWithEtag<SceneDraft>(draftPath(sceneId));
+		if (
+			typeof body?.expectedRevision === "number" &&
 			typeof persistedDraft?.revision === "number" &&
 			Number.isFinite(persistedDraft.revision) &&
 			persistedDraft.revision > body.expectedRevision
 		) {
 			return conflict("Revision mismatch");
 		}
-	}
 
-	if (draftFromBody) {
-		await writeJsonBlob(draftPath(sceneId), draft);
+		try {
+			await writeJsonBlobIfMatch(draftPath(sceneId), draftFromBody, etag);
+		} catch (error) {
+			if (error instanceof BlobPreconditionFailedError) {
+				return conflict("Revision mismatch");
+			}
+			throw error;
+		}
+		draft = draftFromBody;
+	} else {
+		const storedDraft = await readJsonBlob<SceneDraft>(draftPath(sceneId));
+		if (!storedDraft) {
+			return badRequest("Draft not found");
+		}
+		if (
+			typeof body?.expectedRevision === "number" &&
+			storedDraft.revision !== body.expectedRevision
+		) {
+			return conflict("Revision mismatch");
+		}
+		draft = storedDraft;
 	}
 
 	const live = await readJsonBlob<LivePointer>(livePath(sceneId));
@@ -270,7 +302,29 @@ async function handler(request: Request) {
 		}
 		throw error;
 	}
-	await writeJsonBlob(livePath(sceneId), { version: nextVersion });
+
+	// Immutable release blob(s) are now written. If the live pointer write fails,
+	// best-effort delete them so a dangling, unreferenced release is not leaked
+	// forever, then rethrow.
+	try {
+		await mutateJsonBlob(livePath(sceneId), () => ({
+			value: { version: nextVersion },
+			result: undefined,
+		}));
+	} catch (error) {
+		try {
+			await deleteBlobByPathname(releasePath(sceneId, nextVersion));
+			if (introDraft) {
+				await deleteBlobByPathname(introReleasePath(sceneId, nextVersion));
+			}
+		} catch (cleanupError) {
+			console.error(
+				"Failed to clean up release blobs after live pointer write failure",
+				cleanupError,
+			);
+		}
+		throw error;
+	}
 
 	try {
 		await reconcileSceneImageAssets(

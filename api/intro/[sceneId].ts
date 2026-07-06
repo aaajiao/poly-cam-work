@@ -1,6 +1,6 @@
 import type { IntroPreset, LivePointer } from "../../src/types";
 import { requireAuth } from "../_lib/auth.js";
-import { readJsonBlob, writeJsonBlob } from "../_lib/blobStore.js";
+import { mutateJsonBlob, readJsonBlob } from "../_lib/blobStore.js";
 import {
 	badRequest,
 	jsonResponse,
@@ -283,7 +283,12 @@ async function handler(request: Request) {
 		updatedAt: Date.now(),
 	};
 
-	await writeJsonBlob(introDraftPath(sceneId), nextPreset);
+	// Compare-and-set: the intro draft is a shared mutable blob; a blind
+	// overwrite would silently lose a concurrent save.
+	await mutateJsonBlob(introDraftPath(sceneId), () => ({
+		value: nextPreset,
+		result: undefined,
+	}));
 
 	return jsonResponse(nextPreset);
 }

@@ -4,8 +4,9 @@ import process from "node:process";
 import {
 	deleteBlobByPathname,
 	listBlobsByPrefix,
+	mutateJsonBlob,
 	readJsonBlob,
-	writeJsonBlob,
+	readJsonBlobStrict,
 } from "../api/_lib/blobStore";
 import {
 	BLOB_READ_WRITE_TOKEN_ENV_NAME,
@@ -183,7 +184,9 @@ async function collectReferencedImagePathnames(
 	}
 
 	for (const sceneId of sceneIds) {
-		const draft = await readJsonBlob<SceneDraft>(
+		// Fail-safe: a transient read failure THROWS and aborts the whole cleanup
+		// before any deletion, rather than silently dropping referenced images.
+		const draft = await readJsonBlobStrict<SceneDraft>(
 			`scenes/${sceneId}/draft.json`,
 		);
 		if (draft) {
@@ -194,8 +197,13 @@ async function collectReferencedImagePathnames(
 
 		const sceneReleases = releasePathsByScene.get(sceneId) ?? [];
 		for (const releasePath of sceneReleases) {
-			const release = await readJsonBlob<SceneDraft>(releasePath);
-			if (!release) continue;
+			const release = await readJsonBlobStrict<SceneDraft>(releasePath);
+			// The blob was just listed; absent or unreadable is anomalous — abort.
+			if (!release) {
+				throw new Error(
+					`Release blob disappeared during cleanup: ${releasePath}`,
+				);
+			}
 
 			for (const pathname of collectImagePathnamesFromDraft(release)) {
 				referenced.add(pathname);
@@ -249,10 +257,20 @@ async function main() {
 			);
 
 	if (!dryRun && modelRegistryRaw !== null && modelRegistryUpdated) {
-		await writeJsonBlob("models/index.json", {
-			version: 1,
-			models: normalizedModels,
-		} satisfies ModelRegistryDocument);
+		// Compare-and-set instead of a blind overwrite: a POST /api/models landing
+		// between our read and write must not be clobbered. Re-normalize from the
+		// freshly read registry inside the mutator so a concurrently appended model
+		// is preserved (and deduped) rather than lost.
+		await mutateJsonBlob<ModelRegistryDocument | ScanScene[], void>(
+			"models/index.json",
+			(current) => ({
+				value: {
+					version: 1,
+					models: normalizeRegistryModels(current),
+				} satisfies ModelRegistryDocument,
+				result: undefined,
+			}),
+		);
 	}
 
 	const staleModelPathnames =

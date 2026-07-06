@@ -10,6 +10,9 @@ export const ALLOWED_CONTENT_TYPES = [
 	"image/gif",
 ];
 
+// Cap the token so it cannot authorize an unbounded blob upload.
+const MAX_MEDIA_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 interface MediaUploadPayload {
 	sceneId?: string;
 	annotationId?: string;
@@ -63,26 +66,34 @@ async function handler(request: Request) {
 		return unauthorized();
 	}
 
-	const response = await handleUpload({
-		body,
-		request,
-		token: getBlobReadWriteToken(),
-		onBeforeGenerateToken: async (pathname, clientPayload) => {
-			const { sceneId, annotationId } = parseClientPayload(clientPayload);
-			const expectedPrefix = `scenes/${sceneId}/images/${annotationId}/`;
-			if (!pathname.startsWith(expectedPrefix)) {
-				throw new Error("Invalid upload path");
-			}
+	let response: Awaited<ReturnType<typeof handleUpload>>;
+	try {
+		response = await handleUpload({
+			body,
+			request,
+			token: getBlobReadWriteToken(),
+			onBeforeGenerateToken: async (pathname, clientPayload) => {
+				const { sceneId, annotationId } = parseClientPayload(clientPayload);
+				const expectedPrefix = `scenes/${sceneId}/images/${annotationId}/`;
+				if (!pathname.startsWith(expectedPrefix)) {
+					throw new Error("Invalid upload path");
+				}
 
-			return {
-				allowedContentTypes: ALLOWED_CONTENT_TYPES,
-				addRandomSuffix: false,
-			};
-		},
-		onUploadCompleted: async () => {
-			return;
-		},
-	});
+				return {
+					allowedContentTypes: ALLOWED_CONTENT_TYPES,
+					addRandomSuffix: false,
+					maximumSizeInBytes: MAX_MEDIA_UPLOAD_BYTES,
+				};
+			},
+			onUploadCompleted: async () => {
+				return;
+			},
+		});
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "Failed to create upload token";
+		return badRequest(message);
+	}
 
 	return new Response(JSON.stringify(response), {
 		status: 200,
