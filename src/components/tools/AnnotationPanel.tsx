@@ -108,8 +108,11 @@ function AnnotationFloatingPanel({
 	onCloseComplete,
 }: AnnotationFloatingPanelProps) {
 	const { camera, size } = useThree();
-	const setCameraControlsEnabled = useViewerStore(
-		(s) => s.setCameraControlsEnabled,
+	const acquireCameraControlsLock = useViewerStore(
+		(s) => s.acquireCameraControlsLock,
+	);
+	const releaseCameraControlsLock = useViewerStore(
+		(s) => s.releaseCameraControlsLock,
 	);
 	const setHoveredAnnotation = useViewerStore((s) => s.setHoveredAnnotation);
 	const storedPanelOffset = useViewerStore(
@@ -170,6 +173,25 @@ function AnnotationFloatingPanel({
 	const dragStartRef = useRef<ScreenOffset>({ x: 0, y: 0 });
 	const dragStartOffsetRef = useRef<ScreenOffset>({ x: 0, y: 0 });
 	const detachPanelDragRef = useRef<(() => void) | null>(null);
+	// Guards exactly-one release per acquire on the ref-counted camera lock, so a
+	// stop/unmount race during an active drag cannot double-release.
+	const cameraLockHeldRef = useRef(false);
+	const acquireCameraLock = useMemo(
+		() => () => {
+			if (cameraLockHeldRef.current) return;
+			cameraLockHeldRef.current = true;
+			acquireCameraControlsLock();
+		},
+		[acquireCameraControlsLock],
+	);
+	const releaseCameraLock = useMemo(
+		() => () => {
+			if (!cameraLockHeldRef.current) return;
+			cameraLockHeldRef.current = false;
+			releaseCameraControlsLock();
+		},
+		[releaseCameraControlsLock],
+	);
 	const markerPos = useMemo(
 		() => new THREE.Vector3(...annotation.position),
 		[annotation.position],
@@ -444,7 +466,7 @@ function AnnotationFloatingPanel({
 			isPanelDraggingRef.current = true;
 			didDragRef.current = false;
 			setIsPanelDragging(true);
-			setCameraControlsEnabled(false);
+			acquireCameraLock();
 			dragStartRef.current = { x: e.clientX, y: e.clientY };
 			dragStartOffsetRef.current = { ...dragOffsetRef.current };
 
@@ -470,7 +492,7 @@ function AnnotationFloatingPanel({
 				if (!isPanelDraggingRef.current) return;
 				isPanelDraggingRef.current = false;
 				setIsPanelDragging(false);
-				setCameraControlsEnabled(true);
+				releaseCameraLock();
 				setHoveredAnnotation(null);
 				pendingRelayoutRef.current = true;
 
@@ -530,7 +552,8 @@ function AnnotationFloatingPanel({
 			onBringToFront,
 			setAnnotationPanelOffset,
 			setHoveredAnnotation,
-			setCameraControlsEnabled,
+			acquireCameraLock,
+			releaseCameraLock,
 		],
 	);
 
@@ -629,10 +652,10 @@ function AnnotationFloatingPanel({
 			detachPanelDragRef.current = null;
 			isPanelDraggingRef.current = false;
 			setIsPanelDragging(false);
-			setCameraControlsEnabled(true);
+			releaseCameraLock();
 			setHoveredAnnotation(null);
 		};
-	}, [setCameraControlsEnabled, setHoveredAnnotation]);
+	}, [releaseCameraLock, setHoveredAnnotation]);
 
 	useFrame((state, delta) => {
 		let layoutChanged = false;

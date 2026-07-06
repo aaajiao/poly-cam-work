@@ -23,6 +23,15 @@ export function LoginDialog() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      setPassword('')
+      setError(null)
+      setIsSubmitting(false)
+    }
+  }
+
   const onSubmit = async () => {
     if (!password.trim()) return
     setIsSubmitting(true)
@@ -55,7 +64,7 @@ export function LoginDialog() {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button
           data-testid="login-button"

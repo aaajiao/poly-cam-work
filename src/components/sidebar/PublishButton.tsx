@@ -3,6 +3,11 @@ import { useViewerStore } from '@/store/viewerStore'
 import { PublishActionControls } from './PublishActionControls'
 import { PublishVersionMenu } from './PublishVersionMenu'
 
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message
+  return fallback
+}
+
 export function PublishButton() {
   const activeSceneId = useViewerStore((state) => state.activeSceneId)
   const isAuthenticated = useViewerStore((state) => state.isAuthenticated)
@@ -17,6 +22,7 @@ export function PublishButton() {
   const publishDraft = useViewerStore((state) => state.publishDraft)
   const rollbackToVersion = useViewerStore((state) => state.rollbackToVersion)
   const deletePublishedVersion = useViewerStore((state) => state.deletePublishedVersion)
+  const setDraftError = useViewerStore((state) => state.setDraftError)
 
   const [isSaving, setIsSaving] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
@@ -53,20 +59,29 @@ export function PublishButton() {
           fileInputRef.current?.click()
         }}
         onExportClick={() => {
+          setDraftError(null)
           setIsSaving(true)
-          void downloadLocalDraft(activeSceneId).finally(() => setIsSaving(false))
+          void downloadLocalDraft(activeSceneId)
+            .catch((error) => setDraftError(toErrorMessage(error, 'Failed to export draft')))
+            .finally(() => setIsSaving(false))
         }}
         onPublishClick={() => {
+          setDraftError(null)
           setIsPublishing(true)
-          void publishDraft(activeSceneId).finally(() => setIsPublishing(false))
+          void publishDraft(activeSceneId)
+            .catch((error) => setDraftError(toErrorMessage(error, 'Failed to publish draft')))
+            .finally(() => setIsPublishing(false))
         }}
         onFileChange={(event) => {
           const file = event.target.files?.[0]
           event.currentTarget.value = ''
           if (!file) return
 
+          setDraftError(null)
           setIsImporting(true)
-          void importLocalDraftFile(activeSceneId, file).finally(() => setIsImporting(false))
+          void importLocalDraftFile(activeSceneId, file)
+            .catch((error) => setDraftError(toErrorMessage(error, 'Failed to import draft')))
+            .finally(() => setIsImporting(false))
         }}
       />
 
@@ -76,13 +91,17 @@ export function PublishButton() {
         isOpen={isVersionsOpen}
         rollingBackVersion={rollingBackVersion}
         deletingVersion={deletingVersion}
+        isActionInFlight={rollingBackVersion !== null || deletingVersion !== null}
         onToggle={() => setIsVersionsOpen((open) => !open)}
         onRollback={(version) => {
+          setDraftError(null)
           setRollingBackVersion(version)
-          void rollbackToVersion(activeSceneId, version).finally(() => {
-            setRollingBackVersion(null)
-            setIsVersionsOpen(false)
-          })
+          void rollbackToVersion(activeSceneId, version)
+            .then(() => setIsVersionsOpen(false))
+            .catch((error) =>
+              setDraftError(toErrorMessage(error, `Failed to roll back to v${version}`))
+            )
+            .finally(() => setRollingBackVersion(null))
         }}
         onDelete={(version, event) => {
           event.stopPropagation()
@@ -94,8 +113,13 @@ export function PublishButton() {
           )
           if (!confirmed) return
 
+          setDraftError(null)
           setDeletingVersion(version)
-          void deletePublishedVersion(activeSceneId, version).finally(() => setDeletingVersion(null))
+          void deletePublishedVersion(activeSceneId, version)
+            .catch((error) =>
+              setDraftError(toErrorMessage(error, `Failed to delete v${version}`))
+            )
+            .finally(() => setDeletingVersion(null))
         }}
       />
 

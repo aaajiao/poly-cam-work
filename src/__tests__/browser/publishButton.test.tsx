@@ -126,4 +126,48 @@ describe('browser publish button', () => {
     expect(confirmSpy).toHaveBeenCalled()
     expect(mockDeletePublishedVersion).toHaveBeenCalledWith('scan-a', 4)
   })
+
+  test('surfaces rollback failure and keeps the version menu open', async () => {
+    useViewerStore.setState({
+      isAuthenticated: true,
+      publishedVersionsByScene: { 'scan-a': [5, 4] },
+      publishedVersionByScene: { 'scan-a': 5 },
+    })
+
+    mockGetPublishedVersions.mockResolvedValue({ versions: [5, 4], liveVersion: 5 })
+    mockRollbackRelease.mockRejectedValue(new Error('Rollback exploded'))
+
+    const screen = await render(<PublishButton />)
+
+    await screen.getByTestId('published-version-menu-trigger').click()
+    await screen.getByTestId('rollback-version-4').click()
+
+    await expect.element(screen.getByTestId('publish-error-label')).toHaveTextContent(
+      'Rollback exploded'
+    )
+    // Menu must stay open on failure so the operator sees it did not succeed.
+    await expect.element(screen.getByTestId('published-version-menu-content')).toBeVisible()
+  })
+
+  test('locks out all rollback/delete buttons while a rollback is in flight', async () => {
+    useViewerStore.setState({
+      isAuthenticated: true,
+      publishedVersionsByScene: { 'scan-a': [5, 4] },
+      publishedVersionByScene: { 'scan-a': 5 },
+    })
+
+    mockGetPublishedVersions.mockResolvedValue({ versions: [5, 4], liveVersion: 5 })
+    // Never resolves: keeps the rollback in flight for the duration of the assertions.
+    mockRollbackRelease.mockReturnValue(new Promise(() => {}))
+
+    const screen = await render(<PublishButton />)
+
+    await screen.getByTestId('published-version-menu-trigger').click()
+    await screen.getByTestId('rollback-version-4').click()
+
+    await expect.element(screen.getByTestId('rollback-version-5')).toBeDisabled()
+    await expect.element(screen.getByTestId('delete-version-5')).toBeDisabled()
+    await expect.element(screen.getByTestId('rollback-version-4')).toBeDisabled()
+    await expect.element(screen.getByTestId('delete-version-4')).toBeDisabled()
+  })
 })

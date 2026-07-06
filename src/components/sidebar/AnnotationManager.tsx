@@ -136,6 +136,10 @@ function AnnotationEditor({ annotation }: AnnotationEditorProps) {
 							updateAnnotationContent(annotation.id, {
 								videoUrl: videoInput || null,
 							});
+						} else {
+							// Invalid non-empty URL: revert the field to the last saved
+							// value so the input never drifts from the stored videoUrl.
+							setVideoInput(annotation.videoUrl ?? "");
 						}
 					}}
 					placeholder="https://vimeo.com/…"

@@ -7,6 +7,7 @@ interface PublishVersionMenuProps {
 	isOpen: boolean;
 	rollingBackVersion: number | null;
 	deletingVersion: number | null;
+	isActionInFlight: boolean;
 	onToggle: () => void;
 	onRollback: (version: number) => void;
 	onDelete: (
@@ -21,6 +22,7 @@ export function PublishVersionMenu({
 	isOpen,
 	rollingBackVersion,
 	deletingVersion,
+	isActionInFlight,
 	onToggle,
 	onRollback,
 	onDelete,
@@ -77,7 +79,7 @@ export function PublishVersionMenu({
 									>
 										<button
 											type="button"
-											disabled={isRollingBack || isDeleting}
+											disabled={isRollingBack || isDeleting || isActionInFlight}
 											className="flex items-center gap-1 text-xs text-dim hover:text-soft disabled:opacity-50"
 											data-testid={`rollback-version-${version}`}
 											onClick={() => onRollback(version)}
@@ -94,7 +96,7 @@ export function PublishVersionMenu({
 
 										<button
 											type="button"
-											disabled={isDeleting || isRollingBack}
+											disabled={isDeleting || isRollingBack || isActionInFlight}
 											className="rounded p-0.5 text-faint transition-colors hover:text-danger disabled:opacity-50"
 											aria-label={`Delete version ${version}`}
 											data-testid={`delete-version-${version}`}

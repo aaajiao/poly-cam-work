@@ -80,6 +80,11 @@ export function ImageUpload({
   const [error, setError] = useState<string | null>(null)
   const [thumbnails, setThumbnails] = useState<ThumbnailEntry[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Track the latest images/upload state so concurrent drops compute the final
+  // list from current data instead of a stale render-time closure.
+  const imagesRef = useRef(images)
+  imagesRef.current = images
+  const isUploadingRef = useRef(false)
 
   const atLimit = images.length >= maxImages
 
@@ -139,13 +144,17 @@ export function ImageUpload({
 
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
+      if (isUploadingRef.current) return
+
       const fileArray = Array.from(files).filter((file) => file.type.startsWith('image/'))
       if (fileArray.length === 0) return
 
-      const available = maxImages - images.length
+      const available = maxImages - imagesRef.current.length
+      if (available <= 0) return
       const toProcess = fileArray.slice(0, available)
 
       setError(null)
+      isUploadingRef.current = true
       setIsUploading(true)
 
       const newImages: AnnotationImage[] = []
@@ -179,6 +188,7 @@ export function ImageUpload({
         }
       }
 
+      isUploadingRef.current = false
       setIsUploading(false)
 
       if (errors.length > 0) {
@@ -186,10 +196,10 @@ export function ImageUpload({
       }
 
       if (newImages.length > 0) {
-        onImagesChange([...images, ...newImages])
+        onImagesChange([...imagesRef.current, ...newImages])
       }
     },
-    [annotationId, images, maxImages, onImagesChange]
+    [annotationId, maxImages, onImagesChange]
   )
 
   const handleDrop = useCallback(
@@ -197,7 +207,7 @@ export function ImageUpload({
       event.preventDefault()
       event.stopPropagation()
       setIsDragging(false)
-      if (atLimit) return
+      if (atLimit || isUploadingRef.current) return
       void processFiles(event.dataTransfer.files)
     },
     [atLimit, processFiles]

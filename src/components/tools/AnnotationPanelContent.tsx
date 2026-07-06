@@ -38,14 +38,16 @@ function ResizableMedia({
 	showHandleAlways = false,
 	onSizeChange,
 }: ResizableMediaProps) {
-	const setCameraControlsEnabled = useViewerStore(
-		(s) => s.setCameraControlsEnabled,
+	const acquireCameraControlsLock = useViewerStore(
+		(s) => s.acquireCameraControlsLock,
+	);
+	const releaseCameraControlsLock = useViewerStore(
+		(s) => s.releaseCameraControlsLock,
 	);
 	const [size, setSize] = useState({
 		width: defaultWidth,
 		height: defaultHeight,
 	});
-	const hasUserResizedRef = useRef(false);
 	const isDragging = useRef(false);
 	const startPos = useRef({ x: 0, y: 0 });
 	const startSize = useRef({
@@ -57,38 +59,62 @@ function ResizableMedia({
 	sizeRef.current = size;
 	const onSizeChangeRef = useRef(onSizeChange);
 	onSizeChangeRef.current = onSizeChange;
+	// Guards exactly-one release per acquire on the ref-counted camera lock.
+	const cameraLockHeldRef = useRef(false);
+	const acquireCameraLock = () => {
+		if (cameraLockHeldRef.current) return;
+		cameraLockHeldRef.current = true;
+		acquireCameraControlsLock();
+	};
+	const releaseCameraLock = () => {
+		if (!cameraLockHeldRef.current) return;
+		cameraLockHeldRef.current = false;
+		releaseCameraControlsLock();
+	};
 
+	// Apply store-driven size (preset apply/restore) even after a manual resize.
+	// Skip while actively dragging and no-op when unchanged to avoid a feedback
+	// loop with the onSizeChange write-back.
 	useEffect(() => {
-		if (hasUserResizedRef.current) return;
-		setSize({
-			width: defaultWidth,
-			height: maintainAspectRatio ? undefined : defaultHeight,
-		});
+		if (isDragging.current) return;
+		const nextWidth = defaultWidth;
+		const nextHeight = maintainAspectRatio ? undefined : defaultHeight;
+		setSize((prev) =>
+			prev.width === nextWidth && prev.height === nextHeight
+				? prev
+				: { width: nextWidth, height: nextHeight },
+		);
 	}, [defaultWidth, defaultHeight, maintainAspectRatio]);
 
 	useEffect(() => {
 		return () => {
 			detachListenersRef.current?.();
 			detachListenersRef.current = null;
-			setCameraControlsEnabled(true);
+			releaseCameraLock();
 		};
-	}, [setCameraControlsEnabled]);
+	}, []);
 
-	const handleMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
+	const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
 		detachListenersRef.current?.();
 		detachListenersRef.current = null;
-		hasUserResizedRef.current = true;
+
+		const target = e.currentTarget;
+		const pointerId = e.pointerId;
+		if (!target.hasPointerCapture(pointerId)) {
+			target.setPointerCapture(pointerId);
+		}
+
 		isDragging.current = true;
-		setCameraControlsEnabled(false);
+		acquireCameraLock();
 		startPos.current = { x: e.clientX, y: e.clientY };
 		startSize.current = {
 			width: size.width ?? defaultWidth ?? 200,
 			height: size.height ?? defaultHeight ?? 100,
 		};
 
-		const handleMouseMove = (event: MouseEvent) => {
+		const handlePointerMove = (event: PointerEvent) => {
 			if (!isDragging.current) return;
 
 			const dx = event.clientX - startPos.current.x;
@@ -118,23 +144,33 @@ function ResizableMedia({
 			setSize({ width: newWidth, height: newHeight });
 		};
 
-		const handleMouseUp = () => {
+		const stopResizing = () => {
+			if (!isDragging.current) return;
 			isDragging.current = false;
-			setCameraControlsEnabled(true);
+			releaseCameraLock();
 			onSizeChangeRef.current?.({ ...sizeRef.current });
-			window.removeEventListener("mousemove", handleMouseMove);
-			window.removeEventListener("mouseup", handleMouseUp);
-			window.removeEventListener("blur", handleMouseUp);
+			if (target.hasPointerCapture(pointerId)) {
+				target.releasePointerCapture(pointerId);
+			}
+			window.removeEventListener("pointermove", handlePointerMove);
+			window.removeEventListener("pointerup", stopResizing);
+			window.removeEventListener("pointercancel", stopResizing);
+			window.removeEventListener("blur", stopResizing);
 			detachListenersRef.current = null;
 		};
 
-		window.addEventListener("mousemove", handleMouseMove);
-		window.addEventListener("mouseup", handleMouseUp);
-		window.addEventListener("blur", handleMouseUp);
+		window.addEventListener("pointermove", handlePointerMove);
+		window.addEventListener("pointerup", stopResizing);
+		window.addEventListener("pointercancel", stopResizing);
+		window.addEventListener("blur", stopResizing);
 		detachListenersRef.current = () => {
-			window.removeEventListener("mousemove", handleMouseMove);
-			window.removeEventListener("mouseup", handleMouseUp);
-			window.removeEventListener("blur", handleMouseUp);
+			window.removeEventListener("pointermove", handlePointerMove);
+			window.removeEventListener("pointerup", stopResizing);
+			window.removeEventListener("pointercancel", stopResizing);
+			window.removeEventListener("blur", stopResizing);
+			if (target.hasPointerCapture(pointerId)) {
+				target.releasePointerCapture(pointerId);
+			}
 		};
 	};
 
@@ -155,8 +191,12 @@ function ResizableMedia({
 						? "opacity-90 hover:opacity-100"
 						: "opacity-0 group-hover:opacity-100 hover:opacity-100",
 				)}
-				style={{ cursor: "nwse-resize", pointerEvents: "auto" }}
-				onMouseDown={handleMouseDown}
+				style={{
+					cursor: "nwse-resize",
+					pointerEvents: "auto",
+					touchAction: "none",
+				}}
+				onPointerDown={handlePointerDown}
 				aria-label="Resize media"
 			>
 				<svg width="10" height="10" viewBox="0 0 10 10" fill="none">
