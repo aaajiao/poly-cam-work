@@ -71,6 +71,72 @@ function bumpSceneMutationVersion(
 	};
 }
 
+// Scene ids whose sync upload is actually running right now. Used to keep an
+// in-flight "syncing" override from being demoted to "error" when a concurrent
+// scene loader normalizes stale (persisted/hydrated) "syncing" states.
+const inFlightSyncSceneIds = new Set<string>();
+
+// annotationMediaSizes is keyed by `${annotationId}:image` / `${annotationId}:video`,
+// while annotationPanelOffsets is keyed by the raw annotation id.
+function annotationIdFromMediaKey(key: string): string {
+	const idx = key.lastIndexOf(":");
+	return idx === -1 ? key : key.slice(0, idx);
+}
+
+function pickAnnotationMap<T>(
+	map: Record<string, T>,
+	keyToAnnotationId: (key: string) => string,
+	keep: (annotationId: string) => boolean,
+): Record<string, T> {
+	const next: Record<string, T> = {};
+	for (const [key, value] of Object.entries(map)) {
+		if (keep(keyToAnnotationId(key))) {
+			next[key] = value;
+		}
+	}
+	return next;
+}
+
+function prunePanelOffsets<T>(
+	offsets: Record<string, T>,
+	removedAnnotationIds: Set<string>,
+): Record<string, T> {
+	if (removedAnnotationIds.size === 0) return offsets;
+	return pickAnnotationMap(
+		offsets,
+		(key) => key,
+		(annotationId) => !removedAnnotationIds.has(annotationId),
+	);
+}
+
+function pruneMediaSizes<T>(
+	sizes: Record<string, T>,
+	removedAnnotationIds: Set<string>,
+): Record<string, T> {
+	if (removedAnnotationIds.size === 0) return sizes;
+	return pickAnnotationMap(
+		sizes,
+		annotationIdFromMediaKey,
+		(annotationId) => !removedAnnotationIds.has(annotationId),
+	);
+}
+
+// Re-apply "syncing" for ids whose upload is genuinely in flight, after a
+// normalization pass that demotes stale "syncing" overrides to "error".
+function preserveInFlightSyncOverrides(
+	overrides: Record<string, OfficialSceneSyncStatus>,
+): Record<string, OfficialSceneSyncStatus> {
+	if (inFlightSyncSceneIds.size === 0) return overrides;
+	let next = overrides;
+	for (const sceneId of inFlightSyncSceneIds) {
+		if (next[sceneId] !== "syncing") {
+			if (next === overrides) next = { ...overrides };
+			next[sceneId] = "syncing";
+		}
+	}
+	return next;
+}
+
 interface ViewerState {
 	scenes: ScanScene[];
 	publishedScenes: ScanScene[];
@@ -100,6 +166,7 @@ interface ViewerState {
 	sidebarOpen: boolean;
 	presentationMode: boolean;
 	cameraControlsEnabled: boolean;
+	cameraControlsDisableCount: number;
 
 	isLoading: boolean;
 	loadingProgress: number;
@@ -155,6 +222,8 @@ interface ViewerState {
 	setSidebarOpen: (open: boolean) => void;
 	setPresentationMode: (enabled: boolean) => void;
 	setCameraControlsEnabled: (enabled: boolean) => void;
+	acquireCameraControlsLock: () => void;
+	releaseCameraControlsLock: () => void;
 	setClipPlane: (state: Partial<ClipPlaneState>) => void;
 	setColorMapMode: (mode: ColorMapMode) => void;
 	setPointSize: (size: number) => void;
@@ -187,6 +256,7 @@ interface ViewerState {
 	publishDraft: (sceneId: string, message?: string) => Promise<number>;
 	rollbackToVersion: (sceneId: string, version: number) => Promise<number>;
 	deletePublishedVersion: (sceneId: string, version: number) => Promise<void>;
+	setDraftError: (message: string | null) => void;
 	login: (password: string) => Promise<void>;
 	logout: () => Promise<void>;
 	refreshAuthSession: () => Promise<void>;
@@ -242,6 +312,7 @@ export const useViewerStore = create<ViewerState>()(
 			sidebarOpen: false,
 			presentationMode: true,
 			cameraControlsEnabled: true,
+			cameraControlsDisableCount: 0,
 
 			isLoading: false,
 			loadingProgress: 0,
@@ -334,8 +405,17 @@ export const useViewerStore = create<ViewerState>()(
 					}
 				}
 
+				const removedIds = new Set([id]);
 				set((state) => ({
 					annotations: state.annotations.filter((a) => a.id !== id),
+					annotationPanelOffsets: prunePanelOffsets(
+						state.annotationPanelOffsets,
+						removedIds,
+					),
+					annotationMediaSizes: pruneMediaSizes(
+						state.annotationMediaSizes,
+						removedIds,
+					),
 					selectedAnnotationId:
 						state.selectedAnnotationId === id
 							? null
@@ -468,6 +548,26 @@ export const useViewerStore = create<ViewerState>()(
 				})),
 			setCameraControlsEnabled: (cameraControlsEnabled) =>
 				set({ cameraControlsEnabled }),
+			// Ref-counted lock so concurrent panel drags/resizes cannot clobber one
+			// another: controls stay disabled until every holder releases. Each
+			// acquire must be matched by exactly one release (including on unmount
+			// mid-drag).
+			acquireCameraControlsLock: () =>
+				set((state) => {
+					const count = state.cameraControlsDisableCount + 1;
+					return {
+						cameraControlsDisableCount: count,
+						cameraControlsEnabled: false,
+					};
+				}),
+			releaseCameraControlsLock: () =>
+				set((state) => {
+					const count = Math.max(0, state.cameraControlsDisableCount - 1);
+					return {
+						cameraControlsDisableCount: count,
+						cameraControlsEnabled: count === 0,
+					};
+				}),
 
 			setClipPlane: (partial) =>
 				set((state) => ({
@@ -513,6 +613,14 @@ export const useViewerStore = create<ViewerState>()(
 					return {
 						uploadedScenes: state.uploadedScenes.filter((s) => s.id !== id),
 						annotations: state.annotations.filter((a) => a.sceneId !== id),
+						annotationPanelOffsets: prunePanelOffsets(
+							state.annotationPanelOffsets,
+							removedIds,
+						),
+						annotationMediaSizes: pruneMediaSizes(
+							state.annotationMediaSizes,
+							removedIds,
+						),
 						draftDirtyByScene: (() => {
 							const next = { ...state.draftDirtyByScene };
 							delete next[id];
@@ -545,6 +653,8 @@ export const useViewerStore = create<ViewerState>()(
 					const allExistingIds = new Set([
 						...state.scenes.map((s) => s.id),
 						...state.discoveredScenes.map((s) => s.id),
+						...state.publishedScenes.map((s) => s.id),
+						...state.uploadedScenes.map((s) => s.id),
 					]);
 					if (allExistingIds.has(scene.id)) {
 						// Collision detected: return state unchanged (no mutation)
@@ -572,8 +682,10 @@ export const useViewerStore = create<ViewerState>()(
 					};
 				}),
 			loadCloudScenes: async () => {
-				const recoveredOverrides = normalizeRecoverableSyncOverrides(
-					get().officialSceneSyncOverridesByScene,
+				const recoveredOverrides = preserveInFlightSyncOverrides(
+					normalizeRecoverableSyncOverrides(
+						get().officialSceneSyncOverridesByScene,
+					),
 				);
 
 				try {
@@ -614,8 +726,10 @@ export const useViewerStore = create<ViewerState>()(
 					const result = await modelApi.discoverLocalScenes();
 					const presetIds = new Set(get().scenes.map((s) => s.id));
 					const publishedIds = new Set(get().publishedScenes.map((s) => s.id));
-					const recoveredOverrides = normalizeRecoverableSyncOverrides(
-						get().officialSceneSyncOverridesByScene,
+					const recoveredOverrides = preserveInFlightSyncOverrides(
+						normalizeRecoverableSyncOverrides(
+							get().officialSceneSyncOverridesByScene,
+						),
 					);
 					const validScenes = dedupeScenesById(result.scenes).filter(
 						(scene) => !presetIds.has(scene.id),
@@ -744,6 +858,7 @@ export const useViewerStore = create<ViewerState>()(
 					throw new Error("Login required to sync scene.");
 				}
 
+				inFlightSyncSceneIds.add(sceneId);
 				get().setOfficialSceneSyncStatus(sceneId, "syncing");
 
 				let glbUrl: string;
@@ -761,6 +876,7 @@ export const useViewerStore = create<ViewerState>()(
 						}),
 					]);
 				} catch (error) {
+					inFlightSyncSceneIds.delete(sceneId);
 					get().setOfficialSceneSyncStatus(sceneId, "error");
 					throw error;
 				}
@@ -773,7 +889,9 @@ export const useViewerStore = create<ViewerState>()(
 						plyUrl,
 					});
 					get().markOfficialSceneSyncSuccess(registeredScene);
+					inFlightSyncSceneIds.delete(sceneId);
 				} catch (error) {
+					inFlightSyncSceneIds.delete(sceneId);
 					get().setOfficialSceneSyncStatus(sceneId, "error");
 					throw error;
 				}
@@ -864,6 +982,14 @@ export const useViewerStore = create<ViewerState>()(
 					return {
 						discoveredScenes: state.discoveredScenes.filter((s) => s.id !== id),
 						annotations: state.annotations.filter((a) => a.sceneId !== id),
+						annotationPanelOffsets: prunePanelOffsets(
+							state.annotationPanelOffsets,
+							removedIds,
+						),
+						annotationMediaSizes: pruneMediaSizes(
+							state.annotationMediaSizes,
+							removedIds,
+						),
 						draftDirtyByScene: (() => {
 							const next = { ...state.draftDirtyByScene };
 							delete next[id];
@@ -1070,26 +1196,39 @@ export const useViewerStore = create<ViewerState>()(
 				}
 			},
 			saveDraft: async (sceneId) => {
-				const applySuccess = (revision: number) => {
-					set((nextState) => ({
-						draftStatus: "idle",
-						draftError: null,
-						isAuthenticated: true,
-						draftRevisionByScene: {
-							...nextState.draftRevisionByScene,
-							[sceneId]: revision,
-						},
-						draftRevisionSourceByScene: {
-							...nextState.draftRevisionSourceByScene,
-							[sceneId]: "draft",
-						},
-						draftDirtyByScene: {
-							...nextState.draftDirtyByScene,
-							[sceneId]: hasPendingLocalImages(
-								sceneAnnotations(nextState.annotations, sceneId),
-							),
-						},
-					}));
+				const applySuccess = (
+					revision: number,
+					mutationVersionAtSnapshot: number,
+				) => {
+					set((nextState) => {
+						// If the scene was edited while the save request was in flight, the
+						// saved payload predates that edit, so the draft is still dirty. Only
+						// clear the flag when nothing changed since the payload snapshot.
+						const changedDuringSave =
+							(nextState.sceneMutationVersion[sceneId] ?? 0) !==
+							mutationVersionAtSnapshot;
+						return {
+							draftStatus: "idle",
+							draftError: null,
+							isAuthenticated: true,
+							draftRevisionByScene: {
+								...nextState.draftRevisionByScene,
+								[sceneId]: revision,
+							},
+							draftRevisionSourceByScene: {
+								...nextState.draftRevisionSourceByScene,
+								[sceneId]: "draft",
+							},
+							draftDirtyByScene: {
+								...nextState.draftDirtyByScene,
+								[sceneId]: changedDuringSave
+									? true
+									: hasPendingLocalImages(
+											sceneAnnotations(nextState.annotations, sceneId),
+										),
+							},
+						};
+					});
 				};
 
 				const applyFailure = (error: unknown) => {
@@ -1158,9 +1297,13 @@ export const useViewerStore = create<ViewerState>()(
 				let revision = expectedRevision ?? 0;
 
 				for (let attempt = 0; attempt < 3; attempt += 1) {
+					// Snapshot the scene's mutation version at the moment the payload is
+					// built so applySuccess can tell whether an edit landed mid-request.
+					const mutationVersionAtSnapshot =
+						get().sceneMutationVersion[sceneId] ?? 0;
 					try {
 						const result = await saveWithRevision(revision);
-						applySuccess(result.revision);
+						applySuccess(result.revision, mutationVersionAtSnapshot);
 						return result.revision;
 					} catch (error) {
 						const status = (error as Error & { status?: number }).status;
@@ -1198,6 +1341,12 @@ export const useViewerStore = create<ViewerState>()(
 					})),
 				);
 
+				// Local IndexedDB copies are only safe to delete once the draft that
+				// references their remote URLs has been persisted. Deleting earlier
+				// (e.g. on a partial-upload failure) would orphan blobs with no local
+				// fallback, so we defer every deletion until after saveDraft succeeds.
+				const uploadedLocalIdsToCleanup: string[] = [];
+
 				if (localImagesToUpload.length > 0) {
 					const uploadedByLocalId = new Map<string, AnnotationImage>();
 					const applyUploadedImages = () => {
@@ -1224,10 +1373,6 @@ export const useViewerStore = create<ViewerState>()(
 								sceneId,
 							),
 						}));
-
-						for (const localId of uploadedByLocalId.keys()) {
-							imageStorage.delete(localId).catch(console.error);
-						}
 					};
 
 					try {
@@ -1260,9 +1405,16 @@ export const useViewerStore = create<ViewerState>()(
 					}
 
 					applyUploadedImages();
+					uploadedLocalIdsToCleanup.push(...uploadedByLocalId.keys());
 				}
 
 				const revision = await get().saveDraft(sceneId);
+
+				// Draft (with remote image URLs) is now saved server-side, so the local
+				// copies are redundant and safe to remove.
+				for (const localId of uploadedLocalIdsToCleanup) {
+					imageStorage.delete(localId).catch(console.error);
+				}
 				const draftSnapshot = buildSceneDraftPayload(
 					get().annotations,
 					sceneId,
@@ -1344,6 +1496,15 @@ export const useViewerStore = create<ViewerState>()(
 					};
 				});
 			},
+			setDraftError: (message) =>
+				set((state) => ({
+					draftError: message,
+					draftStatus: message
+						? "error"
+						: state.draftStatus === "error"
+							? "idle"
+							: state.draftStatus,
+				})),
 			login: async (password) => {
 				await publishApi.login(password);
 				set({
@@ -1354,7 +1515,70 @@ export const useViewerStore = create<ViewerState>()(
 			},
 			logout: async () => {
 				await publishApi.logout();
-				set({ isAuthenticated: false, presentationMode: true });
+				set((state) => {
+					// Hide unpublished draft annotations from the logged-out viewer.
+					// Clear only scenes whose content came from a saved draft and that
+					// are NOT dirty, so the anonymous load effect refetches the release.
+					// Dirty scenes keep their local edits — never destroy unsaved work.
+					const clearedSceneIds = new Set<string>();
+					for (const sceneId of new Set(
+						state.annotations.map((annotation) => annotation.sceneId),
+					)) {
+						const isDirty = state.draftDirtyByScene[sceneId] ?? false;
+						const source = state.draftRevisionSourceByScene[sceneId];
+						if (!isDirty && source === "draft") {
+							clearedSceneIds.add(sceneId);
+						}
+					}
+
+					if (clearedSceneIds.size === 0) {
+						return { isAuthenticated: false, presentationMode: true };
+					}
+
+					const removedAnnotationIds = new Set(
+						state.annotations
+							.filter((annotation) => clearedSceneIds.has(annotation.sceneId))
+							.map((annotation) => annotation.id),
+					);
+
+					const nextRevisionByScene = { ...state.draftRevisionByScene };
+					const nextRevisionSourceByScene = {
+						...state.draftRevisionSourceByScene,
+					};
+					const nextDirtyByScene = { ...state.draftDirtyByScene };
+					let nextMutationVersion = state.sceneMutationVersion;
+					for (const sceneId of clearedSceneIds) {
+						delete nextRevisionByScene[sceneId];
+						delete nextRevisionSourceByScene[sceneId];
+						delete nextDirtyByScene[sceneId];
+						// Bump the mutation version so the load effect's dedup key changes
+						// and the anonymous release is refetched for this scene.
+						nextMutationVersion = bumpSceneMutationVersion(
+							nextMutationVersion,
+							sceneId,
+						);
+					}
+
+					return {
+						isAuthenticated: false,
+						presentationMode: true,
+						annotations: state.annotations.filter(
+							(annotation) => !clearedSceneIds.has(annotation.sceneId),
+						),
+						draftRevisionByScene: nextRevisionByScene,
+						draftRevisionSourceByScene: nextRevisionSourceByScene,
+						draftDirtyByScene: nextDirtyByScene,
+						sceneMutationVersion: nextMutationVersion,
+						selectedAnnotationId:
+							state.selectedAnnotationId &&
+							removedAnnotationIds.has(state.selectedAnnotationId)
+								? null
+								: state.selectedAnnotationId,
+						openAnnotationPanelIds: state.openAnnotationPanelIds.filter(
+							(id) => !removedAnnotationIds.has(id),
+						),
+					};
+				});
 			},
 			refreshAuthSession: async () => {
 				try {
@@ -1438,6 +1662,9 @@ export const useViewerStore = create<ViewerState>()(
 				const existing =
 					get().introPreset?.sceneId === sceneId ? get().introPreset : null;
 				const now = Date.now();
+				const existingAnnotationIds = new Set(
+					get().annotations.map((annotation) => annotation.id),
+				);
 				const preset: IntroPreset = {
 					version: 1,
 					sceneId,
@@ -1458,8 +1685,16 @@ export const useViewerStore = create<ViewerState>()(
 						openIds: get().openAnnotationPanelIds,
 						triggeredIds: scan.triggeredAnnotationIds,
 						activeId: scan.activeAnnotationId ?? get().selectedAnnotationId,
-						panelOffsets: { ...get().annotationPanelOffsets },
-						mediaSizes: { ...get().annotationMediaSizes },
+						panelOffsets: pickAnnotationMap(
+							get().annotationPanelOffsets,
+							(key) => key,
+							(annotationId) => existingAnnotationIds.has(annotationId),
+						),
+						mediaSizes: pickAnnotationMap(
+							get().annotationMediaSizes,
+							annotationIdFromMediaKey,
+							(annotationId) => existingAnnotationIds.has(annotationId),
+						),
 					},
 					ui: {
 						ctaLabel: existing?.ui.ctaLabel ?? "Continue Scan",

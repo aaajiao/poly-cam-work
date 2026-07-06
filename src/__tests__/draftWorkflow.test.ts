@@ -538,6 +538,244 @@ describe('viewerStore draft workflow', () => {
     expect(state.draftDirtyByScene['scan-a']).toBe(true)
   })
 
+  it('login-in-place then load fetches the server draft over release-sourced annotations (no silent overwrite)', async () => {
+    // Anonymous visit fell back to the release (cookie expired -> getDraft 401).
+    useViewerStore.setState({
+      isAuthenticated: false,
+      annotations: [
+        {
+          id: 'ann-from-release',
+          position: [0, 0, 0],
+          title: 'Release copy',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 5 },
+      draftRevisionSourceByScene: { 'scan-a': 'release' },
+      draftDirtyByScene: { 'scan-a': false },
+    })
+
+    vi.spyOn(publishApi, 'login').mockResolvedValue(undefined)
+    vi.spyOn(publishApi, 'getDraft').mockResolvedValue({
+      sceneId: 'scan-a',
+      revision: 6,
+      annotations: [
+        {
+          id: 'ann-unpublished-draft',
+          position: [1, 1, 1],
+          title: 'Unpublished draft edit',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      updatedAt: Date.now(),
+    })
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 7,
+    })
+
+    const store = useViewerStore.getState()
+    await store.login('secret')
+    // The App load effect now runs loadDraft after auth because the scene was
+    // release-sourced and not dirty.
+    await store.loadDraft('scan-a')
+
+    const state = useViewerStore.getState()
+    expect(state.annotations.map((a) => a.id)).toEqual(['ann-unpublished-draft'])
+    expect(state.draftRevisionSourceByScene['scan-a']).toBe('draft')
+    expect(state.draftRevisionByScene['scan-a']).toBe(6)
+
+    // A later save targets the loaded draft revision, so the unpublished server
+    // draft is not overwritten with release-derived content.
+    await useViewerStore.getState().saveDraft('scan-a')
+    expect(saveDraftSpy.mock.calls[0]?.[2]).toBe(6)
+    const savedPayload = saveDraftSpy.mock.calls[0]?.[1]
+    expect(savedPayload.annotations.map((a) => a.id)).toEqual([
+      'ann-unpublished-draft',
+    ])
+  })
+
+  it('saveDraft keeps dirty flag when the scene is edited during the in-flight request', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-inflight-base',
+          position: [0, 0, 0],
+          title: 'Base',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 3 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
+    })
+
+    const resolver: { current: ((value: { ok: true; revision: number }) => void) | null } = {
+      current: null,
+    }
+    const savePromise = new Promise<{ ok: true; revision: number }>((resolve) => {
+      resolver.current = resolve
+    })
+    vi.spyOn(publishApi, 'saveDraft').mockReturnValue(savePromise)
+
+    const { saveDraft, addAnnotation } = useViewerStore.getState()
+    const savePending = saveDraft('scan-a')
+
+    // A concurrent edit lands while the request is in flight; it is not part of
+    // the snapshotted payload, so the draft must remain dirty.
+    addAnnotation({
+      id: 'ann-inflight-edit',
+      position: [2, 2, 2],
+      title: 'Edited mid-save',
+      description: '',
+      images: [],
+      videoUrl: null,
+      links: [],
+      sceneId: 'scan-a',
+      createdAt: Date.now(),
+    })
+
+    if (!resolver.current) throw new Error('save resolver not initialized')
+    resolver.current({ ok: true, revision: 4 })
+    await savePending
+
+    const state = useViewerStore.getState()
+    expect(state.draftRevisionByScene['scan-a']).toBe(4)
+    expect(state.draftDirtyByScene['scan-a']).toBe(true)
+  })
+
+  it('publishDraft defers local image deletion so partial-upload failure keeps local copies', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-partial-1',
+          position: [0, 0, 0],
+          title: 'First',
+          description: '',
+          images: [{ filename: 'first.jpg', localId: 'local-first' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+        {
+          id: 'ann-partial-2',
+          position: [1, 1, 1],
+          title: 'Second',
+          description: '',
+          images: [{ filename: 'second.jpg', localId: 'local-second' }],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 0 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
+    })
+
+    vi.spyOn(imageStorage, 'get').mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }))
+    const deleteSpy = vi.spyOn(imageStorage, 'delete').mockResolvedValue()
+    vi.spyOn(vercelBlobImageStorage, 'upload')
+      .mockResolvedValueOnce({ filename: 'first.jpg', url: 'https://blob.example/first.jpg' })
+      .mockRejectedValueOnce(new Error('network down'))
+    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+      ok: true,
+      revision: 1,
+    })
+
+    const { publishDraft } = useViewerStore.getState()
+    await expect(publishDraft('scan-a')).rejects.toThrow('network down')
+
+    // saveDraft never ran, so no local copy may be deleted (retry-friendly).
+    expect(saveDraftSpy).not.toHaveBeenCalled()
+    expect(deleteSpy).not.toHaveBeenCalled()
+
+    // The successfully-uploaded image is still committed as a remote URL.
+    const first = useViewerStore
+      .getState()
+      .annotations.find((a) => a.id === 'ann-partial-1')
+    expect(first?.images[0]).toEqual({
+      filename: 'first.jpg',
+      url: 'https://blob.example/first.jpg',
+    })
+  })
+
+  it('logout clears non-dirty draft annotations but keeps dirty scene edits', async () => {
+    useViewerStore.setState({
+      isAuthenticated: true,
+      presentationMode: false,
+      annotations: [
+        {
+          id: 'ann-clean-draft',
+          position: [0, 0, 0],
+          title: 'Clean draft',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+        {
+          id: 'ann-dirty-draft',
+          position: [1, 1, 1],
+          title: 'Dirty draft',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-b',
+          createdAt: Date.now(),
+        },
+      ],
+      openAnnotationPanelIds: ['ann-clean-draft', 'ann-dirty-draft'],
+      selectedAnnotationId: 'ann-clean-draft',
+      draftRevisionByScene: { 'scan-a': 4, 'scan-b': 2 },
+      draftRevisionSourceByScene: { 'scan-a': 'draft', 'scan-b': 'draft' },
+      draftDirtyByScene: { 'scan-a': false, 'scan-b': true },
+      sceneMutationVersion: { 'scan-a': 1, 'scan-b': 1 },
+    })
+
+    vi.spyOn(publishApi, 'logout').mockResolvedValue(undefined)
+
+    await useViewerStore.getState().logout()
+
+    const state = useViewerStore.getState()
+    expect(state.isAuthenticated).toBe(false)
+    expect(state.presentationMode).toBe(true)
+
+    // Non-dirty draft scene is wiped so the anon effect refetches the release.
+    expect(state.annotations.some((a) => a.sceneId === 'scan-a')).toBe(false)
+    expect(state.draftRevisionSourceByScene['scan-a']).toBeUndefined()
+    expect(state.draftDirtyByScene['scan-a']).toBeUndefined()
+    expect(state.sceneMutationVersion['scan-a']).toBe(2)
+    expect(state.selectedAnnotationId).toBeNull()
+    expect(state.openAnnotationPanelIds).toEqual(['ann-dirty-draft'])
+
+    // Dirty scene keeps its unsaved local edits untouched.
+    expect(state.annotations.some((a) => a.id === 'ann-dirty-draft')).toBe(true)
+    expect(state.draftRevisionSourceByScene['scan-b']).toBe('draft')
+    expect(state.draftDirtyByScene['scan-b']).toBe(true)
+    expect(state.sceneMutationVersion['scan-b']).toBe(1)
+  })
+
   it('loadDraft keeps dirty state when user deletes last local annotation during in-flight request', async () => {
     const resolver: { current: ((value: SceneDraft) => void) | null } = { current: null }
     const draftPromise = new Promise<SceneDraft>((resolve) => {

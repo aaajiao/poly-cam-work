@@ -13,6 +13,9 @@ export default function App() {
 	const activeSceneId = useViewerStore((state) => state.activeSceneId);
 	const annotations = useViewerStore((state) => state.annotations);
 	const draftDirtyByScene = useViewerStore((state) => state.draftDirtyByScene);
+	const draftRevisionSourceByScene = useViewerStore(
+		(state) => state.draftRevisionSourceByScene,
+	);
 	const sceneMutationVersion = useViewerStore(
 		(state) => state.sceneMutationVersion,
 	);
@@ -49,10 +52,18 @@ export default function App() {
 		const isSceneDirty = draftDirtyByScene[activeSceneId] ?? false;
 		if (isSceneDirty) return;
 
+		// After logging in on a scene whose content was loaded from a release
+		// (anonymous fallback), we must still fetch the server draft so a later
+		// save does not silently overwrite it. The dirty guard above keeps us
+		// from clobbering local edits.
+		const revisionSource = draftRevisionSourceByScene[activeSceneId];
+		const shouldReloadReleaseAfterAuth =
+			isAuthenticated && revisionSource === "release";
+
 		const hasLocalSceneAnnotations = annotations.some(
 			(annotation) => annotation.sceneId === activeSceneId,
 		);
-		if (hasLocalSceneAnnotations) return;
+		if (hasLocalSceneAnnotations && !shouldReloadReleaseAfterAuth) return;
 
 		const authMode = isAuthenticated ? "auth" : "anon";
 		const loadKey = `${activeSceneId}:${authMode}:${activeSceneMutationVersion}`;
@@ -65,6 +76,7 @@ export default function App() {
 		activeSceneMutationVersion,
 		annotations,
 		draftDirtyByScene,
+		draftRevisionSourceByScene,
 		isAuthenticated,
 		loadDraft,
 	]);
@@ -83,8 +95,24 @@ export default function App() {
 	return (
 		<>
 			<Layout
-				sidebar={<Sidebar />}
-				toolbar={<Toolbar />}
+				sidebar={
+					<ErrorBoundary
+						fallback={
+							<div className="p-4 text-xs text-faint">Sidebar unavailable.</div>
+						}
+					>
+						<Sidebar />
+					</ErrorBoundary>
+				}
+				toolbar={
+					<ErrorBoundary
+						fallback={
+							<div className="px-2 text-xs text-faint">Toolbar unavailable.</div>
+						}
+					>
+						<Toolbar />
+					</ErrorBoundary>
+				}
 				statusBar={<StatusBar />}
 			>
 				<ErrorBoundary>

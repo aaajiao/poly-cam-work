@@ -137,6 +137,43 @@ describe('annotation store', () => {
     expect(state.openAnnotationPanelIds).toEqual([])
   })
 
+  it('camera controls lock stays disabled until every holder releases (ref-count)', () => {
+    useViewerStore.setState({
+      cameraControlsEnabled: true,
+      cameraControlsDisableCount: 0,
+    })
+    const { acquireCameraControlsLock, releaseCameraControlsLock } =
+      useViewerStore.getState()
+
+    // Two concurrent holders (e.g. two panels dragging/resizing at once).
+    acquireCameraControlsLock()
+    acquireCameraControlsLock()
+    expect(useViewerStore.getState().cameraControlsEnabled).toBe(false)
+    expect(useViewerStore.getState().cameraControlsDisableCount).toBe(2)
+
+    // Releasing one holder must NOT re-enable controls while the other is active.
+    releaseCameraControlsLock()
+    expect(useViewerStore.getState().cameraControlsEnabled).toBe(false)
+    expect(useViewerStore.getState().cameraControlsDisableCount).toBe(1)
+
+    // Last release re-enables.
+    releaseCameraControlsLock()
+    expect(useViewerStore.getState().cameraControlsEnabled).toBe(true)
+    expect(useViewerStore.getState().cameraControlsDisableCount).toBe(0)
+  })
+
+  it('camera controls release clamps the counter at zero', () => {
+    useViewerStore.setState({
+      cameraControlsEnabled: true,
+      cameraControlsDisableCount: 0,
+    })
+    const { releaseCameraControlsLock } = useViewerStore.getState()
+
+    releaseCameraControlsLock()
+    expect(useViewerStore.getState().cameraControlsDisableCount).toBe(0)
+    expect(useViewerStore.getState().cameraControlsEnabled).toBe(true)
+  })
+
   it('migrate v0→v1: text field becomes title with empty defaults', () => {
     const oldAnnotation = { id: 'old-1', position: [0, 0, 0], text: 'Old Label', sceneId: 'scan-a' }
     const migrated = applyV0ToV1Migration(oldAnnotation)

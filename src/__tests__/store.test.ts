@@ -201,6 +201,20 @@ describe("viewerStore", () => {
 				fov: 42,
 			},
 			viewMode: "both",
+			annotations: [
+				{
+					id: "ann-1",
+					sceneId: "scan-a",
+					position: [0, 0, 0],
+					normal: [0, 1, 0],
+					title: "Annotation 1",
+					description: "",
+					images: [],
+					videoUrl: null,
+					links: [],
+					createdAt: 1,
+				},
+			],
 			openAnnotationPanelIds: ["ann-1"],
 			selectedAnnotationId: "ann-1",
 			annotationPanelOffsets: { "ann-1": { x: 30, y: -20 } },
@@ -349,6 +363,124 @@ describe("viewerStore", () => {
 		});
 		expect(useViewerStore.getState().annotationMediaSizes).toEqual({
 			"ann-1:image": { width: 400, height: 250 },
+		});
+	});
+
+	it("removeAnnotation prunes its panel offset and media size entries", () => {
+		useViewerStore.setState({
+			annotations: [
+				{
+					id: "ann-1",
+					sceneId: "scan-a",
+					position: [0, 0, 0],
+					title: "Keep",
+					description: "",
+					images: [],
+					videoUrl: null,
+					links: [],
+					createdAt: 1,
+				},
+				{
+					id: "ann-2",
+					sceneId: "scan-a",
+					position: [1, 1, 1],
+					title: "Remove",
+					description: "",
+					images: [],
+					videoUrl: null,
+					links: [],
+					createdAt: 2,
+				},
+			],
+			annotationPanelOffsets: {
+				"ann-1": { x: 5, y: 5 },
+				"ann-2": { x: 9, y: 9 },
+			},
+			annotationMediaSizes: {
+				"ann-1:image": { width: 100 },
+				"ann-2:image": { width: 200 },
+				"ann-2:video": { height: 300 },
+			},
+		});
+
+		useViewerStore.getState().removeAnnotation("ann-2");
+
+		expect(useViewerStore.getState().annotationPanelOffsets).toEqual({
+			"ann-1": { x: 5, y: 5 },
+		});
+		expect(useViewerStore.getState().annotationMediaSizes).toEqual({
+			"ann-1:image": { width: 100 },
+		});
+	});
+
+	it("removeUploadedScene prunes offset and media size entries for its annotations", () => {
+		useViewerStore.setState({
+			uploadedScenes: [
+				{
+					id: "up-1",
+					name: "Uploaded",
+					glbUrl: "https://example.com/up.glb",
+					plyUrl: "https://example.com/up.ply",
+				},
+			],
+			annotations: [
+				{
+					id: "up-ann",
+					sceneId: "up-1",
+					position: [0, 0, 0],
+					title: "On uploaded scene",
+					description: "",
+					images: [],
+					videoUrl: null,
+					links: [],
+					createdAt: 1,
+				},
+			],
+			annotationPanelOffsets: { "up-ann": { x: 3, y: 3 } },
+			annotationMediaSizes: { "up-ann:video": { width: 50 } },
+		});
+
+		useViewerStore.getState().removeUploadedScene("up-1");
+
+		expect(useViewerStore.getState().annotationPanelOffsets).toEqual({});
+		expect(useViewerStore.getState().annotationMediaSizes).toEqual({});
+	});
+
+	it("captureIntroPreset drops offsets and sizes for annotations that no longer exist", async () => {
+		useViewerStore.setState({
+			runtimeCamera: { position: [0, 0, 1], target: [0, 0, 0], fov: 50 },
+			annotations: [
+				{
+					id: "real",
+					sceneId: "scan-a",
+					position: [0, 0, 0],
+					title: "Real",
+					description: "",
+					images: [],
+					videoUrl: null,
+					links: [],
+					createdAt: 1,
+				},
+			],
+			annotationPanelOffsets: {
+				real: { x: 1, y: 1 },
+				orphan: { x: 9, y: 9 },
+			},
+			annotationMediaSizes: {
+				"real:image": { width: 100 },
+				"orphan:image": { width: 999 },
+			},
+		});
+
+		vi.spyOn(introApi, "saveIntroDraft").mockImplementation(
+			async (_sceneId, preset) => preset,
+		);
+
+		const preset = await useViewerStore.getState().captureIntroPreset("scan-a");
+
+		expect(preset.annotations.panelOffsets).toEqual({ real: { x: 1, y: 1 } });
+		expect(preset.annotations.mediaSizes).toEqual({
+			"real:image": { width: 100 },
 		});
 	});
 
@@ -1511,6 +1643,77 @@ describe("viewerStore", () => {
 		expect(activeScene?.catalogSource).toBe("discovered");
 	});
 
+	it("loadCloudScenes preserves an in-flight syncing override", async () => {
+		useViewerStore.setState({ isAuthenticated: true });
+		vi.spyOn(publishApi, "getSession").mockResolvedValue({
+			authenticated: true,
+		});
+
+		// Upload never settles for the duration of the assertion, keeping the sync
+		// genuinely in flight.
+		let releaseUpload: (url: string) => void = () => {};
+		const pendingUpload = new Promise<string>((resolve) => {
+			releaseUpload = resolve;
+		});
+		vi.spyOn(vercelBlobModelStorage, "uploadFromUrl").mockReturnValue(
+			pendingUpload,
+		);
+		vi.spyOn(modelApi, "registerOfficialScene").mockResolvedValue({
+			id: "in-flight-scene",
+			name: "In Flight",
+			glbUrl: "https://blob.test/in-flight.glb",
+			plyUrl: "https://blob.test/in-flight.ply",
+			catalogSource: "published",
+		});
+		vi.spyOn(modelApi, "getModels").mockResolvedValue([]);
+
+		const { addDiscoveredScene, syncDiscoveredScene, loadCloudScenes } =
+			useViewerStore.getState();
+		addDiscoveredScene({
+			id: "in-flight-scene",
+			name: "In Flight",
+			glbUrl: "/models/in-flight.glb",
+			plyUrl: "/models/in-flight.ply",
+		});
+
+		const syncPromise = syncDiscoveredScene("in-flight-scene");
+		// syncDiscoveredScene awaits refreshAuthSession before flipping to syncing;
+		// let those microtasks settle (the upload stays pending).
+		await vi.waitFor(() =>
+			expect(
+				useViewerStore.getState().officialSceneSyncOverridesByScene[
+					"in-flight-scene"
+				],
+			).toBe("syncing"),
+		);
+
+		// A concurrent loader must NOT demote the genuinely in-flight sync to error.
+		await loadCloudScenes();
+		expect(
+			useViewerStore.getState().officialSceneSyncOverridesByScene[
+				"in-flight-scene"
+			],
+		).toBe("syncing");
+
+		releaseUpload("https://blob.test/in-flight.glb");
+		await syncPromise;
+	});
+
+	it("loadCloudScenes still recovers a stale (not in-flight) syncing override to error", async () => {
+		useViewerStore.setState({
+			officialSceneSyncOverridesByScene: { "stale-scene": "syncing" },
+		});
+		vi.spyOn(modelApi, "getModels").mockResolvedValue([]);
+
+		await useViewerStore.getState().loadCloudScenes();
+
+		expect(
+			useViewerStore.getState().officialSceneSyncOverridesByScene[
+				"stale-scene"
+			],
+		).toBe("error");
+	});
+
 	describe("discovered scenes validation", () => {
 		it("accepts valid GLB+PLY pair as one complete official scene", () => {
 			const { addDiscoveredScene } = useViewerStore.getState();
@@ -1742,7 +1945,7 @@ describe("viewerStore", () => {
 			expect(state.discoveredScenes[0].name).toBe("First Scene");
 		});
 
-		it("allows local discovered sceneId to coexist with published sceneId", () => {
+		it("rejects a discovered sceneId that collides with a published sceneId", () => {
 			const { addDiscoveredScene, addPublishedScene } =
 				useViewerStore.getState();
 
@@ -1761,11 +1964,34 @@ describe("viewerStore", () => {
 			});
 
 			const state = useViewerStore.getState();
-			expect(state.discoveredScenes).toHaveLength(1);
-			expect(state.discoveredScenes[0].officialStatus?.syncStatus).toBe(
-				"synced",
-			);
+			// A published scene owns the id; the colliding discovered scene must not
+			// shadow its cloud assets (resolveActiveSceneFromCatalog prioritizes
+			// discovered).
+			expect(state.discoveredScenes).toHaveLength(0);
 			expect(state.publishedScenes).toHaveLength(1);
+		});
+
+		it("rejects a discovered sceneId that collides with an uploaded sceneId", () => {
+			const { addDiscoveredScene, addUploadedScene } =
+				useViewerStore.getState();
+
+			addUploadedScene({
+				id: "uploaded-collision",
+				name: "Uploaded Scene",
+				glbUrl: "https://example.com/uploaded.glb",
+				plyUrl: "https://example.com/uploaded.ply",
+			});
+
+			addDiscoveredScene({
+				id: "uploaded-collision",
+				name: "Discovered Collision",
+				glbUrl: "/models/uploaded-collision.glb",
+				plyUrl: "/models/uploaded-collision.ply",
+			});
+
+			const state = useViewerStore.getState();
+			expect(state.discoveredScenes).toHaveLength(0);
+			expect(state.uploadedScenes).toHaveLength(1);
 		});
 
 		it("collision does not mutate state", () => {
