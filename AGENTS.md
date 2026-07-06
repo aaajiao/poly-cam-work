@@ -29,7 +29,7 @@ poly.cam/
 │   ├── shaders/           # scanRevealMesh, scanRevealPoints (GLSL via onBeforeCompile)
 │   ├── workers/           # ply-parser.worker.ts (off-thread PLY parsing)
 │   ├── types/             # All shared types (226L, serializable)
-│   └── __tests__/         # Unit (26 files, jsdom) + browser/ (8 files, Playwright)
+│   └── __tests__/         # Unit (30 files, jsdom) + browser/ (8 files, Playwright)
 ├── api/                   # Vercel Functions: auth, draft, publish, release, rollback, intro, models, media
 │   └── _lib/              # Shared: auth, http, blobStore, modelRegistry, discovery (9 files)
 ├── e2e/                   # Playwright smoke (app boot only)

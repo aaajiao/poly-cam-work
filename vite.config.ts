@@ -47,10 +47,6 @@ export default defineConfig({
             return 'react-three-vendor'
           }
 
-          if (id.includes('three-mesh-bvh')) {
-            return 'three-bvh-vendor'
-          }
-
           if (id.includes('/three/examples/jsm/')) {
             return 'three-examples-vendor'
           }
