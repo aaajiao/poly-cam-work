@@ -2,6 +2,10 @@ import { upload } from '@vercel/blob/client'
 
 type ModelFileKind = 'glb' | 'ply'
 
+// Scans can be gigabytes, so the ceiling is generous; it only exists to stop a
+// dead connection from wedging the upload forever, not to bound normal uploads.
+const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000
+
 function defaultFilename(kind: ModelFileKind) {
   return kind === 'glb' ? 'model.glb' : 'model.ply'
 }
@@ -41,6 +45,7 @@ class VercelBlobModelStorage {
     const result = await upload(pathname, normalizedFile, {
       access: 'public',
       handleUploadUrl: '/api/models/upload',
+      abortSignal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
       clientPayload: JSON.stringify({
         kind: params.kind,
         sceneKey,
@@ -54,6 +59,7 @@ class VercelBlobModelStorage {
     const response = await fetch(url, {
       credentials: 'omit',
       cache: 'no-store',
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
     })
 
     if (!response.ok) {

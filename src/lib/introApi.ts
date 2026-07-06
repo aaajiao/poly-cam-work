@@ -4,13 +4,20 @@ interface ApiErrorPayload {
 	error?: string;
 }
 
+// Default 30s timeout so a stalled connection surfaces as a normal failure
+// instead of leaving a caller hanging; overridable via init.signal.
+const DEFAULT_API_TIMEOUT_MS = 30_000;
+
 async function requestJson<T>(
 	input: RequestInfo,
 	init?: RequestInit,
 ): Promise<T> {
+	// A stalled connection rejects with a TimeoutError that propagates as a
+	// normal failure instead of hanging. Overridable via init.signal.
 	const response = await fetch(input, {
 		credentials: "include",
 		...init,
+		signal: init?.signal ?? AbortSignal.timeout(DEFAULT_API_TIMEOUT_MS),
 	});
 
 	if (!response.ok) {

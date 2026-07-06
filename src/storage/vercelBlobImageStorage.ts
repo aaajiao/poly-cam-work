@@ -1,5 +1,9 @@
 import { upload } from '@vercel/blob/client'
 
+// Generous ceiling: annotation media is small, but a hung connection must not
+// wait forever. Uploads normally finish in seconds; this only bounds the stall.
+const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000
+
 interface UploadMetadata {
   sceneId: string
   annotationId: string
@@ -48,6 +52,7 @@ class VercelBlobImageStorage {
     const result = await upload(pathname, blob, {
       access: 'public',
       handleUploadUrl: '/api/media/upload',
+      abortSignal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
       clientPayload: JSON.stringify({
         sceneId,
         annotationId,

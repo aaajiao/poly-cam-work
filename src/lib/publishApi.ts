@@ -38,6 +38,11 @@ interface ApiErrorPayload {
 	error?: string;
 }
 
+// JSON API calls should fail loudly rather than wedge a UI state (e.g.
+// draftStatus stuck at 'saving') when a connection stalls. Default 30s,
+// overridable by passing an explicit `signal` in init.
+const DEFAULT_API_TIMEOUT_MS = 30_000;
+
 function isApiRequest(input: RequestInfo): boolean {
 	if (typeof input === "string") {
 		return input.startsWith("/api/");
@@ -59,9 +64,13 @@ async function requestJson<T>(
 	input: RequestInfo,
 	init?: RequestInit,
 ): Promise<T> {
+	// A stalled connection surfaces as a rejected fetch (TimeoutError) that
+	// propagates through the same path as any other failure, so callers never
+	// wedge (e.g. draftStatus stuck at 'saving'). Overridable via init.signal.
 	const response = await fetch(input, {
 		credentials: "include",
 		...init,
+		signal: init?.signal ?? AbortSignal.timeout(DEFAULT_API_TIMEOUT_MS),
 	});
 
 	if (!response.ok) {

@@ -10,6 +10,7 @@ interface FakeRequest {
   onupgradeneeded: ((event: { target: { result: FakeDB } }) => void) | null
   onsuccess: (() => void) | null
   onerror: (() => void) | null
+  onblocked: (() => void) | null
   result: FakeDB
   error: unknown
 }
@@ -36,10 +37,12 @@ interface FakeReadReq {
   result: unknown
 }
 
-function createMock(options: { transactionThrowsOnce?: boolean } = {}) {
+function createMock(options: { transactionThrowsOnce?: boolean; blockFirstOpen?: boolean } = {}) {
   let openCount = 0
   let throwArmed = options.transactionThrowsOnce ?? false
+  let blockArmed = options.blockFirstOpen ?? false
   const dbs: FakeDB[] = []
+  let lastRequest: FakeRequest | null = null
 
   function makeDB(): FakeDB {
     const db: FakeDB = {
@@ -83,10 +86,19 @@ function createMock(options: { transactionThrowsOnce?: boolean } = {}) {
         onupgradeneeded: null,
         onsuccess: null,
         onerror: null,
+        onblocked: null,
         result: db,
         error: null,
       }
-      queueMicrotask(() => request.onsuccess?.())
+      lastRequest = request
+      if (blockArmed) {
+        // First open is blocked by an older connection; fire onblocked instead
+        // of onsuccess and let the test drive it.
+        blockArmed = false
+        queueMicrotask(() => request.onblocked?.())
+      } else {
+        queueMicrotask(() => request.onsuccess?.())
+      }
       return request
     },
   }
@@ -98,6 +110,9 @@ function createMock(options: { transactionThrowsOnce?: boolean } = {}) {
     },
     get lastDB() {
       return dbs[dbs.length - 1]
+    },
+    get lastRequest() {
+      return lastRequest
     },
   }
 }
@@ -147,6 +162,22 @@ describe('IndexedDBImageStorage connection lifecycle', () => {
     expect(result).toBeNull()
     // First open succeeds, its transaction() throws InvalidStateError, so the
     // stale handle is dropped and a second connection is opened to retry.
+    expect(mock.openCount).toBe(2)
+  })
+
+  it('rejects and clears the memoized promise when the open is blocked (F13)', async () => {
+    const mock = createMock({ blockFirstOpen: true })
+    vi.stubGlobal('indexedDB', mock.indexedDB)
+    const storage = new IndexedDBImageStorage()
+
+    // First open is blocked by an older connection -> the op fails loudly
+    // instead of hanging forever.
+    await expect(storage.get('a')).rejects.toThrow(/blocked by another open tab/)
+    expect(mock.openCount).toBe(1)
+
+    // The memoized promise was cleared, so a later retry re-opens and succeeds.
+    const result = await storage.get('b')
+    expect(result).toBeNull()
     expect(mock.openCount).toBe(2)
   })
 

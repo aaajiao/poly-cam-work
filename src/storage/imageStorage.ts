@@ -68,6 +68,18 @@ export class IndexedDBImageStorage implements ImageStorage {
         this.db = db
         resolve(db)
       }
+      request.onblocked = () => {
+        // A newer DB_VERSION upgrade is blocked by an old connection in another
+        // tab. Without this the open request never settles and every image op
+        // hangs forever. Clear the memoized promise so a later retry can succeed
+        // once the other tab releases its connection (F13).
+        this.dbPromise = null
+        reject(
+          new Error(
+            'IndexedDB upgrade blocked by another open tab. Close other tabs and retry.'
+          )
+        )
+      }
       request.onerror = () => {
         this.dbPromise = null
         reject(request.error)
