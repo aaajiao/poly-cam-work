@@ -4,12 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useViewerStore } from "@/store/viewerStore";
 import type { Annotation } from "@/types";
+import { CLIP_SCENE_HALF } from "@/utils/sceneConstants";
 import { resolveThemeColor } from "@/utils/themeColors";
 import { AnnotationMarker } from "./AnnotationMarker";
 
 const MAX_HTML_MARKERS = 15;
-// Must match ClippingPlane.tsx SCENE_HALF — both must agree on the world-space mapping
-const CLIP_SCENE_HALF = 15;
 const NOOP_RAYCAST: THREE.Object3D["raycast"] = () => {};
 
 export function AnnotationMarkers() {

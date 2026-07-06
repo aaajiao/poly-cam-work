@@ -26,6 +26,7 @@ interface CompletedMeasurement {
 export function MeasurementTool() {
 	const toolMode = useViewerStore((s) => s.toolMode);
 	const presentationMode = useViewerStore((s) => s.presentationMode);
+	const activeSceneId = useViewerStore((s) => s.activeSceneId);
 	const addMeasurement = useViewerStore((s) => s.addMeasurement);
 	const { camera, scene, gl } = useThree();
 	const raycasterRef = useRef(new THREE.Raycaster());
@@ -121,6 +122,13 @@ export function MeasurementTool() {
 			setCompletedMeasurements([]);
 		}
 	}, [isActive]);
+
+	// setActiveScene clears store measurements; drop the local viewport visuals
+	// too so stale lines at the previous scene's world coords don't linger.
+	useEffect(() => {
+		setCompletedMeasurements([]);
+		setPendingPoint(null);
+	}, [activeSceneId]);
 
 	if (!isActive) return null;
 

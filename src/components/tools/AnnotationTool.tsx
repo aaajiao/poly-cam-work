@@ -40,12 +40,17 @@ export function AnnotationTool() {
 			const hit = intersects[0];
 			const hitPoint = hit.point.clone();
 
-			const normal = hit.face?.normal
-				? hit.face.normal.clone()
-				: camera.position
+			// hit.face.normal is in the hit object's local space; transform it into
+			// world space with the object's normal matrix so nodes with non-identity
+			// world rotation/scale store a correct world-space normal.
+			const normal = hit.face
+				? hit.face.normal
 						.clone()
-						.sub(new THREE.Vector3(hitPoint.x, hitPoint.y, hitPoint.z))
-						.normalize();
+						.applyNormalMatrix(
+							new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld),
+						)
+						.normalize()
+				: camera.position.clone().sub(hitPoint).normalize();
 
 			setPendingAnnotationInput({
 				screenPos: { x: e.clientX, y: e.clientY },

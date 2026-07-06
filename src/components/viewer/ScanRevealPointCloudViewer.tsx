@@ -58,9 +58,13 @@ export function ScanRevealPointCloudViewer({
 		onBoundsReady(bounds);
 	}, [geometry, onBoundsReady]);
 
+	// pointSize is intentionally excluded from the deps: it only seeds the
+	// material's initial uPointSize. The effect below keeps uPointSize in sync on
+	// every change, so keeping it here would recompile the GLSL on each slider
+	// tick and hitch the frame while dragging.
 	const material = useMemo(
 		() => createScanPointsMaterial(uniforms, pointSize),
-		[uniforms, pointSize],
+		[uniforms],
 	);
 
 	useEffect(() => {

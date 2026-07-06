@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { useViewerStore } from '@/store/viewerStore'
+import { CLIP_SCENE_HALF } from '@/utils/sceneConstants'
 
 export function ClippingPlaneController() {
   const { gl, scene } = useThree()
@@ -30,9 +31,8 @@ export function ClippingPlaneController() {
       return
     }
 
-    // position (0–1) maps to world range [-SCENE_HALF, +SCENE_HALF]
-    const SCENE_HALF = 15
-    const worldPos = (clipPlane.position - 0.5) * 2 * SCENE_HALF
+    // position (0–1) maps to world range [-CLIP_SCENE_HALF, +CLIP_SCENE_HALF]
+    const worldPos = (clipPlane.position - 0.5) * 2 * CLIP_SCENE_HALF
 
     let normal: THREE.Vector3
     switch (clipPlane.axis) {
