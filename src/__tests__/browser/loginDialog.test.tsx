@@ -12,6 +12,7 @@ vi.mock('@/lib/publishApi', () => ({
   logout: vi.fn(),
   getDraft: vi.fn(),
   saveDraft: vi.fn(),
+  saveAndPublishDraft: vi.fn(),
   publishDraft: vi.fn(),
   getPublishedVersions: vi.fn(),
   deletePublishedVersion: vi.fn(),
@@ -49,6 +50,7 @@ function resetStore() {
     selectedAnnotationId: null,
     sceneMutationVersion: {},
     draftRevisionByScene: {},
+    draftEtagByScene: {},
     draftRevisionSourceByScene: {},
     loadRequestVersionByScene: {},
   })
@@ -141,7 +143,7 @@ describe('browser login dialog logout flow', () => {
       draftRevisionByScene: { 'scan-a': 3 },
       draftRevisionSourceByScene: { 'scan-a': 'draft' },
     })
-    mockSaveDraft.mockResolvedValue({ ok: true, revision: 4 })
+    mockSaveDraft.mockResolvedValue({ ok: true, revision: 4, etag: 'etag-4' })
 
     const screen = await render(<LoginDialog />)
     await screen.getByTestId('logout-button').click()
@@ -181,7 +183,7 @@ describe('browser login dialog logout flow', () => {
       filename: 'pending.jpg',
       url: 'https://blob.example/pending.jpg',
     })
-    mockSaveDraft.mockResolvedValue({ ok: true, revision: 4 })
+    mockSaveDraft.mockResolvedValue({ ok: true, revision: 4, etag: 'etag-4' })
 
     const screen = await render(<LoginDialog />)
     await screen.getByTestId('logout-button').click()

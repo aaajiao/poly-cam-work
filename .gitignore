@@ -22,6 +22,7 @@ test-results/
 
 # OS files
 .DS_Store
+Icon?
 
 # IDE and local config
 .claude/

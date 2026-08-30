@@ -1,8 +1,7 @@
 import { BlobPreconditionFailedError } from "@vercel/blob";
-import type { SceneDraft } from "../../src/types";
+import type { SceneDraft } from "../../src/types/index.js";
 import { requireAuth } from "../_lib/auth.js";
 import {
-	readJsonBlob,
 	readJsonBlobWithEtag,
 	writeJsonBlobIfMatch,
 } from "../_lib/blobStore.js";
@@ -14,6 +13,10 @@ import {
 	unauthorized,
 } from "../_lib/http.js";
 import {
+	createSceneRelease,
+	ReleaseVersionConflictError,
+} from "../_lib/publishRelease.js";
+import {
 	collectImagePathnamesFromDraft,
 	reconcileSceneImageAssets,
 } from "../_lib/sceneAssetCleanup.js";
@@ -21,6 +24,9 @@ import {
 interface SaveDraftBody {
 	draft?: SceneDraft;
 	expectedRevision?: number;
+	expectedEtag?: string | null;
+	publish?: boolean;
+	message?: string;
 }
 
 function extractSceneId(pathname: string) {
@@ -58,8 +64,12 @@ async function handler(request: Request) {
 	}
 
 	if (request.method === "GET") {
-		const draft = await readJsonBlob<SceneDraft>(draftPath(sceneId));
-		return jsonResponse(draft ?? createEmptyDraft(sceneId));
+		const { value: draft, etag } =
+			await readJsonBlobWithEtag<SceneDraft>(draftPath(sceneId));
+		return jsonResponse(draft ?? createEmptyDraft(sceneId), 200, {
+			"Cache-Control": "no-store",
+			"X-Draft-ETag": etag ?? "",
+		});
 	}
 
 	const body = (await request.json().catch(() => null)) as SaveDraftBody | null;
@@ -67,16 +77,45 @@ async function handler(request: Request) {
 		return badRequest("draft and expectedRevision are required");
 	}
 
-	const { value: persistedDraft, etag } =
-		await readJsonBlobWithEtag<SceneDraft>(draftPath(sceneId));
-	const currentDraft = persistedDraft ?? createEmptyDraft(sceneId);
-	if (body.expectedRevision !== currentDraft.revision) {
-		return conflict("Revision mismatch");
+	const hasExpectedEtag = Object.prototype.hasOwnProperty.call(
+		body,
+		"expectedEtag",
+	);
+	if (
+		hasExpectedEtag &&
+		body.expectedEtag !== null &&
+		(typeof body.expectedEtag !== "string" || body.expectedEtag.length === 0)
+	) {
+		return badRequest("expectedEtag must be a non-empty string or null");
 	}
 
-	const previousImagePathnames = collectImagePathnamesFromDraft(currentDraft);
+	let etag: string | null;
+	let nextRevision: number;
+	let previousImagePathnames: string[];
+	if (hasExpectedEtag) {
+		if (body.draft.revision !== body.expectedRevision) {
+			return conflict("Revision mismatch");
+		}
+		// A prior GET/PUT returned this ETag together with its revision (null means
+		// the GET confirmed no draft exists). Carry the pair forward and write
+		// directly under CAS so an immediate save never needs a stale public body.
+		etag = body.expectedEtag as string | null;
+		nextRevision = body.expectedRevision + 1;
+		previousImagePathnames = [];
+	} else {
+		// Backward-compatible path for clients that do not yet carry ETags. The
+		// helper pairs the body with that same response's ETag, never head()'s ETag.
+		const persisted = await readJsonBlobWithEtag<SceneDraft>(draftPath(sceneId));
+		const currentDraft = persisted.value ?? createEmptyDraft(sceneId);
+		if (body.expectedRevision !== currentDraft.revision) {
+			return conflict("Revision mismatch");
+		}
 
-	const nextRevision = currentDraft.revision + 1;
+		etag = persisted.etag;
+		nextRevision = currentDraft.revision + 1;
+		previousImagePathnames = collectImagePathnamesFromDraft(currentDraft);
+	}
+
 	const nextDraft: SceneDraft = {
 		...body.draft,
 		sceneId,
@@ -85,12 +124,20 @@ async function handler(request: Request) {
 	};
 	const nextImagePathnames = collectImagePathnamesFromDraft(nextDraft);
 
-	// The revision check above is TOCTOU: two concurrent same-revision PUTs both
-	// pass it. The ifMatch precondition closes the race — only one write lands;
-	// the loser sees a changed ETag and gets the same 409 it would have gotten
-	// had it read the already-incremented revision.
+	// The legacy revision check is TOCTOU: two concurrent same-revision PUTs can
+	// both pass it. The carried-ETag path intentionally skips that read, but both
+	// paths write under ifMatch, so only one concurrent write can land.
+	let nextEtag: string;
 	try {
-		await writeJsonBlobIfMatch(draftPath(sceneId), nextDraft, etag);
+		const writeResult = await writeJsonBlobIfMatch(
+			draftPath(sceneId),
+			nextDraft,
+			etag,
+		);
+		if (typeof writeResult.etag !== "string" || writeResult.etag.length === 0) {
+			throw new Error("Draft write response did not include an ETag");
+		}
+		nextEtag = writeResult.etag;
 	} catch (error) {
 		if (error instanceof BlobPreconditionFailedError) {
 			return conflict("Revision mismatch");
@@ -108,7 +155,28 @@ async function handler(request: Request) {
 		console.error("Failed to reconcile scene images after draft save", error);
 	}
 
-	return jsonResponse({ ok: true, revision: nextRevision });
+	if (body.publish === true) {
+		try {
+			const { version } = await createSceneRelease({
+				sceneId,
+				draft: nextDraft,
+				message: body.message,
+			});
+			return jsonResponse({
+				ok: true,
+				revision: nextRevision,
+				etag: nextEtag,
+				version,
+			});
+		} catch (error) {
+			if (error instanceof ReleaseVersionConflictError) {
+				return conflict(error.message);
+			}
+			throw error;
+		}
+	}
+
+	return jsonResponse({ ok: true, revision: nextRevision, etag: nextEtag });
 }
 
 export default { fetch: handler };

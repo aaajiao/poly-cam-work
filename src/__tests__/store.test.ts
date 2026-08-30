@@ -45,6 +45,7 @@ describe("viewerStore", () => {
 			introLoadRequestId: 0,
 			sceneMutationVersion: {},
 			draftRevisionByScene: {},
+			draftEtagByScene: {},
 			draftRevisionSourceByScene: {},
 			draftDirtyByScene: {},
 			publishedVersionByScene: {},
@@ -581,6 +582,28 @@ describe("viewerStore", () => {
 		};
 
 		expect(persisted.state.activeSceneId).toBe("scan-c");
+	});
+
+	it("persists the draft ETag with its scene revision", () => {
+		useViewerStore.setState({
+			draftRevisionByScene: { "scan-b": 4 },
+			draftEtagByScene: { "scan-b": "etag-scan-b-4" },
+		});
+
+		const persistedRaw = localStorage.getItem("polycam-viewer-state");
+		expect(persistedRaw).not.toBeNull();
+
+		const persisted = JSON.parse(persistedRaw as string) as {
+			state: {
+				draftRevisionByScene?: Record<string, number>;
+				draftEtagByScene?: Record<string, string | null>;
+			};
+		};
+
+		expect(persisted.state.draftRevisionByScene?.["scan-b"]).toBe(4);
+		expect(persisted.state.draftEtagByScene?.["scan-b"]).toBe(
+			"etag-scan-b-4",
+		);
 	});
 
 	it("setActiveScene clears prior draftStatus/draftError banner state", () => {

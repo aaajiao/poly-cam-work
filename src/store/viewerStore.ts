@@ -61,6 +61,16 @@ type DraftStatus = "idle" | "loading" | "saving" | "error" | "conflict";
 type DraftRevisionSource = "draft" | "release";
 type IntroPresetStatus = "idle" | "loading" | "saving" | "error";
 
+interface SaveDraftOptions {
+	publish?: boolean;
+	message?: string;
+}
+
+interface SaveDraftOperationResult {
+	revision: number;
+	version?: number;
+}
+
 function bumpSceneMutationVersion(
 	versions: Record<string, number>,
 	sceneId: string,
@@ -69,6 +79,25 @@ function bumpSceneMutationVersion(
 		...versions,
 		[sceneId]: (versions[sceneId] ?? 0) + 1,
 	};
+}
+
+function setSceneDraftEtag(
+	etags: Record<string, string | null>,
+	sceneId: string,
+	etag: string | null | undefined,
+): Record<string, string | null> {
+	if (etag === undefined) return etags;
+	return { ...etags, [sceneId]: etag };
+}
+
+function clearSceneDraftEtag(
+	etags: Record<string, string | null>,
+	sceneId: string,
+): Record<string, string | null> {
+	if (!Object.prototype.hasOwnProperty.call(etags, sceneId)) return etags;
+	const next = { ...etags };
+	delete next[sceneId];
+	return next;
 }
 
 // Scene ids whose sync upload is actually running right now. Used to keep an
@@ -176,6 +205,7 @@ interface ViewerState {
 	draftError: string | null;
 	isAuthenticated: boolean;
 	draftRevisionByScene: Record<string, number>;
+	draftEtagByScene: Record<string, string | null>;
 	draftRevisionSourceByScene: Record<string, DraftRevisionSource>;
 	draftDirtyByScene: Record<string, boolean>;
 	publishedVersionByScene: Record<string, number>;
@@ -252,7 +282,10 @@ interface ViewerState {
 	syncPresetScenesToCloud: () => Promise<ScanScene[]>;
 	loadDraft: (sceneId: string) => Promise<void>;
 	loadPublishedVersions: (sceneId: string) => Promise<void>;
-	saveDraft: (sceneId: string) => Promise<number>;
+	saveDraft: (
+		sceneId: string,
+		options?: SaveDraftOptions,
+	) => Promise<SaveDraftOperationResult>;
 	saveDraftWithImages: (sceneId: string) => Promise<number>;
 	uploadPendingLocalImages: (sceneId: string) => Promise<string[]>;
 	publishDraft: (sceneId: string, message?: string) => Promise<number>;
@@ -330,6 +363,7 @@ export const useViewerStore = create<ViewerState>()(
 			draftError: null,
 			isAuthenticated: false,
 			draftRevisionByScene: {},
+			draftEtagByScene: {},
 			draftRevisionSourceByScene: {},
 			draftDirtyByScene: {},
 			publishedVersionByScene: {},
@@ -1057,10 +1091,9 @@ export const useViewerStore = create<ViewerState>()(
 					},
 				}));
 				try {
-					const draft = normalizeDraft(
-						sceneId,
-						await publishApi.getDraft(sceneId),
-					);
+					const draftResponse = await publishApi.getDraft(sceneId);
+					const draft = normalizeDraft(sceneId, draftResponse);
+					const draftEtag = draftResponse.draftEtag;
 
 					if (
 						(get().loadRequestVersionByScene[sceneId] ?? 0) !== requestVersion
@@ -1080,6 +1113,11 @@ export const useViewerStore = create<ViewerState>()(
 								...state.draftRevisionByScene,
 								[sceneId]: draft.revision,
 							},
+							draftEtagByScene: setSceneDraftEtag(
+								state.draftEtagByScene,
+								sceneId,
+								draftEtag,
+							),
 							draftRevisionSourceByScene: {
 								...state.draftRevisionSourceByScene,
 								[sceneId]: "draft",
@@ -1101,6 +1139,11 @@ export const useViewerStore = create<ViewerState>()(
 							...state.draftRevisionByScene,
 							[sceneId]: draft.revision,
 						},
+						draftEtagByScene: setSceneDraftEtag(
+							state.draftEtagByScene,
+							sceneId,
+							draftEtag,
+						),
 						draftRevisionSourceByScene: {
 							...state.draftRevisionSourceByScene,
 							[sceneId]: "draft",
@@ -1153,6 +1196,10 @@ export const useViewerStore = create<ViewerState>()(
 								...state.draftRevisionByScene,
 								[sceneId]: release.revision,
 							},
+							draftEtagByScene: clearSceneDraftEtag(
+								state.draftEtagByScene,
+								sceneId,
+							),
 							draftRevisionSourceByScene: {
 								...state.draftRevisionSourceByScene,
 								[sceneId]: "release",
@@ -1174,6 +1221,10 @@ export const useViewerStore = create<ViewerState>()(
 							...state.draftRevisionByScene,
 							[sceneId]: release.revision,
 						},
+						draftEtagByScene: clearSceneDraftEtag(
+							state.draftEtagByScene,
+							sceneId,
+						),
 						draftRevisionSourceByScene: {
 							...state.draftRevisionSourceByScene,
 							[sceneId]: "release",
@@ -1197,9 +1248,10 @@ export const useViewerStore = create<ViewerState>()(
 					});
 				}
 			},
-			saveDraft: async (sceneId) => {
+			saveDraft: async (sceneId, options) => {
 				const applySuccess = (
 					revision: number,
+					etag: string,
 					mutationVersionAtSnapshot: number,
 				) => {
 					set((nextState) => {
@@ -1216,6 +1268,10 @@ export const useViewerStore = create<ViewerState>()(
 							draftRevisionByScene: {
 								...nextState.draftRevisionByScene,
 								[sceneId]: revision,
+							},
+							draftEtagByScene: {
+								...nextState.draftEtagByScene,
+								[sceneId]: etag,
 							},
 							draftRevisionSourceByScene: {
 								...nextState.draftRevisionSourceByScene,
@@ -1264,26 +1320,53 @@ export const useViewerStore = create<ViewerState>()(
 					return buildSceneDraftPayload(get().annotations, sceneId, revision);
 				};
 
-				const saveWithRevision = async (revision: number) => {
+				const saveWithRevision = async (
+					revision: number,
+					etag: string | null | undefined,
+				) => {
 					const draft = buildDraft(revision);
-					return publishApi.saveDraft(sceneId, draft, revision);
+					if (options?.publish) {
+						return publishApi.saveAndPublishDraft(
+							sceneId,
+							draft,
+							revision,
+							etag,
+							options.message,
+						);
+					}
+					return publishApi.saveDraft(sceneId, draft, revision, etag);
 				};
 
 				let expectedRevision = get().draftRevisionByScene[sceneId];
+				const draftEtags = get().draftEtagByScene;
+				const hasExpectedEtag = Object.prototype.hasOwnProperty.call(
+					draftEtags,
+					sceneId,
+				);
+				let expectedEtag = hasExpectedEtag
+					? draftEtags[sceneId]
+					: undefined;
 				const revisionSource = get().draftRevisionSourceByScene[sceneId];
 
 				if (
 					typeof expectedRevision !== "number" ||
-					revisionSource !== "draft"
+					revisionSource !== "draft" ||
+					(options?.publish && !hasExpectedEtag)
 				) {
 					try {
 						const remoteDraft = await publishApi.getDraft(sceneId);
 						expectedRevision = remoteDraft.revision;
+						expectedEtag = remoteDraft.draftEtag;
 						set((state) => ({
 							draftRevisionByScene: {
 								...state.draftRevisionByScene,
 								[sceneId]: remoteDraft.revision,
 							},
+							draftEtagByScene: setSceneDraftEtag(
+								state.draftEtagByScene,
+								sceneId,
+								remoteDraft.draftEtag,
+							),
 							draftRevisionSourceByScene: {
 								...state.draftRevisionSourceByScene,
 								[sceneId]: "draft",
@@ -1291,12 +1374,14 @@ export const useViewerStore = create<ViewerState>()(
 						}));
 					} catch {
 						expectedRevision = 0;
+						expectedEtag = undefined;
 					}
 				}
 
 				set({ draftStatus: "saving", draftError: null });
 
 				let revision = expectedRevision ?? 0;
+				let etag = expectedEtag;
 
 				for (let attempt = 0; attempt < 3; attempt += 1) {
 					// Snapshot the scene's mutation version at the moment the payload is
@@ -1304,9 +1389,19 @@ export const useViewerStore = create<ViewerState>()(
 					const mutationVersionAtSnapshot =
 						get().sceneMutationVersion[sceneId] ?? 0;
 					try {
-						const result = await saveWithRevision(revision);
-						applySuccess(result.revision, mutationVersionAtSnapshot);
-						return result.revision;
+						const result = await saveWithRevision(revision, etag);
+						if (
+							options?.publish &&
+							(!("version" in result) || typeof result.version !== "number")
+						) {
+							throw new Error("Publish response did not include a version");
+						}
+						applySuccess(
+							result.revision,
+							result.etag,
+							mutationVersionAtSnapshot,
+						);
+						return result;
 					} catch (error) {
 						const status = (error as Error & { status?: number }).status;
 						if (status !== 409) {
@@ -1317,6 +1412,18 @@ export const useViewerStore = create<ViewerState>()(
 						try {
 							const remoteDraft = await publishApi.getDraft(sceneId);
 							revision = remoteDraft.revision;
+							etag = remoteDraft.draftEtag;
+							set((state) => ({
+								draftRevisionByScene: {
+									...state.draftRevisionByScene,
+									[sceneId]: remoteDraft.revision,
+								},
+								draftEtagByScene: setSceneDraftEtag(
+									state.draftEtagByScene,
+									sceneId,
+									remoteDraft.draftEtag,
+								),
+							}));
 						} catch (refreshError) {
 							applyFailure(refreshError);
 							throw refreshError;
@@ -1427,7 +1534,7 @@ export const useViewerStore = create<ViewerState>()(
 				const uploadedLocalIdsToCleanup =
 					await get().uploadPendingLocalImages(sceneId);
 
-				const revision = await get().saveDraft(sceneId);
+				const { revision } = await get().saveDraft(sceneId);
 
 				// Draft (with remote image URLs) is now saved server-side, so the local
 				// copies are redundant and safe to remove. On any failure above this
@@ -1442,45 +1549,49 @@ export const useViewerStore = create<ViewerState>()(
 				const uploadedLocalIdsToCleanup =
 					await get().uploadPendingLocalImages(sceneId);
 
-				const revision = await get().saveDraft(sceneId);
+				// Save and publish in one server request. The draft route creates the
+				// release directly from the nextDraft that won the CAS write, avoiding a
+				// read-after-overwrite through the public Blob CDN (which may stay stale).
+				const result = await get().saveDraft(sceneId, {
+					publish: true,
+					message,
+				});
+				const version = result.version;
+				if (typeof version !== "number") {
+					throw new Error("Publish response did not include a version");
+				}
 
-				// Draft (with remote image URLs) is now saved server-side, so the local
-				// copies are redundant and safe to remove.
+				// The draft and release now both reference the remote image URLs, so the
+				// local copies are redundant and safe to remove.
 				for (const localId of uploadedLocalIdsToCleanup) {
 					imageStorage.delete(localId).catch(console.error);
 				}
-				// Publish the draft we just persisted under CAS — the server loads the
-				// stored draft at `expectedRevision` and publishes it. Sending no draft
-				// body means a "posted draft fails validation" failure can never occur,
-				// and what ships is exactly what saveDraft just wrote.
-				const result = await publishApi.publishDraft(sceneId, {
-					message,
-					expectedRevision: revision,
-				});
 				set((state) => ({
 					isAuthenticated: true,
 					publishedVersionByScene: {
 						...state.publishedVersionByScene,
-						[sceneId]: result.version,
+						[sceneId]: version,
 					},
 					publishedVersionsByScene: {
 						...state.publishedVersionsByScene,
 						[sceneId]: Array.from(
 							new Set([
-								result.version,
+								version,
 								...(state.publishedVersionsByScene[sceneId] ?? []),
 							]),
 						).sort((a, b) => b - a),
 					},
-					draftDirtyByScene: {
-						...state.draftDirtyByScene,
-						[sceneId]: false,
-					},
 				}));
-				return result.version;
+				return version;
 			},
 			rollbackToVersion: async (sceneId, version) => {
 				const result = await publishApi.rollbackRelease(sceneId, version);
+				set((state) => ({
+					draftEtagByScene: clearSceneDraftEtag(
+						state.draftEtagByScene,
+						sceneId,
+					),
+				}));
 				await get().loadDraft(sceneId);
 				set((state) => ({
 					publishedVersionByScene: {
@@ -1582,6 +1693,7 @@ export const useViewerStore = create<ViewerState>()(
 					);
 
 					const nextRevisionByScene = { ...state.draftRevisionByScene };
+					const nextEtagByScene = { ...state.draftEtagByScene };
 					const nextRevisionSourceByScene = {
 						...state.draftRevisionSourceByScene,
 					};
@@ -1589,6 +1701,7 @@ export const useViewerStore = create<ViewerState>()(
 					let nextMutationVersion = state.sceneMutationVersion;
 					for (const sceneId of clearedSceneIds) {
 						delete nextRevisionByScene[sceneId];
+						delete nextEtagByScene[sceneId];
 						delete nextRevisionSourceByScene[sceneId];
 						delete nextDirtyByScene[sceneId];
 						// Bump the mutation version so the load effect's dedup key changes
@@ -1606,6 +1719,7 @@ export const useViewerStore = create<ViewerState>()(
 							(annotation) => !clearedSceneIds.has(annotation.sceneId),
 						),
 						draftRevisionByScene: nextRevisionByScene,
+						draftEtagByScene: nextEtagByScene,
 						draftRevisionSourceByScene: nextRevisionSourceByScene,
 						draftDirtyByScene: nextDirtyByScene,
 						sceneMutationVersion: nextMutationVersion,
@@ -2214,6 +2328,13 @@ export const useViewerStore = create<ViewerState>()(
 				}
 
 				if (
+					typeof state.draftEtagByScene !== "object" ||
+					state.draftEtagByScene === null
+				) {
+					state.draftEtagByScene = {};
+				}
+
+				if (
 					typeof state.draftDirtyByScene !== "object" ||
 					state.draftDirtyByScene === null
 				) {
@@ -2258,6 +2379,7 @@ export const useViewerStore = create<ViewerState>()(
 				annotations: state.annotations,
 				introPreset: state.introPreset,
 				draftRevisionByScene: state.draftRevisionByScene,
+				draftEtagByScene: state.draftEtagByScene,
 				draftRevisionSourceByScene: state.draftRevisionSourceByScene,
 				draftDirtyByScene: state.draftDirtyByScene,
 				sceneMutationVersion: state.sceneMutationVersion,

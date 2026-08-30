@@ -14,6 +14,7 @@ vi.mock('@/lib/publishApi', () => ({
   logout: vi.fn(),
   getDraft: vi.fn(),
   saveDraft: vi.fn(),
+  saveAndPublishDraft: vi.fn(),
   publishDraft: vi.fn(),
   getPublishedVersions: vi.fn(),
   deletePublishedVersion: vi.fn(),

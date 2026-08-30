@@ -1,5 +1,5 @@
 import { BlobPreconditionFailedError } from "@vercel/blob";
-import type { IntroPreset, LivePointer, SceneDraft } from "../../src/types";
+import type { LivePointer, SceneDraft } from "../../src/types/index.js";
 import { requireAuth } from "../_lib/auth.js";
 import {
 	deleteBlobByPathname,
@@ -7,7 +7,6 @@ import {
 	mutateJsonBlob,
 	readJsonBlob,
 	readJsonBlobWithEtag,
-	writeImmutableJsonBlob,
 	writeJsonBlobIfMatch,
 } from "../_lib/blobStore.js";
 import {
@@ -18,6 +17,10 @@ import {
 	notFound,
 	unauthorized,
 } from "../_lib/http.js";
+import {
+	createSceneRelease,
+	ReleaseVersionConflictError,
+} from "../_lib/publishRelease.js";
 import {
 	collectImagePathnamesFromDraft,
 	reconcileSceneImageAssets,
@@ -50,10 +53,6 @@ function livePath(sceneId: string) {
 
 function releasePath(sceneId: string, version: number) {
 	return `scenes/${sceneId}/releases/${version}.json`;
-}
-
-function introDraftPath(sceneId: string) {
-	return `scenes/${sceneId}/intro/draft.json`;
 }
 
 function introReleasePath(sceneId: string, version: number) {
@@ -270,73 +269,19 @@ async function handler(request: Request) {
 		draft = storedDraft;
 	}
 
-	const live = await readJsonBlob<LivePointer>(livePath(sceneId));
-	// The live pointer can lag behind the highest existing release (e.g. after a
-	// rollback moved live to an older version), so derive the next version from
-	// BOTH the live pointer and the max release on disk. Using live alone would
-	// collide with an existing immutable release blob and 500 forever.
-	const maxExistingVersion = (await listReleaseVersions(sceneId))[0] ?? 0;
-	const nextVersion = Math.max(maxExistingVersion, live?.version ?? 0) + 1;
-
-	const release: SceneDraft = {
-		...draft,
-		publishedAt: Date.now(),
-		publishedBy: "admin",
-		message: typeof body?.message === "string" ? body.message : undefined,
-	};
-	const introDraft = await readJsonBlob<IntroPreset>(introDraftPath(sceneId));
-
 	try {
-		await writeImmutableJsonBlob(releasePath(sceneId, nextVersion), release);
-		if (introDraft) {
-			await writeImmutableJsonBlob(
-				introReleasePath(sceneId, nextVersion),
-				introDraft,
-			);
-		}
-	} catch (error) {
-		// A concurrent publish may have claimed this version between our read and
-		// write. Surface a retryable 409 instead of an uncaught 500.
-		if (error instanceof BlobPreconditionFailedError) {
-			return conflict("Release version conflict, please retry");
-		}
-		throw error;
-	}
-
-	// Immutable release blob(s) are now written. If the live pointer write fails,
-	// best-effort delete them so a dangling, unreferenced release is not leaked
-	// forever, then rethrow.
-	try {
-		await mutateJsonBlob(livePath(sceneId), () => ({
-			value: { version: nextVersion },
-			result: undefined,
-		}));
-	} catch (error) {
-		try {
-			await deleteBlobByPathname(releasePath(sceneId, nextVersion));
-			if (introDraft) {
-				await deleteBlobByPathname(introReleasePath(sceneId, nextVersion));
-			}
-		} catch (cleanupError) {
-			console.error(
-				"Failed to clean up release blobs after live pointer write failure",
-				cleanupError,
-			);
-		}
-		throw error;
-	}
-
-	try {
-		await reconcileSceneImageAssets(
+		const { version } = await createSceneRelease({
 			sceneId,
-			[],
-			collectImagePathnamesFromDraft(release),
-		);
+			draft,
+			message: body?.message,
+		});
+		return jsonResponse({ ok: true, version });
 	} catch (error) {
-		console.error("Failed to reconcile scene images after publish", error);
+		if (error instanceof ReleaseVersionConflictError) {
+			return conflict(error.message);
+		}
+		throw error;
 	}
-
-	return jsonResponse({ ok: true, version: nextVersion });
 }
 
 export default { fetch: handler };

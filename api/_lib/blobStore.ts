@@ -77,6 +77,33 @@ async function fetchJsonFromUrl<T>(url: string): Promise<T | null> {
 	return (await response.json()) as T;
 }
 
+async function fetchJsonWithEtagFromUrl<T>(
+	url: string,
+): Promise<{ value: T; etag: string }> {
+	const cacheBypassUrl = `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+	const response = await fetch(cacheBypassUrl, {
+		cache: "no-store",
+		headers: {
+			"Cache-Control": "no-cache, no-store, max-age=0",
+		},
+	});
+	if (!response.ok) {
+		throw new Error(
+			`Failed to read JSON blob with ETag (HTTP ${response.status}): ${url}`,
+		);
+	}
+
+	const etag = response.headers.get("etag");
+	if (!etag) {
+		throw new Error(`JSON blob response is missing an ETag: ${url}`);
+	}
+
+	return {
+		value: (await response.json()) as T,
+		etag,
+	};
+}
+
 /**
  * Strict variant of {@link fetchJsonFromUrl}: a non-OK response THROWS instead
  * of collapsing to null. Callers that must distinguish "blob genuinely absent"
@@ -121,10 +148,10 @@ export async function readJsonBlobStrict<T>(
 }
 
 /**
- * Reads a JSON blob together with its current ETag so the value can be written
- * back with an optimistic-concurrency precondition (ifMatch). The ETag is read
- * via head() BEFORE the body is fetched, so the ETag is never newer than the
- * body it accompanies — this keeps compare-and-set safe even under CDN lag.
+ * Reads a JSON blob together with the ETag from the SAME public body response
+ * so the pair can be written back with an optimistic-concurrency precondition
+ * (ifMatch). The preceding head() is used only to locate the blob: its ETag may
+ * be newer than a stale public body and therefore must not be paired with it.
  */
 export async function readJsonBlobWithEtag<T>(
 	pathname: string,
@@ -141,8 +168,7 @@ export async function readJsonBlobWithEtag<T>(
 		throw error;
 	}
 
-	const value = await fetchJsonFromUrl<T>(meta.url);
-	return { value, etag: meta.etag };
+	return fetchJsonWithEtagFromUrl<T>(meta.url);
 }
 
 export async function writeJsonBlob(pathname: string, value: unknown) {
@@ -168,7 +194,7 @@ export async function writeJsonBlobIfMatch(
 	etag: string | null,
 ) {
 	const token = getBlobReadWriteToken();
-	await put(pathname, JSON.stringify(value), {
+	return put(pathname, JSON.stringify(value), {
 		access: "public",
 		addRandomSuffix: false,
 		allowOverwrite: etag !== null,

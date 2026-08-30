@@ -3,6 +3,11 @@ import type { SceneDraft } from "@/types";
 interface SaveDraftResponse {
 	ok: true;
 	revision: number;
+	etag: string;
+}
+
+interface SaveAndPublishDraftResponse extends SaveDraftResponse {
+	version: number;
 }
 
 interface PublishResponse {
@@ -37,6 +42,13 @@ interface ApiErrorPayload {
 	error?: string;
 }
 
+type DraftResponse = SceneDraft & { draftEtag?: string | null };
+
+interface JsonResponse<T> {
+	data: T;
+	response: Response;
+}
+
 // JSON API calls should fail loudly rather than wedge a UI state (e.g.
 // draftStatus stuck at 'saving') when a connection stalls. Default 30s,
 // overridable by passing an explicit `signal` in init.
@@ -59,10 +71,10 @@ function isApiRequest(input: RequestInfo): boolean {
 	}
 }
 
-async function requestJson<T>(
+async function requestJsonResponse<T>(
 	input: RequestInfo,
 	init?: RequestInit,
-): Promise<T> {
+): Promise<JsonResponse<T>> {
 	// A stalled connection surfaces as a rejected fetch (TimeoutError) that
 	// propagates through the same path as any other failure, so callers never
 	// wedge (e.g. draftStatus stuck at 'saving'). Overridable via init.signal.
@@ -94,7 +106,17 @@ async function requestJson<T>(
 		throw error;
 	}
 
-	return (await response.json()) as T;
+	return {
+		data: (await response.json()) as T,
+		response,
+	};
+}
+
+async function requestJson<T>(
+	input: RequestInfo,
+	init?: RequestInit,
+): Promise<T> {
+	return (await requestJsonResponse<T>(input, init)).data;
 }
 
 export async function login(password: string): Promise<void> {
@@ -115,21 +137,66 @@ export async function getSession(): Promise<SessionResponse> {
 	return requestJson<SessionResponse>("/api/auth/session");
 }
 
-export async function getDraft(sceneId: string): Promise<SceneDraft> {
-	return requestJson<SceneDraft>(`/api/draft/${encodeURIComponent(sceneId)}`);
+export async function getDraft(sceneId: string): Promise<DraftResponse> {
+	const { data, response } = await requestJsonResponse<SceneDraft>(
+		`/api/draft/${encodeURIComponent(sceneId)}`,
+	);
+	const headerEtag = response.headers.get("X-Draft-ETag");
+	return {
+		...data,
+		draftEtag:
+			headerEtag === null
+				? undefined
+				: headerEtag.length > 0
+					? headerEtag
+					: null,
+	};
 }
 
 export async function saveDraft(
 	sceneId: string,
 	draft: SceneDraft,
 	expectedRevision: number,
+	expectedEtag?: string | null,
 ): Promise<SaveDraftResponse> {
+	const body: Record<string, unknown> = { draft, expectedRevision };
+	if (expectedEtag !== undefined) {
+		body.expectedEtag = expectedEtag;
+	}
+
 	return requestJson<SaveDraftResponse>(
 		`/api/draft/${encodeURIComponent(sceneId)}`,
 		{
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ draft, expectedRevision }),
+			body: JSON.stringify(body),
+		},
+	);
+}
+
+export async function saveAndPublishDraft(
+	sceneId: string,
+	draft: SceneDraft,
+	expectedRevision: number,
+	expectedEtag?: string | null,
+	message?: string,
+): Promise<SaveAndPublishDraftResponse> {
+	const body: Record<string, unknown> = {
+		draft,
+		expectedRevision,
+		publish: true,
+		message,
+	};
+	if (expectedEtag !== undefined) {
+		body.expectedEtag = expectedEtag;
+	}
+
+	return requestJson<SaveAndPublishDraftResponse>(
+		`/api/draft/${encodeURIComponent(sceneId)}`,
+		{
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
 		},
 	);
 }

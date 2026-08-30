@@ -33,12 +33,32 @@ import {
 	writeJsonBlobIfMatch,
 } from "../../api/_lib/blobStore";
 
-function jsonResponse(body: unknown, ok = true, status = 200) {
+function jsonResponse(
+	body: unknown,
+	ok = true,
+	status = 200,
+	etag: string | null = "etag-body",
+) {
 	return {
 		ok,
 		status,
+		headers: {
+			get: (name: string) =>
+				name.toLowerCase() === "etag" ? etag : null,
+		},
 		json: async () => body,
 	} as unknown as Response;
+}
+
+function putResult(etag: string) {
+	return {
+		url: "https://blob.example/scenes/x/draft.json",
+		downloadUrl: "https://blob.example/scenes/x/draft.json?download=1",
+		pathname: "scenes/x/draft.json",
+		contentType: "application/json",
+		contentDisposition: 'inline; filename="draft.json"',
+		etag,
+	};
 }
 
 const fetchMock = vi.fn();
@@ -54,35 +74,62 @@ describe("blobStore", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("plumbs the ETag from readJsonBlobWithEtag into a conditional write", async () => {
+	it("pairs a stale public body with that response's ETag, not a newer head ETag", async () => {
 		mocks.head.mockResolvedValue({
 			url: "https://blob.example/scenes/x/draft.json",
-			etag: "etag-1",
+			etag: "etag-head-new",
 		});
-		fetchMock.mockResolvedValue(jsonResponse({ revision: 1 }));
+		fetchMock.mockResolvedValue(
+			jsonResponse({ revision: 1 }, true, 200, "etag-body-old"),
+		);
 
 		const { value, etag } = await readJsonBlobWithEtag<{ revision: number }>(
 			"scenes/x/draft.json",
 		);
 
 		expect(value).toEqual({ revision: 1 });
-		expect(etag).toBe("etag-1");
-		// The ETag is read via head() before the body is fetched.
+		expect(etag).toBe("etag-body-old");
+		// head() locates the Blob, but its newer ETag is never paired with the
+		// stale body returned by the public URL.
 		expect(mocks.head).toHaveBeenCalledWith("scenes/x/draft.json", {
 			token: "test-token",
 		});
 
-		mocks.put.mockResolvedValue(undefined);
-		await writeJsonBlobIfMatch("scenes/x/draft.json", { revision: 2 }, etag);
+		mocks.put.mockResolvedValue(putResult("etag-write-new"));
+		const writeResult = await writeJsonBlobIfMatch(
+			"scenes/x/draft.json",
+			{ revision: 2 },
+			etag,
+		);
 
 		expect(mocks.put).toHaveBeenCalledWith(
 			"scenes/x/draft.json",
 			JSON.stringify({ revision: 2 }),
 			expect.objectContaining({
 				allowOverwrite: true,
-				ifMatch: "etag-1",
+				ifMatch: "etag-body-old",
 			}),
 		);
+		expect(writeResult).toEqual(putResult("etag-write-new"));
+	});
+
+	it("throws when the body fetch fails or omits its ETag", async () => {
+		mocks.head.mockResolvedValue({
+			url: "https://blob.example/scenes/x/draft.json",
+			etag: "etag-head",
+		});
+		fetchMock.mockResolvedValueOnce(jsonResponse(null, false, 503));
+
+		await expect(
+			readJsonBlobWithEtag("scenes/x/draft.json"),
+		).rejects.toThrow(/HTTP 503/);
+
+		fetchMock.mockResolvedValueOnce(
+			jsonResponse({ revision: 1 }, true, 200, null),
+		);
+		await expect(
+			readJsonBlobWithEtag("scenes/x/draft.json"),
+		).rejects.toThrow(/missing an ETag/);
 	});
 
 	it("returns null etag when the blob does not exist (BlobNotFoundError)", async () => {
@@ -95,9 +142,13 @@ describe("blobStore", () => {
 	});
 
 	it("does a create-only write (allowOverwrite:false) when etag is null", async () => {
-		mocks.put.mockResolvedValue(undefined);
+		mocks.put.mockResolvedValue(putResult("etag-created"));
 
-		await writeJsonBlobIfMatch("scenes/x/draft.json", { revision: 1 }, null);
+		const result = await writeJsonBlobIfMatch(
+			"scenes/x/draft.json",
+			{ revision: 1 },
+			null,
+		);
 
 		expect(mocks.put).toHaveBeenCalledWith(
 			"scenes/x/draft.json",
@@ -107,6 +158,7 @@ describe("blobStore", () => {
 				ifMatch: undefined,
 			}),
 		);
+		expect(result.etag).toBe("etag-created");
 	});
 
 	describe("mutateJsonBlob", () => {
@@ -115,11 +167,11 @@ describe("blobStore", () => {
 				.mockResolvedValueOnce({ url: "https://blob.example/a", etag: "e1" })
 				.mockResolvedValueOnce({ url: "https://blob.example/a", etag: "e2" });
 			fetchMock
-				.mockResolvedValueOnce(jsonResponse({ count: 1 }))
-				.mockResolvedValueOnce(jsonResponse({ count: 2 }));
+				.mockResolvedValueOnce(jsonResponse({ count: 1 }, true, 200, "e1"))
+				.mockResolvedValueOnce(jsonResponse({ count: 2 }, true, 200, "e2"));
 			mocks.put
 				.mockRejectedValueOnce(new mocks.BlobPreconditionFailedError())
-				.mockResolvedValueOnce(undefined);
+				.mockResolvedValueOnce(putResult("e3"));
 
 			const result = await mutateJsonBlob<{ count: number }, number>(
 				"scenes/x/live.json",

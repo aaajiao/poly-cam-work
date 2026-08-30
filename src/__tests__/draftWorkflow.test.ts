@@ -26,6 +26,7 @@ function resetStore() {
     loadingMessage: '',
     sceneMutationVersion: {},
     draftRevisionByScene: {},
+    draftEtagByScene: {},
     draftRevisionSourceByScene: {},
     draftDirtyByScene: {},
     publishedVersionByScene: {},
@@ -101,6 +102,7 @@ describe('viewerStore draft workflow', () => {
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
       ok: true,
       revision: 5,
+      etag: 'etag-5',
     })
 
     const { saveDraft } = useViewerStore.getState()
@@ -229,6 +231,7 @@ describe('viewerStore draft workflow', () => {
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
       ok: true,
       revision: 1,
+      etag: 'etag-1',
     })
 
     await saveDraft('synced-scene')
@@ -262,6 +265,7 @@ describe('viewerStore draft workflow', () => {
         },
       ],
       draftRevisionByScene: { 'scan-a': 0 },
+      draftEtagByScene: { 'scan-a': null },
       draftRevisionSourceByScene: { 'scan-a': 'draft' },
       draftDirtyByScene: { 'scan-a': true },
     })
@@ -272,12 +276,10 @@ describe('viewerStore draft workflow', () => {
       filename: 'pending.jpg',
       url: 'https://blob.example/pending.jpg',
     })
-    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+    const saveAndPublishSpy = vi.spyOn(publishApi, 'saveAndPublishDraft').mockResolvedValue({
       ok: true,
       revision: 1,
-    })
-    const publishSpy = vi.spyOn(publishApi, 'publishDraft').mockResolvedValue({
-      ok: true,
+      etag: 'etag-1',
       version: 2,
     })
 
@@ -291,19 +293,20 @@ describe('viewerStore draft workflow', () => {
       filename: 'pending.jpg',
     })
 
-    const savedDraft = saveDraftSpy.mock.calls[0]?.[1]
+    const savedDraft = saveAndPublishSpy.mock.calls[0]?.[1]
     expect(savedDraft.annotations[0].images).toEqual([
       { filename: 'pending.jpg', url: 'https://blob.example/pending.jpg' },
     ])
 
     expect(deleteSpy).toHaveBeenCalledWith('local-img-2')
-    expect(publishSpy).toHaveBeenCalledTimes(1)
-    const publishInput = publishSpy.mock.calls[0]?.[1]
-    expect(publishInput).toBeTruthy()
-    // Publish sends only the revision just persisted by saveDraft — no draft body,
-    // so the server publishes exactly the stored draft under CAS.
-    expect(publishInput?.expectedRevision).toBe(1)
-    expect(publishInput?.message).toBeUndefined()
+    expect(saveAndPublishSpy).toHaveBeenCalledTimes(1)
+    expect(saveAndPublishSpy).toHaveBeenCalledWith(
+      'scan-a',
+      expect.objectContaining({ sceneId: 'scan-a', revision: 0 }),
+      0,
+      null,
+      undefined
+    )
     expect(useViewerStore.getState().draftDirtyByScene['scan-a']).toBe(false)
   })
 
@@ -323,6 +326,7 @@ describe('viewerStore draft workflow', () => {
         },
       ],
       draftRevisionByScene: { 'scan-a': 0 },
+      draftEtagByScene: { 'scan-a': null },
       draftRevisionSourceByScene: { 'scan-a': 'draft' },
       draftDirtyByScene: { 'scan-a': true },
     })
@@ -337,12 +341,10 @@ describe('viewerStore draft workflow', () => {
         url: 'https://blob.example/animated.gif',
       }
     })
-    vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+    vi.spyOn(publishApi, 'saveAndPublishDraft').mockResolvedValue({
       ok: true,
       revision: 1,
-    })
-    vi.spyOn(publishApi, 'publishDraft').mockResolvedValue({
-      ok: true,
+      etag: 'etag-1',
       version: 2,
     })
 
@@ -350,6 +352,99 @@ describe('viewerStore draft workflow', () => {
     await publishDraft('scan-a')
 
     expect(uploadSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['scan-b', 'scan-c'])('publishes two consecutive versions for %s in one request each', async (sceneId) => {
+    useViewerStore.setState({
+      activeSceneId: sceneId,
+      annotations: [
+        {
+          id: `ann-${sceneId}`,
+          position: [0, 0, 0],
+          title: 'Version one',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId,
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { [sceneId]: 0 },
+      draftEtagByScene: { [sceneId]: null },
+      draftRevisionSourceByScene: { [sceneId]: 'draft' },
+      draftDirtyByScene: { [sceneId]: true },
+    })
+
+    let version = 0
+    const saveAndPublishSpy = vi
+      .spyOn(publishApi, 'saveAndPublishDraft')
+      .mockImplementation(async (_sceneId, _draft, expectedRevision) => ({
+        ok: true,
+        revision: expectedRevision + 1,
+        etag: `etag-${expectedRevision + 1}`,
+        version: ++version,
+      }))
+    const legacyPublishSpy = vi.spyOn(publishApi, 'publishDraft')
+
+    await useViewerStore.getState().publishDraft(sceneId)
+    useViewerStore.getState().updateAnnotation(`ann-${sceneId}`, 'Version two')
+    await useViewerStore.getState().publishDraft(sceneId)
+
+    expect(saveAndPublishSpy).toHaveBeenCalledTimes(2)
+    expect(saveAndPublishSpy.mock.calls[0]?.[2]).toBe(0)
+    expect(saveAndPublishSpy.mock.calls[0]?.[3]).toBeNull()
+    expect(saveAndPublishSpy.mock.calls[1]?.[2]).toBe(1)
+    expect(saveAndPublishSpy.mock.calls[1]?.[3]).toBe('etag-1')
+    expect(legacyPublishSpy).not.toHaveBeenCalled()
+
+    const state = useViewerStore.getState()
+    expect(state.draftRevisionByScene[sceneId]).toBe(2)
+    expect(state.draftEtagByScene[sceneId]).toBe('etag-2')
+    expect(state.publishedVersionByScene[sceneId]).toBe(2)
+    expect(state.publishedVersionsByScene[sceneId]).toEqual([2, 1])
+    expect(state.draftDirtyByScene[sceneId]).toBe(false)
+  })
+
+  it('keeps a publish retryable when the save-and-publish response has no version', async () => {
+    useViewerStore.setState({
+      annotations: [
+        {
+          id: 'ann-malformed-publish',
+          position: [0, 0, 0],
+          title: 'Still unpublished',
+          description: '',
+          images: [],
+          videoUrl: null,
+          links: [],
+          sceneId: 'scan-a',
+          createdAt: Date.now(),
+        },
+      ],
+      draftRevisionByScene: { 'scan-a': 1 },
+      draftEtagByScene: { 'scan-a': 'etag-1' },
+      draftRevisionSourceByScene: { 'scan-a': 'draft' },
+      draftDirtyByScene: { 'scan-a': true },
+      publishedVersionByScene: { 'scan-a': 1 },
+      publishedVersionsByScene: { 'scan-a': [1] },
+    })
+
+    const malformedResponse = {
+      ok: true,
+      revision: 2,
+      etag: 'etag-2',
+    } as unknown as Awaited<ReturnType<typeof publishApi.saveAndPublishDraft>>
+    vi.spyOn(publishApi, 'saveAndPublishDraft').mockResolvedValue(malformedResponse)
+
+    await expect(useViewerStore.getState().publishDraft('scan-a')).rejects.toThrow(
+      'Publish response did not include a version'
+    )
+
+    const state = useViewerStore.getState()
+    expect(state.draftRevisionByScene['scan-a']).toBe(1)
+    expect(state.draftDirtyByScene['scan-a']).toBe(true)
+    expect(state.publishedVersionByScene['scan-a']).toBe(1)
+    expect(state.draftStatus).toBe('error')
   })
 
   it('saveDraft refreshes revision when local source is release', async () => {
@@ -374,18 +469,25 @@ describe('viewerStore draft workflow', () => {
     vi.spyOn(publishApi, 'getDraft').mockResolvedValue({
       sceneId: 'scan-a',
       revision: 7,
+      draftEtag: 'etag-7',
       annotations: [],
       updatedAt: Date.now(),
     })
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
       ok: true,
       revision: 8,
+      etag: 'etag-8',
     })
 
     const { saveDraft } = useViewerStore.getState()
     await saveDraft('scan-a')
 
-    expect(saveDraftSpy).toHaveBeenCalledWith('scan-a', expect.any(Object), 7)
+    expect(saveDraftSpy).toHaveBeenCalledWith(
+      'scan-a',
+      expect.any(Object),
+      7,
+      'etag-7'
+    )
     expect(useViewerStore.getState().draftRevisionByScene['scan-a']).toBe(8)
     expect(useViewerStore.getState().draftRevisionSourceByScene['scan-a']).toBe('draft')
   })
@@ -414,6 +516,7 @@ describe('viewerStore draft workflow', () => {
     vi.spyOn(publishApi, 'getDraft').mockResolvedValue({
       sceneId: 'scan-a',
       revision: 9,
+      draftEtag: 'etag-9',
       annotations: [],
       updatedAt: Date.now(),
     })
@@ -421,15 +524,17 @@ describe('viewerStore draft workflow', () => {
     const saveDraftSpy = vi
       .spyOn(publishApi, 'saveDraft')
       .mockRejectedValueOnce(conflictError)
-      .mockResolvedValueOnce({ ok: true, revision: 10 })
+      .mockResolvedValueOnce({ ok: true, revision: 10, etag: 'etag-10' })
 
     const { saveDraft } = useViewerStore.getState()
-    const revision = await saveDraft('scan-a')
+    const result = await saveDraft('scan-a')
 
     expect(saveDraftSpy).toHaveBeenCalledTimes(2)
     expect(saveDraftSpy.mock.calls[0]?.[2]).toBe(2)
+    expect(saveDraftSpy.mock.calls[0]?.[3]).toBeUndefined()
     expect(saveDraftSpy.mock.calls[1]?.[2]).toBe(9)
-    expect(revision).toBe(10)
+    expect(saveDraftSpy.mock.calls[1]?.[3]).toBe('etag-9')
+    expect(result.revision).toBe(10)
     expect(useViewerStore.getState().draftStatus).toBe('idle')
   })
 
@@ -581,6 +686,7 @@ describe('viewerStore draft workflow', () => {
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
       ok: true,
       revision: 7,
+      etag: 'etag-7',
     })
 
     const store = useViewerStore.getState()
@@ -624,10 +730,12 @@ describe('viewerStore draft workflow', () => {
       draftDirtyByScene: { 'scan-a': true },
     })
 
-    const resolver: { current: ((value: { ok: true; revision: number }) => void) | null } = {
+    const resolver: {
+      current: ((value: { ok: true; revision: number; etag: string }) => void) | null
+    } = {
       current: null,
     }
-    const savePromise = new Promise<{ ok: true; revision: number }>((resolve) => {
+    const savePromise = new Promise<{ ok: true; revision: number; etag: string }>((resolve) => {
       resolver.current = resolve
     })
     vi.spyOn(publishApi, 'saveDraft').mockReturnValue(savePromise)
@@ -650,7 +758,7 @@ describe('viewerStore draft workflow', () => {
     })
 
     if (!resolver.current) throw new Error('save resolver not initialized')
-    resolver.current({ ok: true, revision: 4 })
+    resolver.current({ ok: true, revision: 4, etag: 'etag-4' })
     await savePending
 
     const state = useViewerStore.getState()
@@ -694,16 +802,18 @@ describe('viewerStore draft workflow', () => {
     vi.spyOn(vercelBlobImageStorage, 'upload')
       .mockResolvedValueOnce({ filename: 'first.jpg', url: 'https://blob.example/first.jpg' })
       .mockRejectedValueOnce(new Error('network down'))
-    const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
+    const saveAndPublishSpy = vi.spyOn(publishApi, 'saveAndPublishDraft').mockResolvedValue({
       ok: true,
       revision: 1,
+      etag: 'etag-1',
+      version: 1,
     })
 
     const { publishDraft } = useViewerStore.getState()
     await expect(publishDraft('scan-a')).rejects.toThrow('network down')
 
-    // saveDraft never ran, so no local copy may be deleted (retry-friendly).
-    expect(saveDraftSpy).not.toHaveBeenCalled()
+    // The combined save+publish never ran, so no local copy may be deleted.
+    expect(saveAndPublishSpy).not.toHaveBeenCalled()
     expect(deleteSpy).not.toHaveBeenCalled()
 
     // The successfully-uploaded image is still committed as a remote URL.
@@ -745,6 +855,7 @@ describe('viewerStore draft workflow', () => {
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
       ok: true,
       revision: 1,
+      etag: 'etag-1',
     })
     const publishSpy = vi.spyOn(publishApi, 'publishDraft')
 
@@ -820,6 +931,7 @@ describe('viewerStore draft workflow', () => {
     const saveDraftSpy = vi.spyOn(publishApi, 'saveDraft').mockResolvedValue({
       ok: true,
       revision: 1,
+      etag: 'etag-1',
     })
 
     const { saveDraftWithImages } = useViewerStore.getState()
@@ -870,6 +982,7 @@ describe('viewerStore draft workflow', () => {
       openAnnotationPanelIds: ['ann-clean-draft', 'ann-dirty-draft'],
       selectedAnnotationId: 'ann-clean-draft',
       draftRevisionByScene: { 'scan-a': 4, 'scan-b': 2 },
+      draftEtagByScene: { 'scan-a': 'etag-a-4', 'scan-b': 'etag-b-2' },
       draftRevisionSourceByScene: { 'scan-a': 'draft', 'scan-b': 'draft' },
       draftDirtyByScene: { 'scan-a': false, 'scan-b': true },
       sceneMutationVersion: { 'scan-a': 1, 'scan-b': 1 },
@@ -885,6 +998,7 @@ describe('viewerStore draft workflow', () => {
 
     // Non-dirty draft scene is wiped so the anon effect refetches the release.
     expect(state.annotations.some((a) => a.sceneId === 'scan-a')).toBe(false)
+    expect(state.draftEtagByScene['scan-a']).toBeUndefined()
     expect(state.draftRevisionSourceByScene['scan-a']).toBeUndefined()
     expect(state.draftDirtyByScene['scan-a']).toBeUndefined()
     expect(state.sceneMutationVersion['scan-a']).toBe(2)
@@ -893,6 +1007,7 @@ describe('viewerStore draft workflow', () => {
 
     // Dirty scene keeps its unsaved local edits untouched.
     expect(state.annotations.some((a) => a.id === 'ann-dirty-draft')).toBe(true)
+    expect(state.draftEtagByScene['scan-b']).toBe('etag-b-2')
     expect(state.draftRevisionSourceByScene['scan-b']).toBe('draft')
     expect(state.draftDirtyByScene['scan-b']).toBe(true)
     expect(state.sceneMutationVersion['scan-b']).toBe(1)
@@ -918,6 +1033,7 @@ describe('viewerStore draft workflow', () => {
       openAnnotationPanelIds: ['ann-dirty-discard'],
       selectedAnnotationId: 'ann-dirty-discard',
       draftRevisionByScene: { 'scan-b': 5 },
+      draftEtagByScene: { 'scan-b': 'etag-b-5' },
       draftRevisionSourceByScene: { 'scan-b': 'draft' },
       draftDirtyByScene: { 'scan-b': true },
       sceneMutationVersion: { 'scan-b': 2 },
@@ -934,6 +1050,7 @@ describe('viewerStore draft workflow', () => {
     // Dirty draft scene is discarded so the anon effect refetches the release.
     expect(state.annotations.some((a) => a.sceneId === 'scan-b')).toBe(false)
     expect(state.draftRevisionByScene['scan-b']).toBeUndefined()
+    expect(state.draftEtagByScene['scan-b']).toBeUndefined()
     expect(state.draftRevisionSourceByScene['scan-b']).toBeUndefined()
     expect(state.draftDirtyByScene['scan-b']).toBeUndefined()
     expect(state.sceneMutationVersion['scan-b']).toBe(3)
