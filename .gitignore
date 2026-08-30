@@ -28,6 +28,7 @@ Icon?
 .claude/
 .opencode/
 .agents/
+.vercel/
 
 # Original scan files (kept for reference, not needed in project)
 glb/
