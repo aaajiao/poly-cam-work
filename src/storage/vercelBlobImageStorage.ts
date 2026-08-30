@@ -1,5 +1,7 @@
 import { upload } from '@vercel/blob/client'
 
+import { normalizeImageMimeType } from '@/utils/imageProcessing'
+
 // Generous ceiling: annotation media is small, but a hung connection must not
 // wait forever. Uploads normally finish in seconds; this only bounds the stall.
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000
@@ -15,21 +17,37 @@ interface UploadedImage {
   filename: string
 }
 
-function sanitizeFilename(filename: string) {
+function extensionForContentType(contentType: string): string {
+  switch (contentType) {
+    case 'image/jpeg':
+      return 'jpg'
+    case 'image/png':
+      return 'png'
+    case 'image/webp':
+      return 'webp'
+    case 'image/gif':
+      return 'gif'
+    default:
+      throw new Error('Unsupported image type. Use JPEG, PNG, WebP, or GIF.')
+  }
+}
+
+function sanitizeFilename(filename: string, contentType: string) {
   const trimmed = filename.trim()
-  const fallback = 'image.jpg'
-  if (trimmed.length === 0) return fallback
+  const extension = extensionForContentType(contentType)
+  if (trimmed.length === 0) return `image.${extension}`
 
   const lastDot = trimmed.lastIndexOf('.')
-  const hasExt = lastDot > 0 && lastDot < trimmed.length - 1
+  const hasExt = lastDot > 0
   const base = hasExt ? trimmed.slice(0, lastDot) : trimmed
-  const ext = hasExt ? trimmed.slice(lastDot + 1) : 'jpg'
 
-  const safeBase = base.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-  const safeExt = ext.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase() || 'jpg'
+  const safeBase = base
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
   const normalizedBase = safeBase.length > 0 ? safeBase : 'image'
 
-  return `${normalizedBase}.${safeExt}`
+  return `${normalizedBase}.${extension}`
 }
 
 function sanitizeSegment(value: string, fallback: string) {
@@ -45,12 +63,22 @@ function sanitizeSegment(value: string, fallback: string) {
 
 class VercelBlobImageStorage {
   async upload(blob: Blob, metadata: UploadMetadata): Promise<UploadedImage> {
+    const contentType = normalizeImageMimeType(blob.type)
+    if (!contentType) {
+      throw new Error('Unsupported image type. Use JPEG, PNG, WebP, or GIF.')
+    }
+
     const sceneId = sanitizeSegment(metadata.sceneId, `scene-${Date.now()}`)
-    const annotationId = sanitizeSegment(metadata.annotationId, `annotation-${Date.now()}`)
-    const pathname = `scenes/${sceneId}/images/${annotationId}/${Date.now()}-${sanitizeFilename(metadata.filename)}`
+    const annotationId = sanitizeSegment(
+      metadata.annotationId,
+      `annotation-${Date.now()}`
+    )
+    const filename = sanitizeFilename(metadata.filename, contentType)
+    const pathname = `scenes/${sceneId}/images/${annotationId}/${Date.now()}-${filename}`
 
     const result = await upload(pathname, blob, {
       access: 'public',
+      contentType,
       handleUploadUrl: '/api/media/upload',
       abortSignal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
       clientPayload: JSON.stringify({

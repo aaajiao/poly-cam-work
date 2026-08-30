@@ -262,10 +262,6 @@ function imageKey(image: AnnotationImage): string {
 		: `local:${image.localId}`;
 }
 
-function isGifFilename(filename: string): boolean {
-	return /\.gif$/i.test(filename.trim());
-}
-
 function ImageThumbnails({
 	images,
 	onPrimaryAspectRatioChange,
@@ -274,42 +270,65 @@ function ImageThumbnails({
 
 	useEffect(() => {
 		let active = true;
-		const objectUrls: string[] = [];
+		const objectUrls = new Set<string>();
+		const revokeObjectUrls = () => {
+			for (const objectUrl of objectUrls) {
+				URL.revokeObjectURL(objectUrl);
+			}
+			objectUrls.clear();
+		};
 
 		const load = async () => {
 			const nextThumbs: Record<string, LoadedThumb> = {};
 			for (const img of images) {
+				if (!active) break;
 				const key = imageKey(img);
+				let localObjectUrl: string | null = null;
 
-				if (isRemoteImage(img)) {
-					const aspectRatio = await readImageAspectRatio(img.url);
+				try {
+					if (isRemoteImage(img)) {
+						const aspectRatio = await readImageAspectRatio(img.url);
+						if (!active) break;
+						nextThumbs[key] = {
+							sourceUrl: img.url,
+							aspectRatio: clamp(aspectRatio, 0.55, 2.4),
+						};
+						continue;
+					}
+
+					if (!isLocalImage(img)) continue;
+					// The floating panel can be resized to 560 CSS px and may render on a
+					// high-DPI screen. Its 200px IndexedDB thumbnail belongs only in the
+					// sidebar grid; using it here makes the local editing state visibly
+					// softer than the same image after publish.
+					const sourceBlob = await imageStorage.get(img.localId);
+					if (!active) break;
+					if (!sourceBlob) continue;
+
+					localObjectUrl = URL.createObjectURL(sourceBlob);
+					objectUrls.add(localObjectUrl);
+					const aspectRatio = await readImageAspectRatio(localObjectUrl);
+					if (!active) break;
 					nextThumbs[key] = {
-						sourceUrl: img.url,
+						sourceUrl: localObjectUrl,
 						aspectRatio: clamp(aspectRatio, 0.55, 2.4),
 					};
-					continue;
+				} catch (error) {
+					if (localObjectUrl) {
+						URL.revokeObjectURL(localObjectUrl);
+						objectUrls.delete(localObjectUrl);
+					}
+					if (active) {
+						console.error(
+							`Failed to load annotation image: ${img.filename}`,
+							error,
+						);
+					}
 				}
-
-				if (!isLocalImage(img)) continue;
-				const sourceBlob = isGifFilename(img.filename)
-					? await imageStorage.get(img.localId)
-					: ((await imageStorage.getThumbnail(img.localId)) ??
-						(await imageStorage.get(img.localId)));
-				if (!sourceBlob) continue;
-
-				const objectUrl = URL.createObjectURL(sourceBlob);
-				objectUrls.push(objectUrl);
-				const aspectRatio = await readImageAspectRatio(objectUrl);
-				nextThumbs[key] = {
-					sourceUrl: objectUrl,
-					aspectRatio: clamp(aspectRatio, 0.55, 2.4),
-				};
 			}
 
 			if (!active) {
-				for (const objectUrl of objectUrls) {
-					URL.revokeObjectURL(objectUrl);
-				}
+				revokeObjectUrls();
 				return;
 			}
 
@@ -320,9 +339,7 @@ function ImageThumbnails({
 
 		return () => {
 			active = false;
-			for (const objectUrl of objectUrls) {
-				URL.revokeObjectURL(objectUrl);
-			}
+			revokeObjectUrls();
 		};
 	}, [images]);
 
@@ -346,6 +363,7 @@ function ImageThumbnails({
 					<img
 						src={singleThumb.sourceUrl}
 						alt={single.filename}
+						decoding="async"
 						className="h-full w-full object-contain"
 					/>
 				) : (
@@ -367,6 +385,7 @@ function ImageThumbnails({
 							<img
 								src={thumb.sourceUrl}
 								alt={img.filename}
+								decoding="async"
 								className="block h-auto w-full object-contain"
 							/>
 						) : (

@@ -1,8 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Upload, X, Loader2 } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 import { imageStorage } from '@/storage/imageStorage'
 import type { AnnotationImage } from '@/types'
+import {
+  MAX_SOURCE_IMAGE_BYTES,
+  prepareImageForStorage,
+  resolveImageMimeType,
+  SUPPORTED_IMAGE_MIME_TYPES,
+} from '@/utils/imageProcessing'
 
 interface ImageUploadProps {
   annotationId: string
@@ -33,42 +40,6 @@ function isGifFilename(filename: string): boolean {
   return /\.gif$/i.test(filename.trim())
 }
 
-function isGifFile(file: File): boolean {
-  return file.type === 'image/gif' || isGifFilename(file.name)
-}
-
-async function compressImage(file: File, maxBytes: number): Promise<Blob> {
-  if (file.size <= maxBytes) return file
-
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const canvas = document.createElement('canvas')
-      const ratio = Math.sqrt(maxBytes / file.size)
-      canvas.width = Math.round(img.width * ratio)
-      canvas.height = Math.round(img.height * ratio)
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        reject(new Error('Canvas unavailable'))
-        return
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error('Compression failed'))),
-        'image/jpeg',
-        0.85
-      )
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Load failed'))
-    }
-    img.src = url
-  })
-}
-
 export function ImageUpload({
   annotationId,
   images,
@@ -90,45 +61,66 @@ export function ImageUpload({
 
   useEffect(() => {
     let cancelled = false
-    const objectUrls: string[] = []
+    const objectUrls = new Set<string>()
+    const revokeObjectUrls = () => {
+      for (const objectUrl of objectUrls) {
+        URL.revokeObjectURL(objectUrl)
+      }
+      objectUrls.clear()
+    }
 
     const loadThumbs = async () => {
       const nextThumbnails: ThumbnailEntry[] = []
 
       for (const image of images) {
         if (cancelled) break
+        let localUrl: string | null = null
 
-        if (isRemoteImage(image)) {
+        try {
+          if (isRemoteImage(image)) {
+            nextThumbnails.push({
+              key: imageKey(image),
+              url: image.url,
+              filename: image.filename,
+            })
+            continue
+          }
+
+          if (!isLocalImage(image)) continue
+
+          let sourceBlob: Blob | null
+          if (isGifFilename(image.filename)) {
+            sourceBlob = await imageStorage.get(image.localId)
+          } else {
+            sourceBlob = await imageStorage.getThumbnail(image.localId)
+            if (!sourceBlob && !cancelled) {
+              sourceBlob = await imageStorage.get(image.localId)
+            }
+          }
+          if (!sourceBlob || cancelled) continue
+
+          localUrl = URL.createObjectURL(sourceBlob)
+          objectUrls.add(localUrl)
           nextThumbnails.push({
             key: imageKey(image),
-            url: image.url,
+            url: localUrl,
             filename: image.filename,
           })
-          continue
+        } catch (loadError) {
+          if (localUrl) {
+            URL.revokeObjectURL(localUrl)
+            objectUrls.delete(localUrl)
+          }
+          if (!cancelled) {
+            console.error(`Failed to load image thumbnail: ${image.filename}`, loadError)
+          }
         }
-
-        if (!isLocalImage(image)) continue
-
-        const sourceBlob = isGifFilename(image.filename)
-          ? await imageStorage.get(image.localId)
-          : (await imageStorage.getThumbnail(image.localId)) ?? (await imageStorage.get(image.localId))
-        if (!sourceBlob || cancelled) continue
-
-        const localUrl = URL.createObjectURL(sourceBlob)
-        objectUrls.push(localUrl)
-        nextThumbnails.push({
-          key: imageKey(image),
-          url: localUrl,
-          filename: image.filename,
-        })
       }
 
       if (!cancelled) {
         setThumbnails(nextThumbnails)
       } else {
-        for (const objectUrl of objectUrls) {
-          URL.revokeObjectURL(objectUrl)
-        }
+        revokeObjectUrls()
       }
     }
 
@@ -136,9 +128,7 @@ export function ImageUpload({
 
     return () => {
       cancelled = true
-      for (const objectUrl of objectUrls) {
-        URL.revokeObjectURL(objectUrl)
-      }
+      revokeObjectUrls()
     }
   }, [images])
 
@@ -146,8 +136,20 @@ export function ImageUpload({
     async (files: FileList | File[]) => {
       if (isUploadingRef.current) return
 
-      const fileArray = Array.from(files).filter((file) => file.type.startsWith('image/'))
-      if (fileArray.length === 0) return
+      const selectedFiles = Array.from(files)
+      if (selectedFiles.length === 0) return
+
+      const fileArray = selectedFiles.filter((file) => resolveImageMimeType(file))
+      const unsupportedErrors = selectedFiles
+        .filter((file) => !resolveImageMimeType(file))
+        .map(
+          (file) =>
+            `${file.name}: unsupported image type; use JPEG, PNG, WebP, or GIF`
+        )
+      if (fileArray.length === 0) {
+        setError(unsupportedErrors.join('; '))
+        return
+      }
 
       const available = maxImages - imagesRef.current.length
       if (available <= 0) return
@@ -158,18 +160,16 @@ export function ImageUpload({
       setIsUploading(true)
 
       const newImages: AnnotationImage[] = []
-      const errors: string[] = []
+      const errors = [...unsupportedErrors]
 
       for (const file of toProcess) {
-        if (file.size > 10 * 1024 * 1024) {
+        if (file.size > MAX_SOURCE_IMAGE_BYTES) {
           errors.push(`${file.name}: exceeds 10MB limit`)
           continue
         }
 
         try {
-          const imageBlob = isGifFile(file)
-            ? file
-            : await compressImage(file, 1 * 1024 * 1024)
+          const imageBlob = await prepareImageForStorage(file)
           const localId = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`
           await imageStorage.save(localId, imageBlob, {
             annotationId,
@@ -263,7 +263,7 @@ export function ImageUpload({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={SUPPORTED_IMAGE_MIME_TYPES.join(',')}
         multiple
         className="hidden"
         data-testid="image-file-input"
@@ -299,8 +299,8 @@ export function ImageUpload({
                 : 'Drop images here or click to browse'}
             </p>
             {!atLimit && (
-               <p className="text-[11px] text-faint">
-                {images.length}/{maxImages} · local save first · max 10MB each
+              <p className="text-[11px] text-faint">
+                {images.length}/{maxImages} · local first · max 10MB · large images optimized
               </p>
             )}
           </div>
