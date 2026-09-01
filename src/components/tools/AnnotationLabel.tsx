@@ -32,7 +32,7 @@ export function AnnotationLabel({ annotation }: AnnotationLabelProps) {
 	};
 
 	return (
-		<Html position={position} distanceFactor={10} transform occlude={false}>
+		<Html position={position} center occlude={false}>
 			<div
 				data-testid={`annotation-${annotation.id}`}
 				className="relative"

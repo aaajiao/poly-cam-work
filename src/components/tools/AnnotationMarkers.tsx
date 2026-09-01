@@ -4,11 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useViewerStore } from "@/store/viewerStore";
 import type { Annotation } from "@/types";
+import { selectHtmlAnnotationMarkerIds } from "@/utils/annotationMarkerLod";
+import { getAnnotationMarkerVisualScale } from "@/utils/annotationMarkerScale";
+import { getWorldScaleForProjectedPixelRadius } from "@/utils/projectedPixelScale";
 import { CLIP_SCENE_HALF } from "@/utils/sceneConstants";
 import { resolveThemeColor } from "@/utils/themeColors";
 import { AnnotationMarker } from "./AnnotationMarker";
 
 const MAX_HTML_MARKERS = 15;
+const FAR_MARKER_GEOMETRY_RADIUS = 0.12;
 const NOOP_RAYCAST: THREE.Object3D["raycast"] = () => {};
 
 export function AnnotationMarkers() {
@@ -45,7 +49,14 @@ export function AnnotationMarkers() {
 
 	const farCoreRef = useRef<THREE.InstancedMesh>(null);
 	const farHaloRef = useRef<THREE.InstancedMesh>(null);
-	const farGeometry = useMemo(() => new THREE.SphereGeometry(0.12, 8, 8), []);
+	const farCoreMatrixRef = useRef(new THREE.Matrix4());
+	const farHaloMatrixRef = useRef(new THREE.Matrix4());
+	const annotationPositionRef = useRef(new THREE.Vector3());
+	const cameraSpacePositionRef = useRef(new THREE.Vector3());
+	const farGeometry = useMemo(
+		() => new THREE.SphereGeometry(FAR_MARKER_GEOMETRY_RADIUS, 8, 8),
+		[],
+	);
 	const farCoreMaterial = useMemo(
 		() =>
 			new THREE.MeshBasicMaterial({
@@ -73,10 +84,27 @@ export function AnnotationMarkers() {
 			}),
 		[],
 	);
+	const farMarkerColors = useMemo(
+		() => ({
+			active: new THREE.Color(
+				resolveThemeColor("--signal-open", "#8fd8ff"),
+			),
+			hover: new THREE.Color(
+				resolveThemeColor("--signal-hover", "#3b82f6"),
+			),
+			idle: new THREE.Color(
+				resolveThemeColor("--signal-closed", "#1d4ed8"),
+			),
+			ring: new THREE.Color(
+				resolveThemeColor("--signal-ring", "#ffffff"),
+			),
+		}),
+		[],
+	);
 
 	// Maps instancedMesh instance index → annotation, kept in sync each frame.
 	const farAnnotationsRef = useRef<Annotation[]>([]);
-	const closeMarkerKeyRef = useRef("");
+	const closeMarkerIdsRef = useRef<string[]>([]);
 	const openPanelIdSet = useMemo(
 		() => new Set(openAnnotationPanelIds),
 		[openAnnotationPanelIds],
@@ -95,9 +123,14 @@ export function AnnotationMarkers() {
 	}, [hoveredFarId, visibleAnnotations]);
 
 	const setCloseIdsIfChanged = useCallback((ids: string[]) => {
-		const key = ids.join("|");
-		if (key === closeMarkerKeyRef.current) return;
-		closeMarkerKeyRef.current = key;
+		const currentIds = closeMarkerIdsRef.current;
+		if (
+			ids.length === currentIds.length &&
+			ids.every((id, index) => id === currentIds[index])
+		) {
+			return;
+		}
+		closeMarkerIdsRef.current = ids;
 		setCloseMarkerIds(ids);
 	}, []);
 
@@ -123,7 +156,7 @@ export function AnnotationMarkers() {
 		],
 	);
 
-	useFrame(({ clock }) => {
+	useFrame(({ clock, size }) => {
 		if (!annotationsVisible) return;
 
 		const coreMesh = farCoreRef.current;
@@ -144,33 +177,31 @@ export function AnnotationMarkers() {
 			return;
 		}
 
-		const withDist = visibleAnnotations.map((a: Annotation) => {
-			const pos = new THREE.Vector3(...a.position);
-			const dist = camera.position.distanceTo(pos);
-			return { annotation: a, dist };
+		const withDist = visibleAnnotations.map((a: Annotation, sourceIndex) => {
+			const dx = a.position[0] - camera.position.x;
+			const dy = a.position[1] - camera.position.y;
+			const dz = a.position[2] - camera.position.z;
+			return {
+				annotation: a,
+				id: a.id,
+				distance: Math.hypot(dx, dy, dz),
+				sourceIndex,
+			};
 		});
 
-		withDist.sort((a, b) => a.dist - b.dist);
-
-		const newLod = new Map<string, "far" | "close">();
-		const nextCloseIds: string[] = [];
-		let htmlCount = 0;
-		for (const { annotation } of withDist) {
-			const forceClose = openPanelIdSet.has(annotation.id);
-			if (forceClose || htmlCount < MAX_HTML_MARKERS) {
-				newLod.set(annotation.id, "close");
-				nextCloseIds.push(annotation.id);
-				htmlCount++;
-			} else {
-				newLod.set(annotation.id, "far");
-			}
-		}
+		const nextCloseIds = selectHtmlAnnotationMarkerIds(
+			withDist,
+			openAnnotationPanelIds,
+			selectedAnnotationId,
+			MAX_HTML_MARKERS,
+		);
 		setCloseIdsIfChanged(nextCloseIds);
 
 		if (!coreMesh || !haloMesh) return;
 
+		const closeIdSet = new Set(nextCloseIds);
 		const farAnnotations = withDist.filter(
-			(d) => newLod.get(d.annotation.id) === "far",
+			({ annotation }) => !closeIdSet.has(annotation.id),
 		);
 		farAnnotationsRef.current = farAnnotations.map((d) => d.annotation);
 		coreMesh.count = farAnnotations.length;
@@ -183,44 +214,59 @@ export function AnnotationMarkers() {
 			setHoveredFarId(null);
 		}
 
-		const matrix = new THREE.Matrix4();
-		const haloMatrix = new THREE.Matrix4();
+		const matrix = farCoreMatrixRef.current;
+		const haloMatrix = farHaloMatrixRef.current;
 		const pulse = 1 + Math.sin(clock.elapsedTime * 2) * 0.15;
-		const activeColor = new THREE.Color(
-			resolveThemeColor("--signal-open", "#8fd8ff"),
-		);
-		const hoverColor = new THREE.Color(
-			resolveThemeColor("--signal-hover", "#3b82f6"),
-		);
-		const idleColor = new THREE.Color(
-			resolveThemeColor("--signal-closed", "#1d4ed8"),
-		);
-		const ringColor = new THREE.Color(
-			resolveThemeColor("--signal-ring", "#ffffff"),
-		);
+		const verticalFovDegrees =
+			camera instanceof THREE.PerspectiveCamera ? camera.fov : 50;
+		camera.updateMatrixWorld(false);
 
-		farAnnotations.forEach(({ annotation, dist }, i) => {
-			const pos = new THREE.Vector3(...annotation.position);
+		farAnnotations.forEach(({ annotation }, i) => {
+			const pos = annotationPositionRef.current.set(...annotation.position);
 			const isActive = openPanelIdSet.has(annotation.id);
 			const isHovered = hoveredFarId === annotation.id;
-			const distanceScale = THREE.MathUtils.clamp(dist / 12, 1.05, 4.2);
-
+			const cameraSpaceDepth = -cameraSpacePositionRef.current
+				.copy(pos)
+				.applyMatrix4(camera.matrixWorldInverse).z;
+			const { markerPx } = getAnnotationMarkerVisualScale({
+				cameraSpaceDepth,
+				verticalFovDegrees,
+				viewportHeight: size.height,
+			});
+			const geometryScalePerPixel = getWorldScaleForProjectedPixelRadius(
+				pos,
+				1,
+				camera,
+				size,
+				FAR_MARKER_GEOMETRY_RADIUS,
+			);
+			const interactionScale = isActive
+				? isHovered
+					? 1.12
+					: 1.1
+				: isHovered
+					? 1.05
+					: 1;
 			const coreScale =
+				geometryScalePerPixel *
+				(markerPx / 4) *
 				pulse *
-				distanceScale *
-				(isActive ? (isHovered ? 1.42 : 1.28) : isHovered ? 1.18 : 1);
+				interactionScale;
 			const haloScale =
-				pulse * distanceScale * (isActive ? 2.85 : isHovered ? 2.15 : 1.72);
+				geometryScalePerPixel *
+				(markerPx / 2) *
+				pulse *
+				interactionScale;
 			const markerColor = isActive
-				? activeColor
+				? farMarkerColors.active
 				: isHovered
-					? hoverColor
-					: idleColor;
+					? farMarkerColors.hover
+					: farMarkerColors.idle;
 			const haloColor = isActive
-				? activeColor
+				? farMarkerColors.active
 				: isHovered
-					? hoverColor
-					: ringColor;
+					? farMarkerColors.hover
+					: farMarkerColors.ring;
 
 			matrix.makeScale(coreScale, coreScale, coreScale);
 			matrix.setPosition(pos);
@@ -314,7 +360,7 @@ export function AnnotationMarkers() {
 				raycast={NOOP_RAYCAST}
 			/>
 
-			{closeAnnotations.slice(0, MAX_HTML_MARKERS).map((annotation) => (
+			{closeAnnotations.map((annotation) => (
 				<AnnotationMarker
 					key={annotation.id}
 					annotation={annotation}

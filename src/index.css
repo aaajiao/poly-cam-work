@@ -277,7 +277,7 @@
 		opacity: 0.85;
 	}
 	50% {
-		transform: scale(1.35);
+		transform: scale(1.16);
 		opacity: 1;
 	}
 }
@@ -320,6 +320,14 @@
 	animation: annotation-node-pulse var(--node-pulse-duration, 0.95s) ease-in-out
 		infinite;
 	transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.annotation-breathe,
+	.annotation-node-pulse,
+	.annotation-title-pulse {
+		animation: none;
+	}
 }
 
 @keyframes panel-enter {
