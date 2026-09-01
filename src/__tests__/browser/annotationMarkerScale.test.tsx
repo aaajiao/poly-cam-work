@@ -89,9 +89,15 @@ const annotation: Annotation = {
 
 interface MarkerHarnessProps {
   distance: number
+  markerIsActive?: boolean
+  markerAnnotation?: Annotation
 }
 
-function MarkerHarness({ distance }: MarkerHarnessProps) {
+function MarkerHarness({
+  distance,
+  markerIsActive = false,
+  markerAnnotation = annotation,
+}: MarkerHarnessProps) {
   mockR3f.cameraDistance = distance
 
   return (
@@ -106,8 +112,8 @@ function MarkerHarness({ distance }: MarkerHarnessProps) {
         }
       `}</style>
       <AnnotationMarker
-        annotation={annotation}
-        isActive={false}
+        annotation={markerAnnotation}
+        isActive={markerIsActive}
         onSelect={() => {}}
       />
     </div>
@@ -139,6 +145,44 @@ function expectBetween(value: number, min: number, max: number): void {
 }
 
 describe('browser annotation marker scaling', () => {
+  test('shows the existing video glyph only for annotations with video media', async () => {
+    const videoAnnotation: Annotation = {
+      ...annotation,
+      videoUrl: 'https://vimeo.com/123456789',
+    }
+    const screen = await render(
+      <MarkerHarness distance={8} markerAnnotation={videoAnnotation} />,
+    )
+
+    const videoIcon = getElement(
+      `annotation-marker-video-icon-${ANNOTATION_ID}`,
+    )
+    expect(videoIcon.tagName.toLowerCase()).toBe('svg')
+    expect(videoIcon.getAttribute('aria-hidden')).toBe('true')
+    expect(videoIcon.getAttribute('width')).toBe('9')
+    expect(
+      videoIcon.classList.contains('text-[color:var(--signal-ring)]'),
+    ).toBe(true)
+
+    await screen.rerender(
+      <MarkerHarness
+        distance={8}
+        markerAnnotation={videoAnnotation}
+        markerIsActive
+      />,
+    )
+    expect(
+      videoIcon.classList.contains('text-[color:var(--signal-closed)]'),
+    ).toBe(true)
+
+    await screen.rerender(<MarkerHarness distance={8} />)
+    expect(
+      document.querySelector(
+        `[data-testid="annotation-marker-video-icon-${ANNOTATION_ID}"]`,
+      ),
+    ).toBeNull()
+  })
+
   test('keeps the visual marker bounded and the hit target accessible across camera distances', async () => {
     const screen = await render(<MarkerHarness distance={CAMERA_DISTANCES[0]} />)
     const measuredVisualWidths: number[] = []

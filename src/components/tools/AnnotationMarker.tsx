@@ -8,6 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Video } from "lucide-react";
 import * as THREE from "three";
 import { cn } from "@/lib/utils";
 import { useViewerStore } from "@/store/viewerStore";
@@ -259,14 +260,29 @@ export function AnnotationMarker({
 						/>
 						<div
 							className={cn(
-								"h-3 w-3 rounded-full transition-all duration-150 shadow-[0_0_14px_color-mix(in_oklab,var(--signal-halo-closed)_100%,transparent)]",
+								"flex h-3 w-3 items-center justify-center rounded-full transition-all duration-150 shadow-[0_0_14px_color-mix(in_oklab,var(--signal-halo-closed)_100%,transparent)]",
 								isActive
 									? "bg-[var(--signal-open)] shadow-[0_0_18px_color-mix(in_oklab,var(--signal-halo-open)_100%,transparent)]"
 									: isHovered || isFocused
 										? "bg-[var(--signal-hover)] shadow-[0_0_16px_color-mix(in_oklab,var(--signal-halo-hover)_100%,transparent)]"
 										: "bg-[var(--signal-closed)]",
 							)}
-						/>
+						>
+							{annotation.videoUrl && (
+								<Video
+									data-testid={`annotation-marker-video-icon-${annotation.id}`}
+									aria-hidden="true"
+									size={9}
+									strokeWidth={2.5}
+									className={cn(
+										"shrink-0",
+										isActive
+											? "text-[color:var(--signal-closed)]"
+											: "text-[color:var(--signal-ring)]",
+									)}
+								/>
+							)}
+						</div>
 					</div>
 				</div>
 				{showTooltip && (
