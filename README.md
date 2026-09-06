@@ -34,7 +34,7 @@ For deeper context on the artwork and its evolving research, see the [Symbiosis 
 
 ## Tech Stack
 
-- Vite 7 + React 19 + TypeScript (strict)
+- Vite 7 + React 19 + TypeScript 7 (strict), with TypeScript 6 for compiler API compatibility
 - Three.js + @react-three/fiber + @react-three/drei
 - zustand + shadcn/ui + Tailwind CSS v4
 - Vercel Functions (`api/`) + Vercel Blob
@@ -74,7 +74,9 @@ Install dependencies:
 bun install
 ```
 
-`node_modules` is not portable across operating systems. This project runs on both macOS and Linux, but native Rollup packages are installed per platform, so after moving the repo between machines you should rerun `bun install` locally. If a copied `node_modules/` directory still causes a mismatch, remove it and reinstall on the current machine.
+`node_modules` is not portable across operating systems. This project runs on both macOS and Linux, but native Rollup and TypeScript 7 packages are installed per platform, so after moving the repo between machines you should rerun `bun install` locally. If a copied `node_modules/` directory still causes a mismatch, remove it and reinstall on the current machine.
+
+`bun run typecheck` and `bun run build` use TypeScript 7's native `tsc`, installed under the `@typescript/native` alias. The `typescript` dependency aliases `@typescript/typescript6`, which supplies the TypeScript 6 JavaScript API required by `typescript-eslint` and a separate `tsc6` executable. Keep both aliases when updating dependencies; replacing `typescript` with TypeScript 7 directly would remove the API used by lint. This follows the [official side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0).
 
 Run frontend dev server:
 
@@ -97,6 +99,7 @@ vercel dev
 ## Scripts
 
 ```bash
+bun run typecheck
 bun run lint
 bun run dev:api
 bun run test:vitest

@@ -21,7 +21,9 @@
 
 有关开发、部署和工作流的详细技术说明，请参阅根目录下的 [README.md](../README.md)。
 
-补充说明：项目代码可以在 macOS 和 Linux 上运行，但 `node_modules` 目录不能跨操作系统直接复用。由于 Rollup 会按平台安装原生包，在不同机器之间移动仓库后，应当在当前机器上重新执行一次 `bun install`；如果复制过来的 `node_modules/` 仍然报平台不匹配，就删除后再重新安装。
+补充说明：项目代码可以在 macOS 和 Linux 上运行，但 `node_modules` 目录不能跨操作系统直接复用。由于 Rollup 和 TypeScript 7 会按平台安装原生包，在不同机器之间移动仓库后，应当在当前机器上重新执行一次 `bun install`；如果复制过来的 `node_modules/` 仍然报平台不匹配，就删除后再重新安装。
+
+`bun run typecheck` 和 `bun run build` 使用 TypeScript 7 的原生 `tsc`（依赖别名为 `@typescript/native`）。`typescript` 依赖则指向 `@typescript/typescript6`，为 `typescript-eslint` 保留 TypeScript 6 的 JavaScript API，并提供独立的 `tsc6` 命令。更新依赖时需要保留这两个别名。
 
 - **核心架构**: 基于 Vite 7 + React 19 + Three.js 的可视化平台。
 - **数据流**: 采用 IndexedDB 本地优先存储与 Vercel Blob 云端同步的发布机制。

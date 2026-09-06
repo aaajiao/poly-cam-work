@@ -36,7 +36,7 @@ export function isValidGLBFile(filePath: string): boolean {
 	try {
 		const buffer = readFileSync(filePath);
 		if (buffer.length < 4) return false;
-		const magic = new Uint8Array(buffer, 0, 4);
+		const magic = buffer.subarray(0, 4);
 		return (
 			magic[0] === 0x67 &&
 			magic[1] === 0x6c &&
@@ -53,7 +53,7 @@ export function isValidPLYFile(filePath: string): boolean {
 		const buffer = readFileSync(filePath, { flag: "r" });
 		if (buffer.length < 3) return false;
 		const header = new TextDecoder("ascii").decode(
-			new Uint8Array(buffer, 0, Math.min(20, buffer.length)),
+			buffer.subarray(0, 20),
 		);
 		return header.startsWith("ply");
 	} catch {
