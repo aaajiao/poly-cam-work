@@ -1,8 +1,23 @@
-# poly.cam.work (v0.4.0)
+# poly.cam.work (v0.5.0)
 
 A visualization platform for the ongoing work of aaajiao. This repository serves as the technical foundation for the *Symbiosis* project, providing a space where 3D scans, point clouds, and rich-media annotations converge to document the intersection of labor, material production, and global trade.
 
-![poly.cam.work — a 3D scan with rich-media annotations in presentation mode](docs/screenshot.png)
+[![poly.cam.work — a workshop point cloud with image and video annotations](docs/screenshots/polycamwork00.png)](https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork00.png)
+
+<table>
+  <tr>
+    <td width="50%"><a href="https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork01.png"><img src="docs/screenshots/polycamwork01.png" alt="Workshop point cloud with photographs of the entrance, tools, and workers" width="100%"></a></td>
+    <td width="50%"><a href="https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork02.png"><img src="docs/screenshots/polycamwork02.png" alt="Overhead workshop mesh with image and video annotations" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork03.png"><img src="docs/screenshots/polycamwork03.png" alt="Workshop mesh from another angle with photographs and an open video panel" width="100%"></a></td>
+    <td width="50%"><a href="https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork05.png"><img src="docs/screenshots/polycamwork05.png" alt="Storage-room mesh with an aaajiao portrait annotation" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork04.png"><img src="docs/screenshots/polycamwork04.png" alt="Interior workshop view with worker, sculpture, machine, and video annotations" width="100%"></a></td>
+    <td width="50%"><a href="https://raw.githubusercontent.com/aaajiao/poly-cam-work/main/docs/screenshots/polycamwork06.png"><img src="docs/screenshots/polycamwork06.png" alt="Interior storage-room view with image and video annotation markers" width="100%"></a></td>
+  </tr>
+</table>
 
 [**中文文档 (Chinese Documentation)**](docs/README.md)
 
@@ -157,4 +172,4 @@ Official scenes are repository-first. Maintainers add model assets to the codeba
 
 ## Current Version
 
-`v0.4.0`
+`v0.5.0`
