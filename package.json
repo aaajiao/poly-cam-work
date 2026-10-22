@@ -4,14 +4,14 @@
   "version": "0.5.0",
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": ">=22.23.4 <23"
   },
   "scripts": {
     "check:platform-deps": "bun run scripts/check-platform-deps.ts",
     "dev": "bun run check:platform-deps && vite",
     "dev:api": "bun run api/dev-server.ts",
     "typecheck": "tsc -b && tsc --noEmit -p api/tsconfig.json",
-    "build": "bun run check:platform-deps && bun run typecheck && vite build",
+    "build": "node --version && bun run check:platform-deps && bun run typecheck && vite build",
     "lint": "eslint .",
     "preview": "bun run check:platform-deps && vite preview",
     "test": "bun run test:vitest",

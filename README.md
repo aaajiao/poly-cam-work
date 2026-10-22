@@ -67,10 +67,15 @@ docs/         Planning and implementation docs
 ## Prerequisites
 
 - Bun 1.3+
-- Node.js 22.x on Vercel
-- Node.js 22.12 locally via `.node-version` / `.nvmrc`
+- Node.js 22.x on Vercel, with security fixes from 22.23.4 or later
+- Node.js 22.23.4 locally via `.node-version` / `.nvmrc`
 - Modern browsers (Safari 16+, Chrome/Edge 107+, Firefox 104+)
 - (Optional) Vercel CLI for `vercel dev`
+
+`bun run build` prints the build-time Node.js version. To verify the separate
+Vercel Functions runtime, request `/api/auth/session` and check its private
+cold-start log for `[runtime] node=...`. Both should meet the Node.js 22.23.4
+security baseline; the `22.x` platform setting alone does not verify the patch.
 
 ## Environment Variables
 

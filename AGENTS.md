@@ -211,7 +211,7 @@ export type ToolMode = 'orbit' | 'measure' | 'annotate' | 'clip'
 ## Environment
 
 - **bun** as package manager and script runner
-- Node.js `22.x` on Vercel, `22.12` locally via `.node-version` / `.nvmrc`
+- Node.js `22.x` on Vercel (minimum secure patch `22.23.4`), `22.23.4` locally via `.node-version` / `.nvmrc`
 - Path alias: `@/` → `src/`
 - Tailwind v4 via `@tailwindcss/vite` (no `tailwind.config.js`)
 - Env vars: `POLYCAM_BLOB_READ_WRITE_TOKEN`, `ADMIN_PASSWORD`, `AUTH_SECRET`
